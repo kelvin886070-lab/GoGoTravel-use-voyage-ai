@@ -1,0 +1,9 @@
+{
+  "name": "GoGoTravel",
+  "description": "An iOS-style intelligent travel companion featuring AI itinerary generation, real-time tools, and trip management.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

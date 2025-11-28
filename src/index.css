@@ -1,0 +1,23 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* iOS Base Styles */
+body {
+  background-color: #F2F2F7;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+  /* Handle Safe Areas for iOS */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Hide scrollbar for clean UI */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
