@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Plane, ArrowRight, User as UserIcon, Sparkles } from 'lucide-react';
 import { IOSButton, MadeByFooter } from '../components/UI';
@@ -43,8 +44,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 <div className="w-24 h-24 bg-white rounded-[28px] shadow-xl mx-auto flex items-center justify-center mb-6 rotate-3 hover:rotate-0 transition-transform duration-500">
                     <Plane className="w-12 h-12 text-ios-blue" />
                 </div>
-                <h1 className="text-4xl font-bold text-gray-900 tracking-tight">VoyageAI</h1>
-                <p className="text-gray-500 text-lg">您的智慧旅遊伴侶</p>
+                <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Kelvin</h1>
+                <p className="text-gray-500 text-lg">您的超給力旅遊伴侶</p>
             </div>
 
             {/* Login Card */}
@@ -52,7 +53,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-500 uppercase ml-1 tracking-wider">
-                            旅客姓名 / 暱稱
+                            姓名 / 暱稱
                         </label>
                         <div className="bg-white rounded-2xl p-4 flex items-center gap-3 shadow-sm border border-gray-100 focus-within:ring-2 focus-within:ring-ios-blue/20 transition-all">
                             <UserIcon className="w-5 h-5 text-gray-400" />
@@ -81,7 +82,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
                 <div className="mt-8 pt-6 border-t border-gray-200/50 text-center">
                     <p className="text-xs text-gray-400 leading-relaxed">
-                        登入將您的旅遊行程<br/>與回憶保存在本裝置中。
+                        登入即代表您同意帶上 Kelvin 一起出去玩
                     </p>
                 </div>
             </div>
@@ -93,6 +94,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 <span>•</span>
                 <span>回憶保險箱</span>
             </div>
+        </div>
+
+        <div className="w-full z-10">
+            <MadeByFooter />
         </div>
     </div>
   );
