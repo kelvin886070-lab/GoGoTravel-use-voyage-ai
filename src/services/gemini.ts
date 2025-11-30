@@ -3,6 +3,7 @@ import type { TripDay, WeatherInfo, VoltageInfo } from "../types";
 
 // 1. 修正環境變數 (Vite 必須這樣寫)
 const apiKey = import.meta.env.VITE_API_KEY || '';
+console.log("目前的 API Key:", apiKey);
 
 if (!apiKey) {
   console.error("API Key is missing! Please check your .env file.");
@@ -10,7 +11,7 @@ if (!apiKey) {
 
 // 2. 初始化 Web SDK
 const genAI = new GoogleGenerativeAI(apiKey);
-const modelName = "gemini-1.5-flash"; // 使用穩定的 1.5 flash 模型
+const modelName = "gemini-2.0-flash"; // 使用穩定的 2.0 flash 模型
 
 // Helper: JSON 解析工具
 const parseJSON = <T>(text: string | undefined): T | null => {
