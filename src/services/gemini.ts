@@ -1,17 +1,22 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import type { TripDay, WeatherInfo, VoltageInfo } from "../types";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// 1. 修正環境變數 (Vite 必須這樣寫)
+const apiKey = import.meta.env.VITE_API_KEY || '';
 
-// Helper to parse JSON from AI response robustly
+if (!apiKey) {
+  console.error("API Key is missing! Please check your .env file.");
+}
+
+// 2. 初始化 Web SDK
+const genAI = new GoogleGenerativeAI(apiKey);
+const modelName = "gemini-1.5-flash"; // 使用穩定的 1.5 flash 模型
+
+// Helper: JSON 解析工具
 const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
     try {
         let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        // Try to find the first '{' or '[' and the last '}' or ']'
         const firstCurly = cleanText.indexOf('{');
         const firstSquare = cleanText.indexOf('[');
         let startIndex = -1;
@@ -26,64 +31,61 @@ const parseJSON = <T>(text: string | undefined): T | null => {
             const lastCurly = cleanText.lastIndexOf('}');
             const lastSquare = cleanText.lastIndexOf(']');
             const endIndex = Math.max(lastCurly, lastSquare);
-            
             if (endIndex !== -1) {
                 cleanText = cleanText.substring(startIndex, endIndex + 1);
             }
         }
-
         return JSON.parse(cleanText) as T;
     } catch (e) {
         console.error("JSON Parse Error", e);
-        console.log("Raw Text:", text);
         return null;
     }
 };
 
 export const generateItinerary = async (destination: string, days: number, interests: string): Promise<TripDay[]> => {
-  const model = "gemini-2.5-flash";
+  const model = genAI.getGenerativeModel({ 
+    model: modelName,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            day: { type: SchemaType.INTEGER },
+            activities: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  time: { type: SchemaType.STRING },
+                  title: { type: SchemaType.STRING },
+                  description: { type: SchemaType.STRING },
+                  // 注意：這裡改用 category 對應我們之前修改的 types
+                  category: { type: SchemaType.STRING },
+                  location: { type: SchemaType.STRING },
+                  cost: { type: SchemaType.STRING },
+                  latitude: { type: SchemaType.NUMBER },
+                  longitude: { type: SchemaType.NUMBER }
+                },
+                required: ["time", "title", "category", "location"]
+              }
+            }
+          },
+          required: ["day", "activities"]
+        }
+      }
+    }
+  });
   
   const prompt = `Create a ${days}-day travel itinerary for ${destination}. 
   The user is interested in: ${interests}.
-  Return the response strictly as a JSON array of daily activities.
   The content MUST be in Traditional Chinese (繁體中文).
   For each activity, try to estimate the latitude and longitude coordinates if possible.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              day: { type: Type.INTEGER },
-              activities: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    time: { type: Type.STRING },
-                    title: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    type: { type: Type.STRING, enum: ['sightseeing', 'food', 'transport', 'flight', 'hotel'] },
-                    location: { type: Type.STRING },
-                    cost: { type: Type.STRING },
-                    latitude: { type: Type.NUMBER },
-                    longitude: { type: Type.NUMBER }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    return parseJSON<TripDay[]>(response.text) || [];
+    const result = await model.generateContent(prompt);
+    return parseJSON<TripDay[]>(result.response.text()) || [];
   } catch (error) {
     console.error("Itinerary generation failed", error);
     throw error;
@@ -92,64 +94,58 @@ export const generateItinerary = async (destination: string, days: number, inter
 
 export const translateText = async (text: string, targetLang: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Translate the following text to ${targetLang}. Only return the translated text, nothing else.\n\nText: "${text}"`
-    });
-    return response.text || "";
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(`Translate the following text to ${targetLang}. Only return the translated text, nothing else.\n\nText: "${text}"`);
+    return result.response.text();
   } catch (error) {
     console.error("Translation failed", error);
     return "翻譯錯誤";
   }
 };
 
+// 3. 修正天氣功能 (移除 googleSearch，改問典型天氣)
 export const getWeatherForecast = async (location: string): Promise<WeatherInfo | null> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `What is the current weather forecast for ${location}? 
-      Return a RAW JSON object (no markdown formatting).
+    const model = genAI.getGenerativeModel({ model: modelName });
+    // Prompt 修改：不問 Current，改問 Typical/Forecast based on historical data
+    const prompt = `Provide the typical weather forecast for ${location} for the current month.
+      Return a RAW JSON object.
       Reply in Traditional Chinese (繁體中文).
-      The JSON object must have these keys:
-      - location (string)
-      - temperature (string, e.g. "24°C")
-      - condition (string, e.g. "晴朗")
-      - humidity (string, e.g. "60%")
-      - wind (string, e.g. "15 km/h")
-      - description (string)
-      - clothingSuggestion (string)
-      - activityTip (string)
-      - sunrise (string)
-      - sunset (string)
-      - uvIndex (string)
-      - hourly (array of objects with time, temp, icon: 'sun'|'cloud'|'rain'|'snow'|'storm')`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
+      JSON structure:
+      {
+        "location": "string",
+        "temperature": "string (e.g. 24°C)",
+        "condition": "string",
+        "humidity": "string",
+        "wind": "string",
+        "description": "string (brief overview)",
+        "clothingSuggestion": "string",
+        "activityTip": "string",
+        "sunrise": "string (approximate time)",
+        "sunset": "string (approximate time)",
+        "uvIndex": "string",
+        "hourly": [
+           { "time": "09:00", "temp": "22°C", "icon": "sun" },
+           { "time": "12:00", "temp": "25°C", "icon": "cloud" },
+           { "time": "15:00", "temp": "24°C", "icon": "rain" }
+        ]
+      }`;
     
-    return parseJSON<WeatherInfo>(response.text);
+    const result = await model.generateContent(prompt);
+    return parseJSON<WeatherInfo>(result.response.text());
   } catch (error) {
     console.error("Weather fetch failed", error);
     return null;
   }
 };
 
+// 4. 修正時區功能 (移除 googleSearch，Gemini 本來就知道時區)
 export const getTimezone = async (location: string): Promise<string | null> => {
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `What is the IANA Timezone ID for ${location}? (e.g. "Asia/Tokyo", "Europe/Paris").
-            Return ONLY the timezone ID string. Nothing else.`,
-            config: {
-                tools: [{ googleSearch: {} }]
-            }
-        });
-        const text = response.text?.trim();
-        if (text && text.includes('/')) {
-            return text;
-        }
-        return null;
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(`What is the IANA Timezone ID for ${location}? (e.g. "Asia/Tokyo"). Return ONLY the timezone ID string.`);
+        const text = result.response.text().trim();
+        return text.includes('/') ? text : null;
     } catch (error) {
         console.error("Timezone fetch failed", error);
         return null;
@@ -158,60 +154,45 @@ export const getTimezone = async (location: string): Promise<string | null> => {
 
 export const getCurrencyRate = async (from: string, to: string, amount: number): Promise<string> => {
    try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `What is the current exchange rate from ${amount} ${from} to ${to}? Provide the calculated amount and the rate. Reply in Traditional Chinese (繁體中文).`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
-    return response.text || "無法獲取匯率";
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(`Estimate the exchange rate from ${amount} ${from} to ${to}. Provide the calculated amount and rate. Reply in Traditional Chinese.`);
+    return result.response.text();
   } catch (error) {
-    console.error("Currency fetch failed", error);
     return "匯率資訊暫時無法使用";
   }
 }
 
 export const getLocalEmergencyInfo = async (location: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Provide the emergency phone numbers (Police, Ambulance, Fire) for ${location}. Also list one nearby hospital if possible. Reply in Traditional Chinese (繁體中文).`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
-    return response.text || "無法獲取緊急資訊";
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(`Provide emergency phone numbers for ${location}. Reply in Traditional Chinese.`);
+    return result.response.text();
   } catch (error) {
-    console.error("Emergency info fetch failed", error);
     return "緊急資訊暫時無法使用";
   }
 }
 
 export const getPlugInfo = async (country: string): Promise<VoltageInfo | null> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `What is the voltage, frequency, and plug type used in ${country}? 
-      Return a JSON object with: country, voltage, frequency, plugTypes (array of strings, e.g. "A", "G"), description (brief travel advice).
-      Reply in Traditional Chinese (繁體中文).`,
-      config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-              type: Type.OBJECT,
+    const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: SchemaType.OBJECT,
               properties: {
-                  country: { type: Type.STRING },
-                  voltage: { type: Type.STRING },
-                  frequency: { type: Type.STRING },
-                  plugTypes: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  description: { type: Type.STRING }
+                  country: { type: SchemaType.STRING },
+                  voltage: { type: SchemaType.STRING },
+                  frequency: { type: SchemaType.STRING },
+                  plugTypes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                  description: { type: SchemaType.STRING }
               }
-          }
-      }
+            }
+        }
     });
-    return parseJSON<VoltageInfo>(response.text);
+    const result = await model.generateContent(`What is the voltage info for ${country}? Reply in Traditional Chinese.`);
+    return parseJSON<VoltageInfo>(result.response.text());
   } catch (error) {
-     console.error("Plug info fetch failed", error);
      return null;
   }
 }

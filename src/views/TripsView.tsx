@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, MapPin, Calendar, ArrowRight, Sparkles, PenTool, Image as ImageIcon, Upload, X, CloudSun, Clock, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, ChevronLeft, ChevronRight, Loader2, Trash2, Download, Share, Copy, GripVertical, LogOut, User as UserIcon } from 'lucide-react';
 import type { Trip, TripDay, WeatherInfo, User } from '../types';
@@ -25,7 +26,6 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   const dragOverItem = useRef<number | null>(null);
 
   const handleDragStart = (e: React.DragEvent, position: number) => {
-      // Allow drag only if handle is targeted (handled via UI layout, but good to check)
       dragItem.current = position;
   };
 
@@ -137,7 +137,7 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
                         <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
-                    <p className="text-sm text-gray-500 font-medium">VoyageAI 會員 • {user.joinedDate} 加入</p>
+                    <p className="text-sm text-gray-500 font-medium">Kelvin 會員 • {user.joinedDate} 加入</p>
                 </div>
 
                 <div className="bg-white/60 rounded-2xl p-4 mb-6 flex justify-around border border-gray-100 shadow-sm">
@@ -210,14 +210,11 @@ const SwipeableTripCard: React.FC<{ trip: Trip, onSelect: () => void, onDelete: 
     const prepareShare = (e: React.MouseEvent) => {
         e.stopPropagation();
         
-        // Prepare "Lite" object for sharing via URL
-        // Remove the massive coverImage base64 string
         const liteTrip = { ...trip, coverImage: '' };
         
         const jsonString = JSON.stringify(liteTrip);
         const encoded = btoa(unescape(encodeURIComponent(jsonString)));
         
-        // Create a real import link (assuming current origin handles ?import=)
         const baseUrl = window.location.origin + window.location.pathname;
         const realLink = `${baseUrl}?import=${encoded}`;
         
@@ -256,12 +253,10 @@ const SwipeableTripCard: React.FC<{ trip: Trip, onSelect: () => void, onDelete: 
                             </div>
                         </div>
                         
-                        {/* Drag Handle (Visual Only, parent handles actual DnD logic) */}
                         <div className="absolute top-1/2 -translate-y-1/2 right-2 text-white/50 p-2 cursor-grab active:cursor-grabbing hover:text-white transition-colors">
                              <GripVertical className="w-6 h-6 drop-shadow-md" />
                         </div>
 
-                        {/* Share Button (Top Right) */}
                         <button 
                             onClick={prepareShare}
                             className="absolute top-3 right-3 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all z-20"
@@ -277,7 +272,7 @@ const SwipeableTripCard: React.FC<{ trip: Trip, onSelect: () => void, onDelete: 
                 isOpen={shareOpen} 
                 onClose={() => setShareOpen(false)} 
                 url={shareUrl}
-                title={`看看我在 VoyageAI 規劃的 ${trip.destination} 之旅！`}
+                title={`看看我在 Kelvin 規劃的 ${trip.destination} 之旅！`}
             />
         </>
     );
@@ -301,6 +296,7 @@ const WeatherWidget: React.FC = () => {
     const [idx, setIdx] = useState(0);
     const [data, setData] = useState<WeatherInfo | null>(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [newLoc, setNewLoc] = useState('');
 
@@ -308,9 +304,19 @@ const WeatherWidget: React.FC = () => {
 
     const fetchWeather = async () => {
         setLoading(true);
-        const res = await getWeatherForecast(locations[idx]);
-        if(res) setData(res);
-        setLoading(false);
+        setError(false);
+        try {
+            const res = await getWeatherForecast(locations[idx]);
+            if(res) {
+                setData(res);
+            } else {
+                setError(true);
+            }
+        } catch (e) {
+            setError(true);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => { fetchWeather(); }, [idx, locations]);
@@ -321,7 +327,7 @@ const WeatherWidget: React.FC = () => {
     const handleAdd = () => {
         if(newLoc.trim()) {
             setLocations([...locations, newLoc]);
-            setIdx(locations.length); // Switch to new
+            setIdx(locations.length);
             setNewLoc('');
             setIsAdding(false);
         }
@@ -371,14 +377,12 @@ const WeatherWidget: React.FC = () => {
                 </>
             )}
             
-            {/* Delete button (only visible on hover and if more than 1) */}
             {locations.length > 1 && (
                 <button onClick={handleDelete} className="absolute top-2 left-2 text-white/30 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-20">
                     <X className="w-3 h-3" />
                 </button>
             )}
 
-            {/* Add Button */}
             <button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-white/50 hover:text-white z-20">
                 <Plus className="w-4 h-4" />
             </button>
@@ -388,7 +392,12 @@ const WeatherWidget: React.FC = () => {
                     <Loader2 className="animate-spin w-6 h-6 opacity-50" />
                     <span className="text-xs mt-2 opacity-50">{locations[idx]}</span>
                 </div>
-            ) : data ? (
+            ) : error || !data ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                    <span className="text-sm opacity-70">無法取得天氣</span>
+                    <button onClick={fetchWeather} className="text-xs mt-2 underline bg-white/20 px-2 py-1 rounded">重試</button>
+                </div>
+            ) : (
                 <div className="flex flex-col justify-between h-full relative z-0">
                     <div>
                         <div className="flex items-start justify-between">
@@ -403,14 +412,8 @@ const WeatherWidget: React.FC = () => {
                         <div className="mb-2">{getWeatherIcon(data.condition)}</div>
                     </div>
                 </div>
-            ) : (
-                <div className="flex flex-col items-center justify-center h-full">
-                    <span className="text-sm opacity-70">無法取得天氣</span>
-                    <button onClick={fetchWeather} className="text-xs mt-2 underline">重試</button>
-                </div>
             )}
             
-            {/* Dots */}
             <div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">
                 {locations.map((_, i) => (
                     <div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-white' : 'bg-white/30'}`} />
@@ -430,14 +433,25 @@ const TimeWidget: React.FC = () => {
     const [dateStr, setDateStr] = useState('');
     const [isAdding, setIsAdding] = useState(false);
     const [newLoc, setNewLoc] = useState('');
+    const [error, setError] = useState(false);
 
     useEffect(() => { localStorage.setItem('voyage_time_locs', JSON.stringify(locations)); }, [locations]);
 
     // Fetch Timezone ID (e.g., "Asia/Tokyo") when location changes
     useEffect(() => {
+        setTimezone(null); 
+        setTimeStr('--:--');
+        setDateStr('載入中...');
+        setError(false);
+        
         const fetchTz = async () => {
             const tz = await getTimezone(locations[idx]);
-            setTimezone(tz);
+            if (tz) {
+                setTimezone(tz);
+            } else {
+                setError(true);
+                setDateStr('時區錯誤');
+            }
         };
         fetchTz();
     }, [idx, locations]);
@@ -445,6 +459,7 @@ const TimeWidget: React.FC = () => {
     // Update clock every second
     useEffect(() => {
         if (!timezone) return;
+
         const update = () => {
             try {
                 const now = new Date();
@@ -452,8 +467,12 @@ const TimeWidget: React.FC = () => {
                 const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', weekday: 'short', timeZone: timezone };
                 setTimeStr(new Intl.DateTimeFormat('en-US', timeOpts).format(now));
                 setDateStr(new Intl.DateTimeFormat('zh-TW', dateOpts).format(now));
+                setError(false);
             } catch (e) {
+                console.warn(`Invalid timezone: ${timezone}`);
                 setTimeStr('--:--');
+                setDateStr('格式錯誤');
+                setError(true);
             }
         };
         update();
@@ -526,15 +545,14 @@ const TimeWidget: React.FC = () => {
                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span>
                 </div>
                 <div className="flex items-end justify-between">
-                    <span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr || '--:--'}</span>
+                    <span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span>
                 </div>
                 <div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    {dateStr || '載入中...'}
+                    {dateStr}
                 </div>
             </div>
 
-            {/* Dots */}
             <div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">
                 {locations.map((_, i) => (
                     <div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />
