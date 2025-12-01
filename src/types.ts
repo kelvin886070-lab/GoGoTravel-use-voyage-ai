@@ -71,6 +71,7 @@ export interface Booking {
 export interface User {
   id: string;
   name: string;
+  password?: string; // ✨ 這一行非常重要！問號 ? 代表它是可選的（為了相容舊帳號）
   avatar?: string;
   joinedDate: string;
 }

@@ -17,20 +17,31 @@ const App: React.FC = () => {
   const [bgImage, setBgImage] = useState<string>('');
   const [trips, setTrips] = useState<Trip[]>([]);
 
-  // 用來更新單一行程資料 (包含封面圖、活動變更)
+  // 用來更新單一行程資料
   const handleUpdateTrip = (updatedTrip: Trip) => {
     setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
     setSelectedTrip(updatedTrip);
   };
   
-  // Load User Logic
+  // 1. 初始化檢查 (關鍵修改！)
   useEffect(() => {
-      const savedUser = localStorage.getItem('voyage_current_user');
-      if (savedUser) {
-          try { setUser(JSON.parse(savedUser)); } catch (e) { console.error(e); }
+      // 檢查是否有「登入中」的標記
+      const sessionActive = localStorage.getItem('voyage_session_active');
+      // 讀取「帳號資料」
+      const savedAccount = localStorage.getItem('voyage_user_account');
+
+      // 只有當「帳號存在」且「上次是登入狀態」時，才自動登入
+      // 如果你希望每次重新整理都要輸入密碼，可以把 sessionActive 的判斷拿掉
+      if (sessionActive === 'true' && savedAccount) {
+          try { 
+              setUser(JSON.parse(savedAccount)); 
+          } catch (e) { 
+              console.error(e); 
+          }
       }
   }, []);
 
+  // 2. 載入使用者資料
   useEffect(() => {
       if (!user) { setTrips([]); setBgImage(''); return; }
       try {
@@ -41,24 +52,32 @@ const App: React.FC = () => {
       if (savedBg) setBgImage(savedBg);
   }, [user]);
 
+  // 3. 儲存行程資料
   useEffect(() => {
     if (!user) return;
     localStorage.setItem(`voyage_${user.id}_trips`, JSON.stringify(trips));
   }, [trips, user]);
 
-
+  // 4. 登入處理 (關鍵修改！)
   const handleLogin = (newUser: User) => {
       setUser(newUser);
-      localStorage.setItem('voyage_current_user', JSON.stringify(newUser));
+      // 儲存帳號資料 (永久)
+      localStorage.setItem('voyage_user_account', JSON.stringify(newUser));
+      // 標記為登入狀態
+      localStorage.setItem('voyage_session_active', 'true');
   };
+
+  // 5. 登出處理 (關鍵修改！)
   const handleLogout = () => {
-      if(confirm("確定要登出嗎？")) {
+      if(confirm("確定要登出嗎？資料會保留在手機上。")) {
           setUser(null);
-          localStorage.removeItem('voyage_current_user');
+          // 只移除「登入狀態」，不移除「帳號資料」
+          localStorage.removeItem('voyage_session_active');
           setCurrentView(AppView.TRIPS);
           setSelectedTrip(null);
       }
   };
+
   const handleUpdateBackground = (img: string) => {
       setBgImage(img);
       if(user) localStorage.setItem(`voyage_${user.id}_bg_image`, img);
@@ -98,6 +117,7 @@ const App: React.FC = () => {
     );
   }
 
+  // ... (Main App View Render 保持不變) ...
   return (
     <div className="min-h-screen font-sans text-gray-900 bg-gray-50/80" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
@@ -144,7 +164,7 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
 
 
 // --------------------------------------------------------------------------
-// 🔥 ItineraryDetailView (已加入更換封面功能)
+// 🔥 ItineraryDetailView (保持原樣，僅為了完整性列出)
 // --------------------------------------------------------------------------
 
 const ItineraryDetailView: React.FC<{ 
@@ -157,18 +177,14 @@ const ItineraryDetailView: React.FC<{
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
-    
-    // ✨ 1. 檔案選擇器的 Ref
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // ✨ 2. 處理封面更換
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const newImage = reader.result as string;
-                // 更新 Trip 資料
                 const updatedTrip = { ...trip, coverImage: newImage };
                 onUpdateTrip(updatedTrip);
             };
@@ -176,7 +192,6 @@ const ItineraryDetailView: React.FC<{
         }
     };
 
-    // 拖曳結束
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         const { source, destination } = result;
@@ -189,7 +204,6 @@ const ItineraryDetailView: React.FC<{
         onUpdateTrip(newTrip);
     };
 
-    // 新增活動
     const handleAddActivity = (newActivity: Activity) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const dayIndex = activeDayForAdd - 1;
@@ -201,7 +215,6 @@ const ItineraryDetailView: React.FC<{
         setIsAddModalOpen(false);
     };
 
-    // 刪除活動
     const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
         if(!confirm("確定要刪除這個活動嗎？")) return;
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
@@ -217,7 +230,6 @@ const ItineraryDetailView: React.FC<{
     return (
         <div className="bg-white min-h-screen max-w-md mx-auto relative animate-in slide-in-from-right duration-300 pb-10">
             
-            {/* Header Image Area */}
             <div className="h-64 relative group">
                 <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
@@ -229,7 +241,6 @@ const ItineraryDetailView: React.FC<{
                     <Trash2 className="w-5 h-5" />
                 </button>
 
-                {/* ✨ 3. 更換封面的按鈕 */}
                 <button 
                     onClick={() => fileInputRef.current?.click()}
                     className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"
@@ -237,7 +248,6 @@ const ItineraryDetailView: React.FC<{
                 >
                     <Camera className="w-5 h-5" />
                 </button>
-                {/* 隱藏的 Input */}
                 <input 
                     type="file" 
                     ref={fileInputRef} 
@@ -255,7 +265,6 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* View Toggle */}
             <div className="px-5 mt-4">
                  <div className="bg-gray-100 p-1 rounded-xl flex">
                     <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
@@ -267,7 +276,6 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* Drag Context & Content */}
             <DragDropContext onDragEnd={onDragEnd}>
                 <div className="px-5 py-6 space-y-10">
                     {trip.days.map((day, dayIndex) => (
@@ -276,6 +284,7 @@ const ItineraryDetailView: React.FC<{
                             
                             <div className="flex justify-between items-center mb-4 -mt-1">
                                 <h2 className="text-xl font-bold text-gray-900">第 {day.day} 天</h2>
+                                
                                 {viewMode === 'list' && (
                                     <button 
                                         onClick={() => openAddModal(day.day)}
@@ -361,6 +370,7 @@ const ItineraryDetailView: React.FC<{
     );
 };
 
+// ... (AddActivityModal, RouteVisualization, Tag 保持不變，但為了完整性建議一起複製上方的完整代碼) ...
 const AddActivityModal: React.FC<{ 
     day: number; 
     onClose: () => void; 
