@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, MapPin, Calendar, ArrowRight, Sparkles, PenTool, Image as ImageIcon, Upload, X, CloudSun, Clock, Sun, Cloud, CloudRain, CloudSnow, CloudLightning, ChevronLeft, ChevronRight, Loader2, Trash2, Download, Share, Copy, GripVertical, LogOut, User as UserIcon } from 'lucide-react';
+import { Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, LogOut, ChevronLeft, ChevronRight, Loader2, CloudRain, Cloud, Sun, CloudSun, PenTool, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import type { Trip, TripDay, WeatherInfo, User } from '../types';
-import { IOSButton, IOSCard, IOSHeader, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
+import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 
 interface TripsViewProps {
@@ -21,35 +21,20 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   const [isImporting, setIsImporting] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // Drag and Drop State
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
+  // 拖曳結束處理
+  const onDragEnd = (result: DropResult) => {
+      if (!result.destination) return;
 
-  const handleDragStart = (e: React.DragEvent, position: number) => {
-      dragItem.current = position;
-  };
+      const newTrips = Array.from(trips);
+      const [reorderedItem] = newTrips.splice(result.source.index, 1);
+      newTrips.splice(result.destination.index, 0, reorderedItem);
 
-  const handleDragEnter = (e: React.DragEvent, position: number) => {
-      dragOverItem.current = position;
-  };
-
-  const handleDragEnd = () => {
-      if (dragItem.current === null || dragOverItem.current === null) return;
-      
-      const copy = [...trips];
-      const draggedItemContent = copy[dragItem.current];
-      copy.splice(dragItem.current, 1);
-      copy.splice(dragOverItem.current, 0, draggedItemContent);
-      
-      dragItem.current = null;
-      dragOverItem.current = null;
-      
-      onReorderTrips(copy);
+      onReorderTrips(newTrips);
   };
 
   return (
     <div className="min-h-screen pb-24 overflow-x-hidden">
-      {/* Dynamic Header */}
+      {/* Header */}
       <div className="pt-12 pb-4 px-5 bg-ios-bg/80 backdrop-blur-xl sticky top-0 z-40 flex justify-between items-end border-b border-gray-200/50">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
         <div className="flex gap-3 items-center">
@@ -68,7 +53,6 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                 <Plus className="text-white w-6 h-6" />
             </button>
             
-            {/* Profile Avatar Button */}
             <button 
                 onClick={() => setShowProfile(true)}
                 className="w-9 h-9 rounded-full overflow-hidden border border-gray-200 shadow-sm active:scale-90 transition-transform"
@@ -85,31 +69,46 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         {/* Trips List */}
         <div className="space-y-6">
             <h2 className="text-xl font-bold text-gray-800 ml-1">我的旅程</h2>
-            {trips.length === 0 ? (
-            <div className="text-center py-10 opacity-50 bg-white/50 rounded-3xl border border-gray-200/50">
-                <MapPin className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>尚無行程，點擊右上角 + 開始規劃</p>
-            </div>
-            ) : (
-            <div className="space-y-4">
-                {trips.map((trip, index) => (
-                    <div 
-                        key={trip.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragEnter={(e) => handleDragEnter(e, index)}
-                        onDragEnd={handleDragEnd}
-                        className="transition-transform"
-                    >
-                        <SwipeableTripCard 
-                            trip={trip} 
-                            onSelect={() => onSelectTrip(trip)} 
-                            onDelete={() => onDeleteTrip(trip.id)} 
-                        />
+            
+            <DragDropContext onDragEnd={onDragEnd}>
+                {trips.length === 0 ? (
+                    <div className="text-center py-10 opacity-50 bg-white/50 rounded-3xl border border-gray-200/50">
+                        <MapPin className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                        <p>尚無行程，點擊右上角 + 開始規劃</p>
                     </div>
-                ))}
-            </div>
-            )}
+                ) : (
+                    <Droppable droppableId="trips-list">
+                        {(provided) => (
+                            <div 
+                                className="space-y-4"
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                            >
+                                {trips.map((trip, index) => (
+                                    <Draggable key={trip.id} draggableId={trip.id} index={index}>
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.draggableProps}
+                                                style={{ ...provided.draggableProps.style }}
+                                                className={`transition-shadow ${snapshot.isDragging ? 'z-50 shadow-2xl scale-[1.02]' : ''}`}
+                                            >
+                                                <SwipeableTripCard 
+                                                    trip={trip} 
+                                                    onSelect={() => onSelectTrip(trip)} 
+                                                    onDelete={() => onDeleteTrip(trip.id)}
+                                                    dragHandleProps={provided.dragHandleProps} 
+                                                />
+                                            </div>
+                                        )}
+                                    </Draggable>
+                                ))}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                )}
+            </DragDropContext>
         </div>
         <MadeByFooter />
       </div>
@@ -119,6 +118,125 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
     </div>
   );
+};
+
+// --- Swipeable Card Component ---
+
+const SwipeableTripCard: React.FC<{ 
+    trip: Trip, 
+    onSelect: () => void, 
+    onDelete: () => void,
+    dragHandleProps?: DraggableProvidedDragHandleProps | null
+}> = ({ trip, onSelect, onDelete, dragHandleProps }) => {
+    const [offsetX, setOffsetX] = useState(0);
+    const startX = useRef<number | null>(null);
+    const isDragging = useRef(false);
+    const [shareOpen, setShareOpen] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        startX.current = e.touches[0].clientX;
+        isDragging.current = true;
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (!startX.current) return;
+        const currentX = e.touches[0].clientX;
+        const diff = currentX - startX.current;
+        
+        // Only allow swiping left (negative diff)
+        if (diff < 0 && diff > -120) {
+            setOffsetX(diff);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        isDragging.current = false;
+        startX.current = null;
+        if (offsetX < -60) {
+            setOffsetX(-80); 
+        } else {
+            setOffsetX(0); 
+        }
+    };
+
+    const handleClick = () => {
+        if (offsetX < -10) {
+            setOffsetX(0); 
+        } else {
+            onSelect();
+        }
+    };
+
+    const prepareShare = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const liteTrip = { ...trip, coverImage: '' };
+        const jsonString = JSON.stringify(liteTrip);
+        const encoded = btoa(unescape(encodeURIComponent(jsonString)));
+        const baseUrl = window.location.origin + window.location.pathname;
+        const realLink = `${baseUrl}?import=${encoded}`;
+        setShareUrl(realLink);
+        setShareOpen(true);
+    };
+
+    return (
+        <>
+            <div className="relative w-full h-48 rounded-3xl overflow-hidden shadow-sm group select-none transition-shadow hover:shadow-md">
+                {/* Background Delete Button */}
+                <div className="absolute inset-0 flex justify-end items-center bg-red-500 rounded-3xl pr-6">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="flex flex-col items-center text-white">
+                        <Trash2 className="w-8 h-8 mb-1" />
+                        <span className="text-xs font-bold">刪除</span>
+                    </button>
+                </div>
+
+                {/* Foreground Trip Card */}
+                <div 
+                    className="absolute inset-0 bg-white rounded-3xl overflow-hidden transition-transform duration-300 ease-out cursor-pointer active:scale-[0.98] flex"
+                    style={{ transform: `translateX(${offsetX}px)` }}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={handleClick}
+                >
+                    <div className="h-full w-full relative">
+                        <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                        <div className="absolute bottom-4 left-5 text-white">
+                            <h2 className="text-3xl font-bold shadow-sm">{trip.destination}</h2>
+                            <div className="flex items-center gap-2 text-sm font-medium opacity-90 shadow-sm">
+                                <Calendar className="w-4 h-4" />
+                                <span>{trip.startDate} • {trip.days.length} 天</span>
+                            </div>
+                        </div>
+                        
+                        <div 
+                            {...dragHandleProps}
+                            className="absolute top-1/2 -translate-y-1/2 right-2 text-white/50 p-3 cursor-grab active:cursor-grabbing hover:text-white transition-colors hover:bg-black/20 rounded-full"
+                            onClick={(e) => e.stopPropagation()} 
+                        >
+                             <GripVertical className="w-6 h-6 drop-shadow-md" />
+                        </div>
+
+                        <button 
+                            onClick={prepareShare}
+                            className="absolute top-3 right-3 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all z-20"
+                            title="分享"
+                        >
+                            <Share className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <IOSShareSheet 
+                isOpen={shareOpen} 
+                onClose={() => setShareOpen(false)} 
+                url={shareUrl}
+                title={`看看我在 Kelvin 規劃的 ${trip.destination} 之旅！`}
+            />
+        </>
+    );
 };
 
 // --- Profile Modal ---
@@ -164,120 +282,6 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
     );
 };
 
-// --- Swipeable Card Component ---
-
-const SwipeableTripCard: React.FC<{ trip: Trip, onSelect: () => void, onDelete: () => void }> = ({ trip, onSelect, onDelete }) => {
-    const [offsetX, setOffsetX] = useState(0);
-    const startX = useRef<number | null>(null);
-    const isDragging = useRef(false);
-    const [shareOpen, setShareOpen] = useState(false);
-    const [shareUrl, setShareUrl] = useState('');
-
-    const handleTouchStart = (e: React.TouchEvent) => {
-        startX.current = e.touches[0].clientX;
-        isDragging.current = true;
-    };
-
-    const handleTouchMove = (e: React.TouchEvent) => {
-        if (!startX.current) return;
-        const currentX = e.touches[0].clientX;
-        const diff = currentX - startX.current;
-        
-        // Only allow swiping left (negative diff)
-        if (diff < 0 && diff > -120) {
-            setOffsetX(diff);
-        }
-    };
-
-    const handleTouchEnd = () => {
-        isDragging.current = false;
-        startX.current = null;
-        if (offsetX < -60) {
-            setOffsetX(-80); // Open state
-        } else {
-            setOffsetX(0); // Closed state
-        }
-    };
-
-    const handleClick = () => {
-        if (offsetX < -10) {
-            setOffsetX(0); // Close if open
-        } else {
-            onSelect();
-        }
-    };
-
-    const prepareShare = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        
-        const liteTrip = { ...trip, coverImage: '' };
-        
-        const jsonString = JSON.stringify(liteTrip);
-        const encoded = btoa(unescape(encodeURIComponent(jsonString)));
-        
-        const baseUrl = window.location.origin + window.location.pathname;
-        const realLink = `${baseUrl}?import=${encoded}`;
-        
-        setShareUrl(realLink);
-        setShareOpen(true);
-    };
-
-    return (
-        <>
-            <div className="relative w-full h-48 rounded-3xl overflow-hidden shadow-sm group select-none transition-shadow hover:shadow-md">
-                {/* Background Delete Button */}
-                <div className="absolute inset-0 flex justify-end items-center bg-red-500 rounded-3xl pr-6">
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="flex flex-col items-center text-white">
-                        <Trash2 className="w-8 h-8 mb-1" />
-                        <span className="text-xs font-bold">刪除</span>
-                    </button>
-                </div>
-
-                {/* Foreground Trip Card */}
-                <div 
-                    className="absolute inset-0 bg-white rounded-3xl overflow-hidden transition-transform duration-300 ease-out cursor-pointer active:scale-[0.98] flex"
-                    style={{ transform: `translateX(${offsetX}px)` }}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    onClick={handleClick}
-                >
-                    <div className="h-full w-full relative">
-                        <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                        <div className="absolute bottom-4 left-5 text-white">
-                            <h2 className="text-3xl font-bold shadow-sm">{trip.destination}</h2>
-                            <div className="flex items-center gap-2 text-sm font-medium opacity-90 shadow-sm">
-                                <Calendar className="w-4 h-4" />
-                                <span>{trip.startDate} • {trip.days.length} 天</span>
-                            </div>
-                        </div>
-                        
-                        <div className="absolute top-1/2 -translate-y-1/2 right-2 text-white/50 p-2 cursor-grab active:cursor-grabbing hover:text-white transition-colors">
-                             <GripVertical className="w-6 h-6 drop-shadow-md" />
-                        </div>
-
-                        <button 
-                            onClick={prepareShare}
-                            className="absolute top-3 right-3 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all z-20"
-                            title="分享"
-                        >
-                            <Share className="w-5 h-5" />
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <IOSShareSheet 
-                isOpen={shareOpen} 
-                onClose={() => setShareOpen(false)} 
-                url={shareUrl}
-                title={`看看我在 Kelvin 規劃的 ${trip.destination} 之旅！`}
-            />
-        </>
-    );
-};
-
 // --- Dashboard Widgets ---
 
 const DashboardWidgets: React.FC = () => {
@@ -302,13 +306,42 @@ const WeatherWidget: React.FC = () => {
 
     useEffect(() => { localStorage.setItem('voyage_weather_locs', JSON.stringify(locations)); }, [locations]);
 
+    // ✨ 關鍵修改：加入快取機制 (Caching)
     const fetchWeather = async () => {
+        const currentLocation = locations[idx];
+        const cacheKey = `voyage_weather_cache_${currentLocation}`;
+        
+        // 1. 檢查快取
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                const now = Date.now();
+                // 設定 30 分鐘 (30 * 60 * 1000) 內有效，避免頻繁呼叫 API
+                if (now - timestamp < 30 * 60 * 1000) {
+                    console.log(`[Cache Hit] Using cached weather for ${currentLocation}`);
+                    setData(data);
+                    setLoading(false);
+                    return; // 直接回傳，不打 API
+                }
+            }
+        } catch(e) {
+            console.warn("Cache parse failed", e);
+        }
+
+        // 2. 無快取或過期，才打 API
+        console.log(`[API Call] Fetching weather for ${currentLocation}`);
         setLoading(true);
         setError(false);
         try {
-            const res = await getWeatherForecast(locations[idx]);
+            const res = await getWeatherForecast(currentLocation);
             if(res) {
                 setData(res);
+                // 3. 存入快取
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    data: res,
+                    timestamp: Date.now()
+                }));
             } else {
                 setError(true);
             }
@@ -437,7 +470,7 @@ const TimeWidget: React.FC = () => {
 
     useEffect(() => { localStorage.setItem('voyage_time_locs', JSON.stringify(locations)); }, [locations]);
 
-    // Fetch Timezone ID (e.g., "Asia/Tokyo") when location changes
+    // ✨ 關鍵修改：加入快取機制 (時區幾乎不變，可以存更久)
     useEffect(() => {
         setTimezone(null); 
         setTimeStr('--:--');
@@ -445,9 +478,23 @@ const TimeWidget: React.FC = () => {
         setError(false);
         
         const fetchTz = async () => {
-            const tz = await getTimezone(locations[idx]);
+            const currentLocation = locations[idx];
+            const cacheKey = `voyage_timezone_cache_${currentLocation}`;
+
+            // 1. 檢查快取
+            const cachedTz = localStorage.getItem(cacheKey);
+            if (cachedTz) {
+                console.log(`[Cache Hit] Timezone for ${currentLocation}`);
+                setTimezone(cachedTz);
+                return;
+            }
+
+            // 2. 無快取，打 API
+            console.log(`[API Call] Fetching timezone for ${currentLocation}`);
+            const tz = await getTimezone(currentLocation);
             if (tz) {
                 setTimezone(tz);
+                localStorage.setItem(cacheKey, tz); // 存入快取
             } else {
                 setError(true);
                 setDateStr('時區錯誤');
@@ -561,7 +608,6 @@ const TimeWidget: React.FC = () => {
         </div>
     );
 };
-
 
 // --- Create Trip Modal & Logic ---
 

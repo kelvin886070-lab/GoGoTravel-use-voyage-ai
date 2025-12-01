@@ -126,3 +126,4 @@ export interface VaultFile {
     isDeleted?: boolean; // Soft delete flag
     isPinned?: boolean;
 }
+
