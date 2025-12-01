@@ -9,13 +9,13 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/identicon/svg?seed=VoyageAI&backgroundColor=007AFF",
+      "src": "https://api.dicebear.com/7.x/identicon/svg?seed=KelvinTrip&backgroundColor=007AFF",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "https://api.dicebear.com/7.x/identicon/svg?seed=VoyageAI&backgroundColor=007AFF",
+      "src": "https://api.dicebear.com/7.x/identicon/svg?seed=KelvinTrip&backgroundColor=007AFF",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
