@@ -36,7 +36,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
     <div className="h-full flex flex-col w-full bg-transparent">
       
       {/* 1. Header: 固定高度，不捲動 */}
-      <div className="flex-shrink-0 pt-12 pb-4 px-5 bg-ios-bg/80 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full">
+      <div className="flex-shrink-0 pt-20 pb-6 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
         <div className="flex gap-3 items-center absolute right-5 bottom-4">
             <button 
