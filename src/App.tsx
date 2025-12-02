@@ -98,16 +98,18 @@ const App: React.FC = () => {
     );
   }
 
-  // 🔥 優化重點 1：使用 h-[100dvh] 解決手機瀏覽器網址列遮擋問題
-  // 🔥 優化重點 2：flex-col + overflow-hidden 確保只有中間能動
+  // 🔥 佈局大改造：
+  // 1. h-[100dvh]：強制高度等於螢幕視窗，不讓網址列影響。
+  // 2. flex-col：垂直排列 (內容在上，導覽列在下)。
+  // 3. overflow-hidden：禁止整頁捲動，只讓中間區域捲動。
   return (
     <div className="h-[100dvh] w-full font-sans text-gray-900 bg-gray-50/80 overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
       
       <main className="max-w-md mx-auto h-full relative shadow-2xl overflow-hidden z-10 bg-gray-50/80 backdrop-blur-md flex flex-col">
         
-        {/* [中間層] 內容區：flex-1 佔滿空間 + 允許捲動 + 隱藏捲軸 */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative w-full no-scrollbar">
+        {/* [中段] 內容顯示區：flex-1 讓它自動填滿剩餘空間 */}
+        <div className="flex-1 overflow-hidden relative w-full">
             {currentView === AppView.TRIPS && (
               <div className="h-full w-full">
                 <TripsView 
@@ -122,14 +124,13 @@ const App: React.FC = () => {
                 />
               </div>
             )}
-            
-            {/* 其他 View 也加上 h-full 確保排版一致 */}
+            {/* 其他頁面加上 overflow-y-auto 讓它們可以自己捲動 */}
             {currentView === AppView.EXPLORE && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ExploreView /></div>}
             {currentView === AppView.TOOLS && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ToolsView onUpdateBackground={handleUpdateBackground} /></div>}
             {currentView === AppView.VAULT && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><VaultView deletedTrips={trips.filter(t => t.isDeleted)} onRestoreTrip={handleRestoreTrip} onPermanentDeleteTrip={handlePermanentDeleteTrip} /></div>}
         </div>
 
-        {/* [底層] 導覽列：固定高度 + 確保安全區域 (pb-safe) */}
+        {/* [下段] 底部導覽列：flex-shrink-0 固定高度 */}
         <div className="flex-shrink-0 z-50 relative w-full bg-white/85 backdrop-blur-xl border-t border-gray-200/50">
             <div className="flex justify-between items-center pb-safe pt-2 px-6 h-[calc(60px+env(safe-area-inset-bottom))]">
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="行程" />
@@ -150,9 +151,7 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
   </button>
 );
 
-// --------------------------------------------------------------------------
-// ItineraryDetailView (也改為固定 Header)
-// --------------------------------------------------------------------------
+// --- ItineraryDetailView (也加入固定 Header 邏輯) ---
 
 const ItineraryDetailView: React.FC<{ 
     trip: Trip; 
@@ -202,55 +201,57 @@ const ItineraryDetailView: React.FC<{
 
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
 
-    // 🔥 優化重點 3：詳情頁結構調整，確保 Header 圖片固定
+    // 🔥 這裡也改成 Flexbox 佈局，讓 Header 固定
     return (
         <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
             
-            {/* 1. Header (固定不捲動) */}
-            <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
-                <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto pb-24 no-scrollbar">
                 
-                <button onClick={onBack} className="absolute top-12 left-5 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
-                    <ArrowLeft className="w-6 h-6" />
-                </button>
-                <button onClick={onDelete} className="absolute top-12 right-5 w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
-                    <Trash2 className="w-5 h-5" />
-                </button>
+                {/* Header Image */}
+                <div className="h-64 relative group flex-shrink-0">
+                    <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+                    
+                    <button onClick={onBack} className="absolute top-12 left-5 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
+                        <ArrowLeft className="w-6 h-6" />
+                    </button>
+                    <button onClick={onDelete} className="absolute top-12 right-5 w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
+                        <Trash2 className="w-5 h-5" />
+                    </button>
 
-                <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"
-                >
-                    <Camera className="w-5 h-5" />
-                </button>
-                <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"
+                    >
+                        <Camera className="w-5 h-5" />
+                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
 
-                <div className="absolute bottom-6 left-5 text-white pr-14">
-                    <h1 className="text-3xl font-bold drop-shadow-md">{trip.destination}</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
-                        <span className="text-sm opacity-90">{trip.startDate}</span>
+                    <div className="absolute bottom-6 left-5 text-white pr-14">
+                        <h1 className="text-3xl font-bold drop-shadow-md">{trip.destination}</h1>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
+                            <span className="text-sm opacity-90">{trip.startDate}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* 2. 切換按鈕 (固定在 Header 下方) */}
-            <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10">
-                <div className="bg-gray-100 p-1 rounded-xl flex">
-                    <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-                        <List className="w-4 h-4" /> 列表
-                    </button>
-                    <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-                        <Map className="w-4 h-4" /> 地圖
-                    </button>
+                {/* View Toggle */}
+                <div className="px-5 mt-4">
+                    <div className="bg-gray-100 p-1 rounded-xl flex">
+                        <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                            <List className="w-4 h-4" /> 列表
+                        </button>
+                        <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                            <Map className="w-4 h-4" /> 地圖
+                        </button>
+                    </div>
                 </div>
-            </div>
 
-            {/* 3. 內容列表 (唯一可捲動的區域) */}
-            <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
+                {/* Content */}
                 <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="py-4 space-y-10">
+                    <div className="px-5 py-6 space-y-10">
                         {trip.days.map((day, dayIndex) => (
                             <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-gray-200">
                                 <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-ios-blue border-4 border-white shadow-sm" />
@@ -294,8 +295,6 @@ const ItineraryDetailView: React.FC<{
                                 )}
                             </div>
                         ))}
-                        {/* 底部留白，避免被手機橫條擋住 */}
-                        <div className="h-10"></div>
                     </div>
                 </DragDropContext>
             </div>
