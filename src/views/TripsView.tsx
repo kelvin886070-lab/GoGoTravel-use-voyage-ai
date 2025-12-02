@@ -21,7 +21,6 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   const [isImporting, setIsImporting] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // 拖曳結束處理
   const onDragEnd = (result: DropResult) => {
       if (!result.destination) return;
 
@@ -32,12 +31,14 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       onReorderTrips(newTrips);
   };
 
+  // 🔥 關鍵修改：h-full flex flex-col 讓版面可以固定
   return (
-    <div className="min-h-screen pb-24 overflow-x-hidden">
-      {/* Header */}
-      <div className="pt-12 pb-4 px-5 bg-ios-bg/80 backdrop-blur-xl sticky top-0 z-40 flex justify-between items-end border-b border-gray-200/50">
+    <div className="h-full flex flex-col w-full bg-transparent">
+      
+      {/* 1. Header: 固定高度，不捲動 */}
+      <div className="flex-shrink-0 pt-12 pb-4 px-5 bg-ios-bg/80 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-3 items-center absolute right-5 bottom-4">
             <button 
                 onClick={() => setIsImporting(true)}
                 className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform"
@@ -62,7 +63,8 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         </div>
       </div>
 
-      <div className="px-5 space-y-6 mt-4">
+      {/* 2. Content: 佔滿剩餘空間，可捲動 (隱藏捲軸) */}
+      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
         {/* Dashboard Widgets */}
         <DashboardWidgets />
 
@@ -113,6 +115,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         <MadeByFooter />
       </div>
 
+      {/* Modals */}
       {isCreating && <CreateTripModal onClose={() => setIsCreating(false)} onAddTrip={onAddTrip} />}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
       {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
@@ -306,7 +309,7 @@ const WeatherWidget: React.FC = () => {
 
     useEffect(() => { localStorage.setItem('voyage_weather_locs', JSON.stringify(locations)); }, [locations]);
 
-    // ✨ 關鍵修改：加入快取機制 (Caching)
+    // ✨ 快取版天氣查詢
     const fetchWeather = async () => {
         const currentLocation = locations[idx];
         const cacheKey = `voyage_weather_cache_${currentLocation}`;
@@ -317,12 +320,11 @@ const WeatherWidget: React.FC = () => {
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
                 const now = Date.now();
-                // 設定 30 分鐘 (30 * 60 * 1000) 內有效，避免頻繁呼叫 API
+                // 設定 30 分鐘 (30 * 60 * 1000) 內有效
                 if (now - timestamp < 30 * 60 * 1000) {
-                    console.log(`[Cache Hit] Using cached weather for ${currentLocation}`);
                     setData(data);
                     setLoading(false);
-                    return; // 直接回傳，不打 API
+                    return; 
                 }
             }
         } catch(e) {
@@ -330,14 +332,12 @@ const WeatherWidget: React.FC = () => {
         }
 
         // 2. 無快取或過期，才打 API
-        console.log(`[API Call] Fetching weather for ${currentLocation}`);
         setLoading(true);
         setError(false);
         try {
             const res = await getWeatherForecast(currentLocation);
             if(res) {
                 setData(res);
-                // 3. 存入快取
                 localStorage.setItem(cacheKey, JSON.stringify({
                     data: res,
                     timestamp: Date.now()
@@ -470,7 +470,7 @@ const TimeWidget: React.FC = () => {
 
     useEffect(() => { localStorage.setItem('voyage_time_locs', JSON.stringify(locations)); }, [locations]);
 
-    // ✨ 關鍵修改：加入快取機制 (時區幾乎不變，可以存更久)
+    // ✨ 快取版時區查詢
     useEffect(() => {
         setTimezone(null); 
         setTimeStr('--:--');
@@ -484,13 +484,11 @@ const TimeWidget: React.FC = () => {
             // 1. 檢查快取
             const cachedTz = localStorage.getItem(cacheKey);
             if (cachedTz) {
-                console.log(`[Cache Hit] Timezone for ${currentLocation}`);
                 setTimezone(cachedTz);
                 return;
             }
 
             // 2. 無快取，打 API
-            console.log(`[API Call] Fetching timezone for ${currentLocation}`);
             const tz = await getTimezone(currentLocation);
             if (tz) {
                 setTimezone(tz);
