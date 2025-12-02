@@ -182,7 +182,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     {step === 0 && (
                         <div className="space-y-2 animate-in slide-in-from-left duration-300">
                             <label className="text-xs font-bold text-gray-500 uppercase ml-1 tracking-wider">
-                                姓名/暱稱
+                                姓名 / 暱稱
                             </label>
                             <div className="bg-white/50 rounded-2xl p-4 flex items-center gap-3 shadow-sm border border-gray-100 focus-within:ring-2 focus-within:ring-ios-blue/20 transition-all">
                                 <UserIcon className="w-5 h-5 text-gray-400" />
