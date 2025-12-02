@@ -1,6 +1,6 @@
 {
-  "name": "Kelvin + Gemini",
-  "short_name": "use by GeminiAI",
+  "name": "Kelvin",
+  "short_name": "Kelvin",
   "description": "您的智慧旅遊伴侶 - 行程規劃、離線瀏覽、旅遊工具",
   "start_url": "/",
   "display": "standalone",
