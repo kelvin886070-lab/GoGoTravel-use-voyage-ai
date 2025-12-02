@@ -163,7 +163,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
                         {/* 標題根據狀態改變 */}
-                        {step === 0 ? 'Kelvin' : (existingUser ? `哈囉 ${existingUser.name}` : '歡迎新朋友')}
+                        {step === 0 ? 'Kelvin' : (existingUser ? `哈囉，${existingUser.name}` : '歡迎新朋友')}
                     </h1>
                     <p className="text-gray-500 text-base mt-2 font-medium">
                         {step === 0 
