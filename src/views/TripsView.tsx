@@ -62,7 +62,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
+      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pt-4 pb-24 w-full scroll-smooth no-scrollbar">
         <DashboardWidgets />
 
         <div className="space-y-6">
