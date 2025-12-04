@@ -6,6 +6,39 @@ import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
+// 🧠 Helper: 智慧時間填補
+// 確保 AI 生成的每個活動都有合理的時間
+const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
+    return days.map(day => {
+        // 預設每天從 09:00 開始
+        let nextStartTime = "09:00";
+        
+        const activities = day.activities.map(act => {
+            // 如果 AI 沒給時間，或是格式怪怪的，就用我們算好的時間
+            if (!act.time || !/^\d{2}:\d{2}$/.test(act.time)) {
+                act.time = nextStartTime;
+            } else {
+                // 如果 AI 有給時間，就用 AI 的，並更新基準時間
+                nextStartTime = act.time;
+            }
+            
+            // 推算下一個活動的時間 (預設每個景點停留 2 小時)
+            try {
+                const [h, m] = nextStartTime.split(':').map(Number);
+                const d = new Date();
+                d.setHours(h || 9, m || 0, 0, 0);
+                d.setMinutes(d.getMinutes() + 120); // +120 分鐘
+                nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                // 如果算錯了就算了，維持原樣
+            }
+
+            return act;
+        });
+        return { ...day, activities };
+    });
+};
+
 interface TripsViewProps {
   trips: Trip[];
   user: User;
@@ -62,7 +95,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pt-4 pb-24 w-full scroll-smooth no-scrollbar">
+      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
         <DashboardWidgets />
 
         <div className="space-y-6">
@@ -229,7 +262,7 @@ const SwipeableTripCard: React.FC<{
     );
 };
 
-// --- Profile Modal (Added Password Change) ---
+// --- Profile Modal ---
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
     const [isChanging, setIsChanging] = useState(false);
@@ -549,7 +582,9 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         setLoading(true);
         try {
           const generatedDays = await generateItinerary(destination, days, interests || 'general sightseeing');
-          createTrip(generatedDays);
+          // ✨ 關鍵修改：呼叫智慧填補函式
+          const daysWithTime = processGeneratedItinerary(generatedDays);
+          createTrip(daysWithTime);
         } catch (e) {
           alert("無法生成行程，請檢查您的網路連線或 API 金鑰。");
         } finally {
@@ -620,10 +655,10 @@ const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) =
             if (!code.trim()) return;
             const jsonString = decodeURIComponent(escape(atob(code.trim())));
             const tripData = JSON.parse(jsonString);
-            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
-        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
+            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程連結'); }
+        } catch (e) { setError('連結解析失敗，請確認連結是否完整'); }
     };
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程連結</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上連結..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
     );
 };
