@@ -26,9 +26,6 @@ const addMinutes = (timeStr: string, minutes: number): string => {
     }
 };
 
-// ✨ 1. 定義幣別順序 (TWD 在第一個)
-const SUPPORTED_CURRENCIES = ['TWD', 'USD', 'JPY', 'KRW', 'EUR', 'CNY', 'HKD'];
-
 const CURRENCY_SYMBOLS: Record<string, string> = {
     'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
 };
@@ -237,9 +234,7 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
   </button>
 );
 
-// --------------------------------------------------------------------------
-// 費用儀表板 (ExpenseDashboard)
-// --------------------------------------------------------------------------
+// --- ExpenseDashboard ---
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
@@ -306,7 +301,6 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     );
 };
 
-// ✨ 優化：自動寬度輸入框 (0 會顯示，空值顯示 placeholder)
 const AutoWidthInput: React.FC<{ 
     value: string | number, 
     onChange: (val: string) => void,
@@ -322,7 +316,6 @@ const AutoWidthInput: React.FC<{
         }
     }, [value]);
 
-    // ✨ 關鍵：如果是 0，就顯示 '0'；否則如果是 falsy 就顯示 ''
     const displayValue = (value === 0 || value === '0') ? '0' : (value || '');
 
     return (
@@ -358,6 +351,66 @@ const EditableText: React.FC<{ value: string, onSave: (val: string) => void, cla
             onBlur={() => { if (text !== value) onSave(text); }}
             className={`bg-transparent outline-none min-w-0 ${className}`}
         />
+    );
+};
+
+// ✨ 全新升級：純文字多彩標籤 (無 Icon) + 可編輯
+const Tag: React.FC<{ type: string }> = ({ type }) => {
+    const config: Record<string, { color: string, label: string }> = {
+        // 基本
+        sightseeing: { color: 'bg-blue-100 text-blue-600', label: '景點' },
+        food: { color: 'bg-orange-100 text-orange-600', label: '美食' },
+        transport: { color: 'bg-gray-100 text-gray-600', label: '交通' },
+        flight: { color: 'bg-purple-100 text-purple-600', label: '航班' },
+        hotel: { color: 'bg-indigo-100 text-indigo-600', label: '住宿' },
+        // 新增
+        cafe: { color: 'bg-amber-100 text-amber-700', label: '咖啡廳' },
+        shopping: { color: 'bg-pink-100 text-pink-600', label: '購物' },
+        relax: { color: 'bg-emerald-100 text-emerald-600', label: '放鬆' },
+        bar: { color: 'bg-violet-100 text-violet-600', label: '酒吧' },
+        culture: { color: 'bg-rose-100 text-rose-600', label: '文化' },
+        activity: { color: 'bg-cyan-100 text-cyan-600', label: '體驗' },
+        default: { color: 'bg-gray-100 text-gray-500', label: '其他' }
+    };
+
+    const { color, label } = config[type] || config.default;
+
+    return (
+        <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wide transition-colors ${color}`}>
+            {label}
+        </span>
+    );
+};
+
+// 可編輯的 Tag 包裝器
+const EditableTag: React.FC<{ type: string, onChange: (newType: string) => void }> = ({ type, onChange }) => {
+    return (
+        <div className="relative group cursor-pointer w-fit">
+            <Tag type={type} />
+            <select 
+                value={type}
+                onChange={(e) => onChange(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]"
+            >
+                <optgroup label="基本">
+                    <option value="sightseeing">景點</option>
+                    <option value="food">美食</option>
+                    <option value="transport">交通</option>
+                    <option value="flight">航班</option>
+                    <option value="hotel">住宿</option>
+                </optgroup>
+                <optgroup label="休閒娛樂">
+                    <option value="cafe">咖啡廳</option>
+                    <option value="shopping">購物</option>
+                    <option value="bar">酒吧</option>
+                    <option value="relax">放鬆/SPA</option>
+                </optgroup>
+                <optgroup label="其他">
+                    <option value="culture">文化/展覽</option>
+                    <option value="activity">體驗活動</option>
+                </optgroup>
+            </select>
+        </div>
     );
 };
 
@@ -507,7 +560,7 @@ const ItineraryDetailView: React.FC<{
                             <Settings className="w-3 h-3" />
                         </button>
 
-                        {/* ✨ 幣別選擇彈窗 (獨立圖層，不會重疊) */}
+                        {/* 幣別選擇彈窗 */}
                         {showSettings && (
                             <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
                                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
@@ -519,7 +572,7 @@ const ItineraryDetailView: React.FC<{
                                         </button>
                                     </div>
                                     <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
-                                        {SUPPORTED_CURRENCIES.map(cur => (
+                                        {Object.keys(CURRENCY_SYMBOLS).map(cur => (
                                             <button
                                                 key={cur}
                                                 onClick={() => handleCurrencyChange(cur)}
@@ -537,10 +590,9 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* ✨ 只有沒開設定時才顯示下面的內容 */}
+            {/* View Toggle */}
             {!showSettings && (
                 <>
-                    {/* View Toggle */}
                     <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
                         <div className="bg-gray-100 p-1 rounded-xl flex">
                             <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
@@ -598,7 +650,11 @@ const ItineraryDetailView: React.FC<{
                                                                                     className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
                                                                                 />
                                                                                 <div className="flex items-center justify-between mt-1">
-                                                                                    <Tag type={act.type} />
+                                                                                    {/* ✨ 這裡使用了新的 EditableTag */}
+                                                                                    <EditableTag 
+                                                                                        type={act.type} 
+                                                                                        onChange={(val) => handleActivityUpdate(dayIndex, index, 'type', val)} 
+                                                                                    />
                                                                                     
                                                                                     <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
                                                                                         <span className="text-gray-400">{currencySymbol}</span>
@@ -641,12 +697,14 @@ const ItineraryDetailView: React.FC<{
     );
 };
 
-// ... (請保留檔案下方的 AddActivityModal, RouteVisualization, Tag 等組件，直接複製您的原檔即可) ...
+// ... (請將 AddActivityModal (需要更新選單)、RouteVisualization 貼在下方，保持完整性) ...
+
+// ✨ 同步更新 AddActivityModal 選單 (加入新類別)
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<Activity['type']>('sightseeing'); const [description, setDescription] = useState(''); const [location, setLocation] = useState('');
     const handleSubmit = () => { if (!title) return; onAdd({ id: Date.now().toString(), time, title, description, type, location }); };
     return (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><optgroup label="基本"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></optgroup><optgroup label="休閒娛樂"><option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option></optgroup><optgroup label="其他"><option value="culture">文化/展覽</option><option value="activity">體驗活動</option></optgroup></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
     );
 };
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
@@ -671,6 +729,5 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
         </div>
     );
 };
-const Tag: React.FC<{ type: string }> = ({ type }) => { const colors: any = { food: 'bg-orange-100 text-orange-600', sightseeing: 'bg-blue-100 text-blue-600', transport: 'bg-gray-100 text-gray-600', flight: 'bg-purple-100 text-purple-600', hotel: 'bg-indigo-100 text-indigo-600' }; return <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${colors[type] || colors.sightseeing}`}>{type}</span>; };
-
+// Tag 組件已整合至上方，請移除重複定義
 export default App;
