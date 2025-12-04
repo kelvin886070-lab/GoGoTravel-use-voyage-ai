@@ -54,7 +54,8 @@ export const ToolType = {
   EMERGENCY: 'EMERGENCY',
   UNIT_CONVERT: 'UNIT_CONVERT',
   BACKGROUND: 'BACKGROUND',
-  VOLTAGE: 'VOLTAGE'
+  VOLTAGE: 'VOLTAGE',
+  PACKING_LIST: 'PACKING_LIST',
 } as const;
 
 export type ToolType = typeof ToolType[keyof typeof ToolType];
@@ -128,3 +129,24 @@ export interface VaultFile {
     isPinned?: boolean;
 }
 
+// ... (保留原本的內容)
+
+// --- Vault Types ---
+
+export interface VaultFolder {
+    id: string;
+    name: string;
+    parentId: string | null; // null 代表在最外層
+}
+
+export interface VaultFile {
+    id: string;
+    name: string;
+    type: 'pdf' | 'image' | 'other';
+    size: string;
+    date: string;
+    parentId: string | null;
+    data?: string; // 暫存 Base64 (真實專案建議存 URL)
+    isDeleted?: boolean; // 軟刪除標記
+    isPinned?: boolean; // 置頂標記
+}

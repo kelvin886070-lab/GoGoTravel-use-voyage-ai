@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, Phone, Thermometer, Image as ImageIcon, Upload, Mic, ExternalLink, Zap, ArrowRight, ArrowLeftRight, Ruler, Gauge, Weight, Plug, Siren, Plus, Ambulance } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, Phone, Thermometer, Image as ImageIcon, Upload, Mic, ExternalLink, Zap, ArrowRight, ArrowLeftRight, Ruler, Gauge, Weight, Plug, Siren, Plus, Ambulance, Backpack, CheckCircle, Circle, Trash2, Shirt, Smartphone, Briefcase, Bath, Package } from 'lucide-react';
 import { IOSHeader, IOSButton, IOSInput } from '../components/UI';
 import { translateText, getCurrencyRate, getLocalEmergencyInfo, getPlugInfo } from '../services/gemini';
-import { ToolType, type VoltageInfo } from '../types';
+import { ToolType, type VoltageInfo, type ChecklistItem, type ChecklistCategory } from '../types';
 
 interface ToolsViewProps {
     onUpdateBackground?: (image: string) => void;
@@ -27,6 +27,8 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ onUpdateBackground }) => {
         return <VoltageTool onBack={() => setActiveTool(null)} />;
       case ToolType.BACKGROUND:
         return <BackgroundTool onBack={() => setActiveTool(null)} onUpdate={onUpdateBackground} />;
+      case ToolType.PACKING_LIST:
+        return <PackingListTool onBack={() => setActiveTool(null)} />;
       default:
         return null;
     }
@@ -40,6 +42,12 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ onUpdateBackground }) => {
     <div className="min-h-screen pb-24">
       <IOSHeader title="工具箱" />
       <div className="px-5 mt-6 grid grid-cols-2 gap-4">
+        <ToolCard 
+          icon={<Backpack className="w-7 h-7 text-white" />} 
+          color="bg-blue-500" 
+          title="行李清單" 
+          onClick={() => setActiveTool(ToolType.PACKING_LIST)} 
+        />
         <ToolCard 
           icon={<Languages className="w-7 h-7 text-white" />} 
           color="bg-orange-500" 
@@ -96,8 +104,6 @@ const ToolCard: React.FC<{ icon: React.ReactNode, color: string, title: string, 
   </button>
 );
 
-// --- Sub Tools Layout ---
-
 const ToolLayout: React.FC<{ title: string, onBack: () => void, children: React.ReactNode, darkHeader?: boolean }> = ({ title, onBack, children, darkHeader }) => (
   <>
     <div className={`pt-12 px-4 flex items-center mb-4 pb-4 sticky top-0 z-40 border-b transition-colors ${darkHeader ? 'bg-black/20 backdrop-blur-xl border-white/10 text-white' : 'bg-white/80 backdrop-blur-xl border-gray-200/50 text-gray-900'}`}>
@@ -113,13 +119,172 @@ const ToolLayout: React.FC<{ title: string, onBack: () => void, children: React.
   </>
 );
 
-// --- Individual Tools ---
+// --- Packing List Tool (New!) ---
+
+const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const defaultItems: ChecklistItem[] = [
+        { id: '1', text: '護照', checked: false, category: 'documents' },
+        { id: '2', text: '簽證影本', checked: false, category: 'documents' },
+        { id: '3', text: '機票證明', checked: false, category: 'documents' },
+        { id: '4', text: '外幣/信用卡', checked: false, category: 'documents' },
+        { id: '5', text: '換洗衣物', checked: false, category: 'clothes' },
+        { id: '6', text: '保暖外套', checked: false, category: 'clothes' },
+        { id: '7', text: '牙刷牙膏', checked: false, category: 'toiletries' },
+        { id: '8', text: '手機充電器', checked: false, category: 'gadgets' },
+        { id: '9', text: '行動電源', checked: false, category: 'gadgets' },
+        { id: '10', text: '轉接頭', checked: false, category: 'gadgets' },
+    ];
+
+    const [items, setItems] = useState<ChecklistItem[]>(() => {
+        const saved = localStorage.getItem('voyage_packing_list');
+        return saved ? JSON.parse(saved) : defaultItems;
+    });
+    const [newItem, setNewItem] = useState('');
+    const [activeCategory, setActiveCategory] = useState<ChecklistCategory>('documents');
+
+    useEffect(() => {
+        localStorage.setItem('voyage_packing_list', JSON.stringify(items));
+    }, [items]);
+
+    const toggleCheck = (id: string) => {
+        setItems(items.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    };
+
+    const deleteItem = (id: string) => {
+        if(confirm('確定刪除此項目？')) {
+            setItems(items.filter(i => i.id !== id));
+        }
+    };
+
+    const addItem = () => {
+        if (!newItem.trim()) return;
+        const item: ChecklistItem = {
+            id: Date.now().toString(),
+            text: newItem,
+            checked: false,
+            category: activeCategory
+        };
+        setItems([...items, item]);
+        setNewItem('');
+    };
+
+    const progress = Math.round((items.filter(i => i.checked).length / items.length) * 100) || 0;
+
+    const categories: { id: ChecklistCategory, label: string, icon: any }[] = [
+        { id: 'documents', label: '必備證件', icon: Briefcase },
+        { id: 'clothes', label: '衣物穿搭', icon: Shirt },
+        { id: 'toiletries', label: '盥洗/藥品', icon: Bath },
+        { id: 'gadgets', label: '3C 電子', icon: Smartphone },
+        { id: 'others', label: '其他小物', icon: Package },
+    ];
+
+    return (
+        <ToolLayout title="行李清單" onBack={onBack}>
+            {/* Progress Card */}
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
+                <div className="flex justify-between items-end mb-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase">準備進度</span>
+                    <span className="text-2xl font-bold text-ios-blue">{progress}%</span>
+                </div>
+                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                        className="h-full bg-ios-blue transition-all duration-500 ease-out" 
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+            </div>
+
+            {/* Categories & Items */}
+            <div className="space-y-6">
+                {categories.map(cat => {
+                    const catItems = items.filter(i => i.category === cat.id);
+                    const completedCount = catItems.filter(i => i.checked).length;
+                    
+                    return (
+                        <div key={cat.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
+                            <div className="bg-gray-50 px-5 py-3 flex justify-between items-center">
+                                <div className="flex items-center gap-2 font-bold text-gray-900">
+                                    <cat.icon className="w-4 h-4 text-gray-500" />
+                                    {cat.label}
+                                </div>
+                                <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-400 border">
+                                    {completedCount}/{catItems.length}
+                                </span>
+                            </div>
+                            
+                            <div className="p-2">
+                                {catItems.map(item => (
+                                    <div 
+                                        key={item.id} 
+                                        className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors group"
+                                    >
+                                        <button 
+                                            onClick={() => toggleCheck(item.id)}
+                                            className="flex items-center gap-3 flex-1 text-left"
+                                        >
+                                            {item.checked ? (
+                                                <CheckCircle className="w-6 h-6 text-ios-blue fill-blue-100" />
+                                            ) : (
+                                                <Circle className="w-6 h-6 text-gray-300" />
+                                            )}
+                                            <span className={`text-base ${item.checked ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                                {item.text}
+                                            </span>
+                                        </button>
+                                        <button 
+                                            onClick={() => deleteItem(item.id)}
+                                            className="text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                                
+                                {/* Add Item Row */}
+                                <div className="flex items-center gap-2 p-2 mt-1 border-t border-dashed border-gray-100">
+                                    <Plus className="w-4 h-4 text-gray-400 ml-2" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="新增項目..."
+                                        className="flex-1 bg-transparent outline-none text-sm py-2"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                setNewItem(e.currentTarget.value);
+                                                setActiveCategory(cat.id);
+                                                // Hack to trigger state update in next tick
+                                                setTimeout(() => {
+                                                    // Logic inside input onChange is better but this is quick for multiple inputs
+                                                    const val = e.currentTarget.value;
+                                                    if(val) {
+                                                        setItems(prev => [...prev, {
+                                                            id: Date.now().toString(),
+                                                            text: val,
+                                                            checked: false,
+                                                            category: cat.id
+                                                        }]);
+                                                        e.currentTarget.value = '';
+                                                    }
+                                                }, 0);
+                                            }
+                                        }}
+                                    />
+                                    <button className="text-xs text-ios-blue font-bold px-2">Enter</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </ToolLayout>
+    );
+};
+
+// --- Existing Tools ---
 
 const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [country, setCountry] = useState('');
     const [info, setInfo] = useState<VoltageInfo | null>(null);
     const [loading, setLoading] = useState(false);
-
     const fetchInfo = async () => {
         if(!country) return;
         setLoading(true);
@@ -142,12 +307,11 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <IOSButton onClick={fetchInfo} isLoading={loading} className="!bg-yellow-500 !text-white shadow-md shadow-yellow-200 w-24">
                         查詢
                     </IOSButton>
-                 </div>
+                </div>
             </div>
 
             {info && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                    {/* Main Info Cards */}
                     <div className="grid grid-cols-2 gap-4">
                          <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group">
                              <div className="absolute top-0 right-0 w-16 h-16 bg-yellow-100 rounded-bl-full -mr-4 -mt-4 opacity-50 group-hover:scale-110 transition-transform"></div>
@@ -160,14 +324,13 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                          <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group">
                              <div className="absolute top-0 right-0 w-16 h-16 bg-orange-100 rounded-bl-full -mr-4 -mt-4 opacity-50 group-hover:scale-110 transition-transform"></div>
                              <span className="text-xs font-bold text-gray-400 uppercase block mb-1">頻率</span>
-                              <div className="flex items-baseline gap-1">
+                             <div className="flex items-baseline gap-1">
                                 <span className="text-3xl font-bold text-gray-900">{info.frequency.replace(/\D/g,'')}</span>
                                 <span className="text-sm font-medium text-gray-500">Hz</span>
                              </div>
                          </div>
                     </div>
 
-                    {/* Plug Types */}
                     <div className="bg-gray-900 text-white p-6 rounded-3xl shadow-lg relative overflow-hidden">
                         <h3 className="text-sm font-bold text-gray-400 uppercase mb-4">插座類型</h3>
                         <div className="flex gap-4">
@@ -182,25 +345,14 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         </div>
                     </div>
 
-                    {/* Description */}
                     <div className="bg-white p-5 rounded-2xl border border-gray-100 flex gap-3">
                          <div className="shrink-0 bg-yellow-100 p-2 rounded-full h-fit">
-                             <Zap className="w-4 h-4 text-yellow-600" />
+                            <Zap className="w-4 h-4 text-yellow-600" />
                          </div>
                          <p className="text-sm text-gray-600 leading-relaxed font-medium mt-1">
                              {info.description}
                          </p>
                     </div>
-                </div>
-            )}
-
-            {!info && !loading && (
-                 <div className="grid grid-cols-3 gap-3 text-center opacity-30 mt-10">
-                     {[1,2,3].map(i => (
-                         <div key={i} className="bg-gray-200 rounded-2xl h-24 flex items-center justify-center">
-                             <Plug className="w-8 h-8 text-gray-400" />
-                         </div>
-                     ))}
                 </div>
             )}
         </ToolLayout>
@@ -210,19 +362,15 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 const UnitConverterTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [activeTab, setActiveTab] = useState<'weight' | 'temp' | 'distance' | 'speed'>('weight');
     const [val, setVal] = useState<string>('');
-    
-    // Define unit labels for display
     const units = {
         weight: { input: '公斤 (kg)', output: '磅 (lb)', rate: 2.20462, symbol: 'kg' },
-        temp: { input: '攝氏 (°C)', output: '華氏 (°F)', symbol: '°C' }, // logic handled separately
+        temp: { input: '攝氏 (°C)', output: '華氏 (°F)', symbol: '°C' },
         distance: { input: '公里 (km)', output: '英里 (mi)', rate: 0.621371, symbol: 'km' },
         speed: { input: 'km/h', output: 'mph', rate: 0.621371, symbol: 'km/h' }
     };
-
     const currentUnit = units[activeTab];
     const num = parseFloat(val);
     let result = '---';
-
     if (!isNaN(num)) {
         if (activeTab === 'temp') {
             result = ((num * 9/5) + 32).toFixed(1);
@@ -233,10 +381,8 @@ const UnitConverterTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     return (
         <ToolLayout title="單位換算" onBack={onBack}>
-             {/* Decorative background */}
              <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-tr from-blue-200/40 to-pink-200/40 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
-             {/* Floating Tab Bar Glass */}
             <div className="bg-white/40 backdrop-blur-xl p-1.5 rounded-2xl flex mb-8 border border-white/50 shadow-sm relative z-10">
                 {[
                     { id: 'weight', label: '重量', icon: <Weight className="w-4 h-4" /> },
@@ -254,9 +400,7 @@ const UnitConverterTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 ))}
             </div>
 
-            {/* Converter UI - Glass Stack */}
             <div className="space-y-4 relative z-10">
-                {/* Input Card */}
                 <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[32px] shadow-sm border border-white/60 relative group transition-all focus-within:bg-white/80 focus-within:shadow-md focus-within:scale-[1.02] duration-300">
                     <label className="text-xs font-bold text-gray-500 uppercase block mb-2 tracking-wider">{currentUnit.input}</label>
                     <div className="flex items-center">
@@ -272,14 +416,12 @@ const UnitConverterTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     </div>
                 </div>
 
-                {/* Arrow indicator */}
                 <div className="flex justify-center -my-2 relative z-10">
                     <div className="bg-white/80 backdrop-blur border border-white p-2 rounded-full shadow-sm text-gray-400">
                         <ArrowLeftRight className="w-5 h-5 rotate-90" />
                     </div>
                 </div>
 
-                {/* Output Card - Dark Glass */}
                 <div className="bg-gray-900/90 backdrop-blur-xl p-8 rounded-[32px] shadow-xl border border-white/10 text-white relative overflow-hidden">
                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl"></div>
                      <label className="text-xs font-bold text-gray-400 uppercase block mb-2 tracking-wider">{currentUnit.output}</label>
@@ -307,7 +449,6 @@ const BackgroundTool: React.FC<{ onBack: () => void, onUpdate?: (img: string) =>
             reader.readAsDataURL(file);
         }
     };
-
     return (
         <ToolLayout title="更換背景" onBack={onBack}>
             <div className="bg-white rounded-3xl p-8 shadow-sm text-center border border-gray-100">
@@ -341,7 +482,6 @@ const TranslateTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
   const handleTranslate = async () => {
     if(!input) return;
     setLoading(true);
@@ -356,7 +496,6 @@ const TranslateTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         : `https://translate.google.com/?sl=auto&tl=zh-TW&op=translate`;
       window.open(url, '_blank');
   };
-
   return (
     <ToolLayout title="即時翻譯" onBack={onBack}>
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-4">
@@ -373,7 +512,7 @@ const TranslateTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 className="p-2 text-gray-500 hover:text-ios-blue transition-colors rounded-full hover:bg-blue-50 active:bg-blue-100"
                 title="使用鍵盤語音輸入"
              >
-                 <Mic className="w-6 h-6" />
+                <Mic className="w-6 h-6" />
              </button>
              <div className="flex gap-2">
                  <button 
@@ -408,7 +547,6 @@ const CurrencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
    const [to, setTo] = useState('TWD');
    const [result, setResult] = useState('');
    const [loading, setLoading] = useState(false);
-
    const convert = async () => {
      setLoading(true);
      const res = await getCurrencyRate(from, to, Number(amount));
@@ -504,7 +642,7 @@ const TransportTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <a href="https://citymapper.com" target="_blank" rel="noreferrer" className="block group">
                      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 transition-all active:scale-95 group-hover:shadow-md">
                         <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center shrink-0">
-                             <MapPin className="w-7 h-7" />
+                            <MapPin className="w-7 h-7" />
                         </div>
                         <div className="flex-1">
                             <h3 className="font-bold text-lg text-gray-900">Citymapper</h3>
@@ -522,7 +660,6 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [location, setLocation] = useState('');
     const [info, setInfo] = useState('');
     const [loading, setLoading] = useState(false);
-
     const handleSearch = async () => {
         if(!location) return;
         setLoading(true);
@@ -533,9 +670,7 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     return (
         <ToolLayout title="緊急求助" onBack={onBack}>
-            {/* Main SOS Call Action */}
             <div className="flex justify-center my-8 relative group">
-                {/* Pulse Effect Backgrounds */}
                 <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-20"></div>
                 <div className="absolute inset-4 bg-red-500 rounded-full animate-ping opacity-20 animation-delay-500"></div>
                 
@@ -550,7 +685,6 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-                 {/* Preset Cards */}
                  <div className="bg-white/80 backdrop-blur rounded-3xl p-4 shadow-sm border border-gray-100 flex items-center gap-3">
                      <div className="bg-red-100 p-2.5 rounded-xl text-red-600">
                          <Siren className="w-6 h-6" />
@@ -598,4 +732,4 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
 const MapPin: React.FC<any> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-)
+);
