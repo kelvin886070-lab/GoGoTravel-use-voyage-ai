@@ -6,6 +6,29 @@ import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
+// 🧠 Helper: 智慧時間填補
+const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
+    return days.map(day => {
+        let nextStartTime = "09:00";
+        const activities = day.activities.map(act => {
+            if (!act.time || !/^\d{2}:\d{2}$/.test(act.time)) {
+                act.time = nextStartTime;
+            } else {
+                nextStartTime = act.time;
+            }
+            try {
+                const [h, m] = nextStartTime.split(':').map(Number);
+                const d = new Date();
+                d.setHours(h || 9, m || 0, 0, 0);
+                d.setMinutes(d.getMinutes() + 120);
+                nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {}
+            return act;
+        });
+        return { ...day, activities };
+    });
+};
+
 interface TripsViewProps {
   trips: Trip[];
   user: User;
@@ -121,7 +144,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   );
 };
 
-// --- Swipeable Card Component (優化版：解決拖曳衝突) ---
+// --- Swipeable Card Component (優化版：手柄移至左側) ---
 const SwipeableTripCard: React.FC<{ 
     trip: Trip, 
     onSelect: () => void, 
@@ -130,14 +153,14 @@ const SwipeableTripCard: React.FC<{
 }> = ({ trip, onSelect, onDelete, dragHandleProps }) => {
     const [offsetX, setOffsetX] = useState(0);
     const startX = useRef<number | null>(null);
-    const startY = useRef<number | null>(null); // ✨ 新增：紀錄垂直位置，用來判斷手勢角度
+    const startY = useRef<number | null>(null);
     const isDragging = useRef(false);
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
 
     const handleTouchStart = (e: React.TouchEvent) => {
         startX.current = e.touches[0].clientX;
-        startY.current = e.touches[0].clientY; // 紀錄 Y
+        startY.current = e.touches[0].clientY;
         isDragging.current = true;
     };
 
@@ -150,16 +173,13 @@ const SwipeableTripCard: React.FC<{
         const diffX = currentX - startX.current;
         const diffY = currentY - startY.current;
 
-        // ✨ 關鍵優化：角度鎖定 (Angle Locking)
-        // 如果垂直移動幅度 > 水平移動幅度，判定為「捲動頁面」或「拖曳卡片」，不觸發側滑刪除
+        // 角度鎖定：如果垂直移動幅度 > 水平移動幅度，判定為捲動，不觸發側滑
         if (Math.abs(diffY) > Math.abs(diffX)) {
             return; 
         }
 
         // 只有往左滑 (diffX < 0) 且大於一定程度才開始移動
         if (diffX < 0 && diffX > -120) {
-            // 阻止預設的捲動行為，讓側滑更順暢
-            // (但在 React 中 passive event listener 限制下可能無效，主要靠上面的角度判斷)
             setOffsetX(diffX);
         }
     };
@@ -225,13 +245,13 @@ const SwipeableTripCard: React.FC<{
                             </div>
                         </div>
                         
-                        {/* ✨ 優化：加大拖曳手柄感應區，並加上 touch-none 防止觸發捲動 */}
+                        {/* ✨ 優化：手柄移至左側 (left-3)，縮小圖示，增加半透明背景 */}
                         <div 
                             {...dragHandleProps}
-                            className="absolute top-1/2 right-2 -translate-y-1/2 p-5 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white hover:bg-black/20 rounded-full transition-colors"
+                            className="absolute top-1/2 left-3 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white bg-black/20 backdrop-blur-sm rounded-full transition-colors"
                             onClick={(e) => e.stopPropagation()} 
                         >
-                             <GripVertical className="w-7 h-7 drop-shadow-md" />
+                             <GripVertical className="w-5 h-5 drop-shadow-md" />
                         </div>
 
                         <button 
@@ -255,7 +275,6 @@ const SwipeableTripCard: React.FC<{
 };
 
 // ... (ProfileModal, DashboardWidgets, WeatherWidget, TimeWidget 等組件保持原樣，請直接複製下方的完整代碼) ...
-// ⚠️ 請務必保留下方的組件定義，這裡為了完整性再次貼出
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState(''); const [isChanging, setIsChanging] = useState(false); const [loading, setLoading] = useState(false); const [msg, setMsg] = useState('');
     const handleChangePassword = async () => { if (newPassword.length < 6) { alert("密碼長度至少需要 6 碼"); return; } setLoading(true); const { error } = await supabase.auth.updateUser({ password: newPassword }); setLoading(false); if (error) { alert("修改失敗：" + error.message); } else { setMsg("密碼修改成功！"); setNewPassword(''); setTimeout(() => { setIsChanging(false); setMsg(''); }, 1500); } };
@@ -315,6 +334,7 @@ const TimeWidget: React.FC = () => {
     return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 shadow-sm border border-white/60 relative overflow-hidden group flex flex-col justify-between">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-gray-300 hover:text-gray-900 z-20"><Plus className="w-4 h-4" /></button><div className="relative z-0 h-full flex flex-col justify-between"><div><span className="font-bold text-lg text-gray-900 block truncate max-w-[80%]">{locations[idx]}</span><span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span></div><div className="flex items-end justify-between"><span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span></div><div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1"><Calendar className="w-3 h-3" />{dateStr}</div></div><div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />))}</div></div>;
 };
 
+// --- Create Trip Modal ---
 const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
     const [loading, setLoading] = useState(false);
     const [destination, setDestination] = useState('');
@@ -327,7 +347,6 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         setLoading(true);
         try {
           const generatedDays = await generateItinerary(destination, days, interests || 'general sightseeing');
-          // 智慧時間填補
           const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
               return days.map(day => {
                   let nextStartTime = "09:00";
@@ -367,7 +386,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     const createTrip = (daysData: TripDay[]) => {
         const finalImage = coverImage || `https://picsum.photos/800/600?random=${Date.now()}`;
         const newTrip: Trip = {
-            id: Date.now().toString(), 
+            id: Date.now().toString(), // Will be replaced with UUID by handleAddTrip
             destination,
             startDate: new Date().toISOString().split('T')[0],
             endDate: new Date(Date.now() + days * 86400000).toISOString().split('T')[0],
@@ -412,6 +431,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     );
 };
 
+// --- Import Trip Modal ---
 const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
