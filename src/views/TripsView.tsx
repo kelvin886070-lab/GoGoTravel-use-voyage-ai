@@ -6,7 +6,7 @@ import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
-// 🧠 Helper: 智慧時間填補
+// Helper: 智慧時間填補
 const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
     return days.map(day => {
         let nextStartTime = "09:00";
@@ -58,7 +58,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
       
-      {/* Header */}
+      {/* Header (固定) */}
       <div className="flex-shrink-0 pt-20 pb-6 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
         <div className="flex gap-3 items-center absolute right-5 bottom-4">
@@ -86,8 +86,9 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
+      {/* Content (可捲動區) */}
+      {/* 🔥 優化：加入 min-h-0 確保 Flexbox 捲動正常 */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
         <DashboardWidgets />
 
         <div className="space-y-6">
@@ -113,7 +114,11 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                             <div
                                                 ref={provided.innerRef}
                                                 {...provided.draggableProps}
-                                                style={{ ...provided.draggableProps.style }}
+                                                // 🔥 關鍵修復：強制允許垂直捲動 (pan-y)，解鎖手機滑動！
+                                                style={{ 
+                                                    ...provided.draggableProps.style,
+                                                    touchAction: 'pan-y'
+                                                }}
                                                 className={`transition-all duration-200 ${snapshot.isDragging ? 'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
                                             >
                                                 <SwipeableTripCard 
@@ -144,7 +149,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   );
 };
 
-// --- Swipeable Card Component (優化版：手柄移至左側) ---
+// --- Swipeable Card Component ---
 const SwipeableTripCard: React.FC<{ 
     trip: Trip, 
     onSelect: () => void, 
@@ -245,13 +250,13 @@ const SwipeableTripCard: React.FC<{
                             </div>
                         </div>
                         
-                        {/* ✨ 優化：手柄移至左側 (left-3)，縮小圖示，增加半透明背景 */}
+                        {/* 拖曳手柄 (確保有 touch-none，只有按這裡才不能捲動) */}
                         <div 
                             {...dragHandleProps}
-                            className="absolute top-1/2 left-3 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white bg-black/20 backdrop-blur-sm rounded-full transition-colors"
+                            className="absolute top-1/2 right-2 -translate-y-1/2 p-5 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white hover:bg-black/20 rounded-full transition-colors"
                             onClick={(e) => e.stopPropagation()} 
                         >
-                             <GripVertical className="w-5 h-5 drop-shadow-md" />
+                             <GripVertical className="w-7 h-7 drop-shadow-md" />
                         </div>
 
                         <button 
@@ -274,7 +279,7 @@ const SwipeableTripCard: React.FC<{
     );
 };
 
-// ... (ProfileModal, DashboardWidgets, WeatherWidget, TimeWidget 等組件保持原樣，請直接複製下方的完整代碼) ...
+// ... (ProfileModal, DashboardWidgets, WeatherWidget, TimeWidget 等組件保持不變，請直接複製下方的完整代碼) ...
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState(''); const [isChanging, setIsChanging] = useState(false); const [loading, setLoading] = useState(false); const [msg, setMsg] = useState('');
     const handleChangePassword = async () => { if (newPassword.length < 6) { alert("密碼長度至少需要 6 碼"); return; } setLoading(true); const { error } = await supabase.auth.updateUser({ password: newPassword }); setLoading(false); if (error) { alert("修改失敗：" + error.message); } else { setMsg("密碼修改成功！"); setNewPassword(''); setTimeout(() => { setIsChanging(false); setMsg(''); }, 1500); } };
@@ -334,7 +339,6 @@ const TimeWidget: React.FC = () => {
     return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 shadow-sm border border-white/60 relative overflow-hidden group flex flex-col justify-between">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-gray-300 hover:text-gray-900 z-20"><Plus className="w-4 h-4" /></button><div className="relative z-0 h-full flex flex-col justify-between"><div><span className="font-bold text-lg text-gray-900 block truncate max-w-[80%]">{locations[idx]}</span><span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span></div><div className="flex items-end justify-between"><span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span></div><div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1"><Calendar className="w-3 h-3" />{dateStr}</div></div><div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />))}</div></div>;
 };
 
-// --- Create Trip Modal ---
 const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
     const [loading, setLoading] = useState(false);
     const [destination, setDestination] = useState('');
@@ -386,7 +390,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     const createTrip = (daysData: TripDay[]) => {
         const finalImage = coverImage || `https://picsum.photos/800/600?random=${Date.now()}`;
         const newTrip: Trip = {
-            id: Date.now().toString(), // Will be replaced with UUID by handleAddTrip
+            id: Date.now().toString(), 
             destination,
             startDate: new Date().toISOString().split('T')[0],
             endDate: new Date(Date.now() + days * 86400000).toISOString().split('T')[0],
@@ -431,7 +435,6 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     );
 };
 
-// --- Import Trip Modal ---
 const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
