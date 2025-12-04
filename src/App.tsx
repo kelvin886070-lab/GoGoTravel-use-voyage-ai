@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Compass, Briefcase, FileText, Camera, ArrowLeft, List, Map, Trash2, Plus, GripVertical, Clock, X, MapPin, DollarSign, Tag as TagIcon } from 'lucide-react';
+import { Home, Compass, Briefcase, FileText, Camera, ArrowLeft, List, Map, Trash2, Plus, GripVertical, Clock, X, MapPin, DollarSign, Tag as TagIcon, Wallet, TrendingUp, PieChart } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { AppView } from './types';
 import type { Trip, TripDay, User, Activity } from './types';
@@ -25,6 +25,14 @@ const addMinutes = (timeStr: string, minutes: number): string => {
     }
 };
 
+// Helper: 解析費用 (將 "300", "$300", "300元" 轉為數字)
+const parseCost = (costStr?: string): number => {
+    if (!costStr) return 0;
+    // 只留下數字和小數點
+    const num = parseFloat(costStr.replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<AppView>(AppView.TRIPS);
@@ -33,12 +41,17 @@ const App: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // --- Supabase 核心邏輯 ---
   const fetchTrips = async () => {
       if (!user) return;
       setIsSyncing(true);
       const { data, error } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips = data.map((row: any) => ({ ...row.trip_data, id: row.id, isDeleted: row.trip_data.isDeleted || false }));
+          const loadedTrips = data.map((row: any) => ({ 
+              ...row.trip_data, 
+              id: row.id, 
+              isDeleted: row.trip_data.isDeleted || false 
+          }));
           setTrips(loadedTrips);
       }
       setIsSyncing(false);
@@ -123,7 +136,6 @@ const App: React.FC = () => {
         }
     }
   }
-  
   const handleRestoreTrip = (id: string) => {
       const targetTrip = trips.find(t => t.id === id);
       if (targetTrip) {
@@ -230,7 +242,76 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
 );
 
 // --------------------------------------------------------------------------
-// ✨ 新增：可編輯文字組件 (處理防抖動與存檔)
+// ✨ 費用儀表板組件 (ExpenseDashboard)
+// --------------------------------------------------------------------------
+const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
+    // 1. 計算總花費與分類統計
+    const stats = trip.days.reduce((acc, day) => {
+        day.activities.forEach(act => {
+            const cost = parseCost(act.cost);
+            if (cost > 0) {
+                acc.total += cost;
+                acc.byCategory[act.type] = (acc.byCategory[act.type] || 0) + cost;
+            }
+        });
+        return acc;
+    }, { total: 0, byCategory: {} as Record<string, number> });
+
+    const categories = [
+        { type: 'flight', label: '機票', color: 'bg-purple-500' },
+        { type: 'hotel', label: '住宿', color: 'bg-indigo-500' },
+        { type: 'transport', label: '交通', color: 'bg-gray-500' },
+        { type: 'food', label: '美食', color: 'bg-orange-500' },
+        { type: 'sightseeing', label: '景點', color: 'bg-blue-500' },
+    ];
+
+    return (
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6 animate-in slide-in-from-top-4">
+            <div className="flex items-end justify-between mb-4">
+                <div>
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">總預算花費</p>
+                    <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                        <span className="text-lg align-top mr-1">$</span>
+                        {stats.total.toLocaleString()}
+                    </h3>
+                </div>
+                <div className="p-2 bg-blue-50 rounded-full text-ios-blue">
+                    <TrendingUp className="w-6 h-6" />
+                </div>
+            </div>
+
+            {/* 比例條 */}
+            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">
+                {categories.map(cat => {
+                    const amount = stats.byCategory[cat.type] || 0;
+                    const percent = stats.total > 0 ? (amount / stats.total) * 100 : 0;
+                    if (percent === 0) return null;
+                    return <div key={cat.type} style={{ width: `${percent}%` }} className={cat.color} title={cat.label} />;
+                })}
+            </div>
+
+            {/* 分類列表 */}
+            <div className="grid grid-cols-2 gap-3">
+                {categories.map(cat => {
+                    const amount = stats.byCategory[cat.type] || 0;
+                    if (amount === 0) return null;
+                    return (
+                        <div key={cat.type} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
+                                <span className="text-gray-600">{cat.label}</span>
+                            </div>
+                            <span className="font-bold text-gray-900">${amount.toLocaleString()}</span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+// --------------------------------------------------------------------------
+// 可編輯文字組件
 // --------------------------------------------------------------------------
 const EditableText: React.FC<{ value: string, onSave: (val: string) => void, className?: string }> = ({ value, onSave, className }) => {
     const [text, setText] = useState(value);
@@ -261,6 +342,8 @@ const ItineraryDetailView: React.FC<{
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [editingTitle, setEditingTitle] = useState(trip.destination);
+    const [showExpenses, setShowExpenses] = useState(false); // ✨ 控制是否顯示記帳面板
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
@@ -308,7 +391,6 @@ const ItineraryDetailView: React.FC<{
         onUpdateTrip(newTrip);
     };
 
-    // 統一的活動更新函式
     const handleActivityUpdate = (dayIndex: number, actIndex: number, field: keyof Activity, value: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         // @ts-ignore
@@ -364,9 +446,16 @@ const ItineraryDetailView: React.FC<{
                         onBlur={handleTitleBlur}
                         className="text-3xl font-bold drop-shadow-md bg-transparent border-none outline-none text-white placeholder-white/70 w-full p-0 m-0 focus:ring-0"
                     />
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-3 mt-2">
                         <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
-                        <span className="text-sm opacity-90">{trip.startDate}</span>
+                        {/* ✨ 錢包按鈕 */}
+                        <button 
+                            onClick={() => setShowExpenses(!showExpenses)}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${showExpenses ? 'bg-ios-blue text-white' : 'bg-white/20 backdrop-blur-md text-white'}`}
+                        >
+                            <Wallet className="w-3 h-3" />
+                            {showExpenses ? '隱藏花費' : '旅費統計'}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -385,6 +474,10 @@ const ItineraryDetailView: React.FC<{
 
             {/* Content List */}
             <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
+                
+                {/* ✨ 費用儀表板 (可切換顯示) */}
+                {showExpenses && <ExpenseDashboard trip={trip} />}
+
                 <DragDropContext onDragEnd={onDragEnd}>
                     <div className="py-4 space-y-10">
                         {trip.days.map((day, dayIndex) => (
@@ -406,32 +499,48 @@ const ItineraryDetailView: React.FC<{
                                                 {day.activities.map((act, index) => (
                                                     <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
                                                         {(provided, snapshot) => (
-                                                            <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex gap-3 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
+                                                            <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
                                                                 
-                                                                {/* 時間軸 (可編輯) */}
-                                                                <div className="flex flex-col items-center pt-1 min-w-[55px]">
-                                                                    <input 
-                                                                        type="time" 
-                                                                        value={act.time}
-                                                                        onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)}
-                                                                        className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors"
-                                                                    />
-                                                                    <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
-                                                                </div>
-                                                                
-                                                                {/* ✨ 活動名稱 (可編輯) */}
-                                                                <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
-                                                                    <EditableText 
-                                                                        value={act.title} 
-                                                                        onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)}
-                                                                        className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
-                                                                    />
-                                                                    <Tag type={act.type} />
-                                                                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{act.description}</p>
-                                                                </div>
-                                                                
-                                                                <div {...provided.dragHandleProps} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors">
-                                                                    <GripVertical className="w-5 h-5" />
+                                                                <div className="flex gap-3">
+                                                                    {/* 時間軸 */}
+                                                                    <div className="flex flex-col items-center pt-1 min-w-[55px]">
+                                                                        <input 
+                                                                            type="time" 
+                                                                            value={act.time}
+                                                                            onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)}
+                                                                            className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors"
+                                                                        />
+                                                                        <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
+                                                                    </div>
+                                                                    
+                                                                    {/* 活動內容 */}
+                                                                    <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
+                                                                        <EditableText 
+                                                                            value={act.title} 
+                                                                            onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)}
+                                                                            className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
+                                                                        />
+                                                                        <div className="flex items-center justify-between mt-1">
+                                                                            <Tag type={act.type} />
+                                                                            
+                                                                            {/* ✨ 費用輸入 (快速記帳) */}
+                                                                            <div className="flex items-center gap-1 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md hover:bg-gray-100 transition-colors">
+                                                                                <DollarSign className="w-3 h-3" />
+                                                                                <input 
+                                                                                    type="text"
+                                                                                    placeholder="0"
+                                                                                    value={act.cost || ''}
+                                                                                    onChange={(e) => handleActivityUpdate(dayIndex, index, 'cost', e.target.value)}
+                                                                                    className="w-10 bg-transparent outline-none text-right text-gray-600 font-medium"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
+                                                                    </div>
+                                                                    
+                                                                    <div {...provided.dragHandleProps} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors">
+                                                                        <GripVertical className="w-5 h-5" />
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -464,7 +573,6 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
         <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
     );
 };
-// 記得把 RouteVisualization 也補上，確保地圖功能正常
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
     const stops = day.activities.filter(a => a.title || a.location).map(a => a.location || a.title);
     let mapUrl = '';
@@ -478,10 +586,10 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
     }
     return (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
-            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center"><div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div><Map className="w-8 h-8 text-ios-blue opacity-50" /></div>
+            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center"><div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div><Map className="w-8 h-8 text-ios-blue opacity-50" />{stops.length > 1 && (<div className="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[10px] text-ios-blue font-bold uppercase tracking-widest z-10"><span className="bg-white/80 backdrop-blur px-1.5 rounded">START</span><div className="h-[2px] flex-1 bg-ios-blue/20 mx-2 relative flex items-center"><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-1"></div><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-2"></div><div className="absolute right-0 -top-[3px] w-2 h-2 rounded-full bg-ios-blue"></div></div><span className="bg-white/80 backdrop-blur px-1.5 rounded">END</span></div>)}</div>
             <div className="p-5">
-                {stops.length === 0 ? <div className="text-center text-gray-400 text-sm py-4">今天還沒有安排行程地點</div> : (
-                    <><div className="space-y-0 mb-6 pl-2">{stops.map((stop, index) => (<div key={index} className="flex gap-4 relative"><div className="flex flex-col items-center w-4"><div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>{index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}</div><div className="pb-5 -mt-1 flex-1"><p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p></div></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"><Map className="w-5 h-5" />開啟 Google Maps 導航</a></>
+                {stops.length === 0 ? <div className="text-center text-gray-400 text-sm py-4">今天還沒有安排行程地點<br/>點擊上方「+」開始規劃</div> : (
+                    <><div className="space-y-0 mb-6 pl-2">{stops.map((stop, index) => (<div key={index} className="flex gap-4 relative"><div className="flex flex-col items-center w-4"><div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>{index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}</div><div className="pb-5 -mt-1 flex-1"><p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p>{index === 0 && <span className="inline-block mt-1 text-[10px] text-ios-blue bg-blue-50 px-1.5 py-0.5 rounded font-medium">起點</span>}{index === stops.length - 1 && <span className="inline-block mt-1 text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded font-medium">終點</span>}</div></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"><Map className="w-5 h-5" />開啟 Google Maps 導航</a><p className="text-center text-[10px] text-gray-400 mt-3">將自動帶入所有途經點規劃最佳路線</p></>
                 )}
             </div>
         </div>
