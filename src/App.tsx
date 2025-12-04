@@ -11,7 +11,7 @@ import { LoginView } from './views/LoginView';
 import { IOSButton, IOSInput } from './components/UI';
 import { supabase } from './services/supabase';
 
-// Helper: 時間加法 (例如 "09:00" + 90分鐘 = "10:30")
+// Helper: 時間加法
 const addMinutes = (timeStr: string, minutes: number): string => {
     try {
         if (!timeStr) return "09:00";
@@ -33,17 +33,26 @@ const App: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // --- Supabase 核心邏輯 ---
+
+  // 1. 下載行程 (修正：正確讀取 isDeleted 狀態)
   const fetchTrips = async () => {
       if (!user) return;
       setIsSyncing(true);
       const { data, error } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips = data.map((row: any) => ({ ...row.trip_data, id: row.id, isDeleted: false }));
+          const loadedTrips = data.map((row: any) => ({ 
+              ...row.trip_data, 
+              id: row.id, 
+              // 這裡很重要：如果資料庫裡有記 isDeleted，就用資料庫的，否則預設 false
+              isDeleted: row.trip_data.isDeleted || false 
+          }));
           setTrips(loadedTrips);
       }
       setIsSyncing(false);
   };
 
+  // 2. 上傳/更新行程
   const saveTripToCloud = async (trip: Trip) => {
       if (!user) return;
       setIsSyncing(true);
@@ -57,6 +66,7 @@ const App: React.FC = () => {
       setIsSyncing(false);
   };
 
+  // 3. 永久刪除
   const deleteTripFromCloud = async (tripId: string) => {
       const { error } = await supabase.from('trips').delete().eq('id', tripId);
       if (error) console.error("刪除失敗", error);
@@ -112,15 +122,40 @@ const App: React.FC = () => {
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
   
+  // ✨ 修正：軟刪除 (移至保管箱)
   const handleSoftDeleteTrip = (id: string) => {
-    if(confirm('確定要永久刪除此行程嗎？(雲端同步)')) {
-        setTrips(trips.filter(t => t.id !== id));
-        if (selectedTrip?.id === id) setSelectedTrip(null);
-        deleteTripFromCloud(id);
+    if(confirm('確定要將此行程移至保管箱嗎？')) {
+        const targetTrip = trips.find(t => t.id === id);
+        if (targetTrip) {
+            const deletedTrip = { ...targetTrip, isDeleted: true }; // 標記為刪除
+            // 更新本地列表
+            setTrips(prev => prev.map(t => t.id === id ? deletedTrip : t));
+            if (selectedTrip?.id === id) setSelectedTrip(null);
+            // 同步到雲端
+            saveTripToCloud(deletedTrip); 
+        }
     }
   }
-  const handleRestoreTrip = (id: string) => {}; 
-  const handlePermanentDeleteTrip = (id: string) => {};
+
+  // ✨ 修正：還原行程
+  const handleRestoreTrip = (id: string) => {
+      const targetTrip = trips.find(t => t.id === id);
+      if (targetTrip) {
+          const restoredTrip = { ...targetTrip, isDeleted: false }; // 取消刪除標記
+          // 更新本地列表
+          setTrips(prev => prev.map(t => t.id === id ? restoredTrip : t));
+          // 同步到雲端
+          saveTripToCloud(restoredTrip);
+      }
+  }; 
+
+  // ✨ 修正：永久刪除
+  const handlePermanentDeleteTrip = (id: string) => {
+      if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
+          setTrips(prev => prev.filter(t => t.id !== id));
+          deleteTripFromCloud(id); // 真的從資料庫刪掉
+      }
+  };
 
   const handleImportTrip = (tripData: Trip) => {
       const newTrip = { ...tripData, id: crypto.randomUUID(), isDeleted: false };
@@ -163,11 +198,11 @@ const App: React.FC = () => {
             </div>
         )}
 
-        <div className="flex-1 overflow-hidden relative w-full">
+        <div className="flex-1 overflow-hidden relative w-full no-scrollbar">
             {currentView === AppView.TRIPS && (
               <div className="h-full w-full">
                 <TripsView 
-                  trips={trips} 
+                  trips={trips.filter(t => !t.isDeleted)} // 只顯示未刪除的
                   user={user}
                   onLogout={handleLogout}
                   onAddTrip={handleAddTrip} 
@@ -180,7 +215,17 @@ const App: React.FC = () => {
             )}
             {currentView === AppView.EXPLORE && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ExploreView /></div>}
             {currentView === AppView.TOOLS && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ToolsView onUpdateBackground={handleUpdateBackground} /></div>}
-            {currentView === AppView.VAULT && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in flex items-center justify-center text-gray-400 text-sm">雲端版暫不支援垃圾桶功能</div>}
+            
+            {/* ✨ 修正：恢復 VaultView 功能 */}
+            {currentView === AppView.VAULT && (
+                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
+                    <VaultView 
+                        deletedTrips={trips.filter(t => t.isDeleted)} // 只顯示已刪除的
+                        onRestoreTrip={handleRestoreTrip} 
+                        onPermanentDeleteTrip={handlePermanentDeleteTrip} 
+                    />
+                </div>
+            )}
         </div>
 
         <div className="flex-shrink-0 z-50 relative w-full bg-white/85 backdrop-blur-xl border-t border-gray-200/50">
@@ -203,9 +248,8 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
   </button>
 );
 
-// --------------------------------------------------------------------------
-// ItineraryDetailView (支援時間編輯 + 智慧排序 + 固定 Header)
-// --------------------------------------------------------------------------
+// ... (ItineraryDetailView, AddActivityModal, RouteVisualization, Tag 等組件保持不變，請直接複製下方的完整代碼) ...
+// ⚠️ 注意：為了確保程式碼完整，請務必保留下方的所有組件
 
 const ItineraryDetailView: React.FC<{ 
     trip: Trip; 
@@ -231,7 +275,6 @@ const ItineraryDetailView: React.FC<{
         }
     };
 
-    // ✨ 智慧排序與時間重算
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         
@@ -240,17 +283,14 @@ const ItineraryDetailView: React.FC<{
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         
-        // 移動活動
         const [movedActivity] = newTrip.days[sourceDayIndex].activities.splice(result.source.index, 1);
         newTrip.days[destDayIndex].activities.splice(result.destination.index, 0, movedActivity);
 
-        // 🧠 自動重算時間邏輯
         const dayActivities = newTrip.days[destDayIndex].activities;
         if (dayActivities.length > 0) {
-            let currentTime = dayActivities[0].time; // 以第一個活動的時間為基準
-            
+            let currentTime = dayActivities[0].time;
             for (let i = 1; i < dayActivities.length; i++) {
-                currentTime = addMinutes(currentTime, 90); // 每個活動預設間隔 90 分鐘
+                currentTime = addMinutes(currentTime, 90);
                 dayActivities[i].time = currentTime;
             }
         }
@@ -258,7 +298,6 @@ const ItineraryDetailView: React.FC<{
         onUpdateTrip(newTrip);
     };
 
-    // ✨ 手動修改時間
     const handleTimeChange = (dayIndex: number, actIndex: number, newTime: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         newTrip.days[dayIndex].activities[actIndex].time = newTime;
@@ -285,7 +324,6 @@ const ItineraryDetailView: React.FC<{
     return (
         <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
             
-            {/* Header Image (固定) */}
             <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
                 <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
@@ -314,7 +352,6 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* View Toggle (固定) */}
             <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
                 <div className="bg-gray-100 p-1 rounded-xl flex">
                     <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
@@ -326,7 +363,6 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* Content List (捲動) */}
             <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
                 <DragDropContext onDragEnd={onDragEnd}>
                     <div className="py-4 space-y-10">
@@ -351,7 +387,6 @@ const ItineraryDetailView: React.FC<{
                                                         {(provided, snapshot) => (
                                                             <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex gap-3 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
                                                                 
-                                                                {/* ✨ 可編輯的時間軸 */}
                                                                 <div className="flex flex-col items-center pt-1 min-w-[55px]">
                                                                     <input 
                                                                         type="time" 
