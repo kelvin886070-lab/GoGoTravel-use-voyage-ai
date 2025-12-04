@@ -1,12 +1,12 @@
-
 export interface Trip {
   id: string;
   destination: string;
   startDate: string;
   endDate: string;
   coverImage: string;
+  currency?: string; // ✨ 新增：例如 'TWD', 'KRW', 'JPY', 'USD'
   days: TripDay[];
-  isDeleted?: boolean; // Soft delete flag
+  isDeleted?: boolean;
 }
 
 export interface TripDay {
