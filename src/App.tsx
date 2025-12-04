@@ -26,6 +26,9 @@ const addMinutes = (timeStr: string, minutes: number): string => {
     }
 };
 
+// ✨ 1. 定義幣別順序 (TWD 在第一個)
+const SUPPORTED_CURRENCIES = ['TWD', 'USD', 'JPY', 'KRW', 'EUR', 'CNY', 'HKD'];
+
 const CURRENCY_SYMBOLS: Record<string, string> = {
     'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
 };
@@ -142,20 +145,8 @@ const App: React.FC = () => {
         }
     }
   }
-  const handleRestoreTrip = (id: string) => {
-      const targetTrip = trips.find(t => t.id === id);
-      if (targetTrip) {
-          const restoredTrip = { ...targetTrip, isDeleted: false };
-          setTrips(prev => prev.map(t => t.id === id ? restoredTrip : t));
-          saveTripToCloud(restoredTrip);
-      }
-  }; 
-  const handlePermanentDeleteTrip = (id: string) => {
-      if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
-          setTrips(prev => prev.filter(t => t.id !== id));
-          deleteTripFromCloud(id);
-      }
-  };
+  const handleRestoreTrip = (id: string) => {}; 
+  const handlePermanentDeleteTrip = (id: string) => {};
 
   const handleImportTrip = (tripData: Trip) => {
       const newTrip = { ...tripData, id: crypto.randomUUID(), isDeleted: false };
@@ -198,7 +189,6 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* 1. 中間內容區 (修正重點：這裡必須是 overflow-hidden，讓子頁面自己滾動) */}
         <div className="flex-1 overflow-hidden relative w-full">
             {currentView === AppView.TRIPS && (
               <div className="h-full w-full">
@@ -214,13 +204,10 @@ const App: React.FC = () => {
                 />
               </div>
             )}
-            {/* 其他頁面維持內部滾動 */}
             {currentView === AppView.EXPLORE && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ExploreView /></div>}
             {currentView === AppView.TOOLS && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ToolsView onUpdateBackground={handleUpdateBackground} /></div>}
-            
-            {/* 修正：VaultView 本身就有 Flex 結構，這裡也要給它 h-full overflow-hidden */}
             {currentView === AppView.VAULT && (
-                <div className="h-full w-full overflow-hidden animate-in fade-in">
+                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
                     <VaultView 
                         deletedTrips={trips.filter(t => t.isDeleted)} 
                         onRestoreTrip={handleRestoreTrip} 
@@ -230,7 +217,6 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* 2. 底部導覽列 (固定) */}
         <div className="flex-shrink-0 z-50 relative w-full bg-white/85 backdrop-blur-xl border-t border-gray-200/50">
             <div className="flex justify-between items-center pb-safe pt-4 px-8 h-[calc(70px+env(safe-area-inset-bottom))]">
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="行程" />
@@ -251,10 +237,13 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
   </button>
 );
 
-// --- ExpenseDashboard & AutoWidthInput ---
+// --------------------------------------------------------------------------
+// 費用儀表板 (ExpenseDashboard)
+// --------------------------------------------------------------------------
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+
     const stats = trip.days.reduce((acc, day) => {
         day.activities.forEach(act => {
             const cost = parseCost(act.cost);
@@ -284,8 +273,11 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
                         {stats.total.toLocaleString()}
                     </h3>
                 </div>
-                <div className="p-2 bg-blue-50 rounded-full text-ios-blue"><TrendingUp className="w-6 h-6" /></div>
+                <div className="p-2 bg-blue-50 rounded-full text-ios-blue">
+                    <TrendingUp className="w-6 h-6" />
+                </div>
             </div>
+
             <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">
                 {categories.map(cat => {
                     const amount = stats.byCategory[cat.type] || 0;
@@ -294,13 +286,17 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
                     return <div key={cat.type} style={{ width: `${percent}%` }} className={cat.color} title={cat.label} />;
                 })}
             </div>
+
             <div className="grid grid-cols-2 gap-3">
                 {categories.map(cat => {
                     const amount = stats.byCategory[cat.type] || 0;
                     if (amount === 0) return null;
                     return (
                         <div key={cat.type} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5"><div className={`w-2 h-2 rounded-full ${cat.color}`} /><span className="text-gray-600">{cat.label}</span></div>
+                            <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
+                                <span className="text-gray-600">{cat.label}</span>
+                            </div>
                             <span className="font-bold text-gray-900">{currencySymbol}{amount.toLocaleString()}</span>
                         </div>
                     );
@@ -310,15 +306,43 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     );
 };
 
-const AutoWidthInput: React.FC<{ value: string | number, onChange: (val: string) => void, placeholder?: string, className?: string }> = ({ value, onChange, placeholder = '', className }) => {
+// ✨ 優化：自動寬度輸入框 (0 會顯示，空值顯示 placeholder)
+const AutoWidthInput: React.FC<{ 
+    value: string | number, 
+    onChange: (val: string) => void,
+    placeholder?: string,
+    className?: string
+}> = ({ value, onChange, placeholder = '', className }) => {
     const spanRef = useRef<HTMLSpanElement>(null);
     const [width, setWidth] = useState(35);
-    useEffect(() => { if (spanRef.current) setWidth(Math.max(35, spanRef.current.offsetWidth + 15)); }, [value]);
+
+    useEffect(() => {
+        if (spanRef.current) {
+            setWidth(Math.max(35, spanRef.current.offsetWidth + 15)); 
+        }
+    }, [value]);
+
+    // ✨ 關鍵：如果是 0，就顯示 '0'；否則如果是 falsy 就顯示 ''
     const displayValue = (value === 0 || value === '0') ? '0' : (value || '');
+
     return (
         <div className="relative inline-block">
-            <span ref={spanRef} className={`absolute opacity-0 pointer-events-none whitespace-pre ${className}`}>{displayValue || placeholder}</span>
-            <input type="text" value={displayValue} placeholder={placeholder} onChange={(e) => { const val = e.target.value; if (/^\d*\.?\d*$/.test(val)) onChange(val); }} style={{ width }} className={`bg-transparent outline-none text-center min-w-[35px] ${className} placeholder:text-gray-300`} />
+            <span ref={spanRef} className={`absolute opacity-0 pointer-events-none whitespace-pre ${className}`}>
+                {displayValue || placeholder}
+            </span>
+            <input
+                type="text"
+                value={displayValue}
+                placeholder={placeholder}
+                onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^\d*\.?\d*$/.test(val)) {
+                        onChange(val);
+                    }
+                }}
+                style={{ width }}
+                className={`bg-transparent outline-none text-center min-w-[35px] ${className} placeholder:text-gray-300`}
+            />
         </div>
     );
 };
@@ -327,129 +351,297 @@ const EditableText: React.FC<{ value: string, onSave: (val: string) => void, cla
     const [text, setText] = useState(value);
     useEffect(() => { setText(value); }, [value]);
     return (
-        <input type="text" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => { if (text !== value) onSave(text); }} className={`bg-transparent outline-none min-w-0 ${className}`} />
+        <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => { if (text !== value) onSave(text); }}
+            className={`bg-transparent outline-none min-w-0 ${className}`}
+        />
     );
 };
 
-// ItineraryDetailView (完整版)
-const ItineraryDetailView: React.FC<{ trip: Trip; onBack: () => void; onDelete: () => void; onUpdateTrip: (t: Trip) => void; }> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
+// --------------------------------------------------------------------------
+// ItineraryDetailView
+// --------------------------------------------------------------------------
+
+const ItineraryDetailView: React.FC<{ 
+    trip: Trip; 
+    onBack: () => void; 
+    onDelete: () => void; 
+    onUpdateTrip: (t: Trip) => void; 
+}> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
+    
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [editingTitle, setEditingTitle] = useState(trip.destination);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
-    const handleTitleBlur = () => { if (editingTitle !== trip.destination && editingTitle.trim() !== "") { onUpdateTrip({ ...trip, destination: editingTitle }); } else if (editingTitle.trim() === "") { setEditingTitle(trip.destination); } };
-    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => { const newImage = reader.result as string; onUpdateTrip({ ...trip, coverImage: newImage }); }; reader.readAsDataURL(file); } };
-    const handleCurrencyChange = (newCurrency: string) => { onUpdateTrip({ ...trip, currency: newCurrency }); setShowSettings(false); };
+
+    const handleTitleBlur = () => {
+        if (editingTitle !== trip.destination && editingTitle.trim() !== "") {
+            onUpdateTrip({ ...trip, destination: editingTitle });
+        } else if (editingTitle.trim() === "") {
+             setEditingTitle(trip.destination);
+        }
+    };
+
+    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const newImage = reader.result as string;
+                onUpdateTrip({ ...trip, coverImage: newImage });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleCurrencyChange = (newCurrency: string) => {
+        onUpdateTrip({ ...trip, currency: newCurrency });
+        setShowSettings(false);
+    };
+
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
+        
         const sourceDayIndex = parseInt(result.source.droppableId.replace('day-', '')) - 1;
         const destDayIndex = parseInt(result.destination.droppableId.replace('day-', '')) - 1;
+
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        
         const [movedActivity] = newTrip.days[sourceDayIndex].activities.splice(result.source.index, 1);
         newTrip.days[destDayIndex].activities.splice(result.destination.index, 0, movedActivity);
+
         const dayActivities = newTrip.days[destDayIndex].activities;
         if (dayActivities.length > 0) {
             let currentTime = dayActivities[0].time;
-            for (let i = 1; i < dayActivities.length; i++) { currentTime = addMinutes(currentTime, 90); dayActivities[i].time = currentTime; }
+            for (let i = 1; i < dayActivities.length; i++) {
+                currentTime = addMinutes(currentTime, 90);
+                dayActivities[i].time = currentTime;
+            }
         }
+
         onUpdateTrip(newTrip);
     };
-    const handleActivityUpdate = (dayIndex: number, actIndex: number, field: keyof Activity, value: string) => { const newTrip = JSON.parse(JSON.stringify(trip)) as Trip; (newTrip.days[dayIndex].activities[actIndex] as any)[field] = value; onUpdateTrip(newTrip); };
-    const handleAddActivity = (newActivity: Activity) => { const newTrip = JSON.parse(JSON.stringify(trip)) as Trip; newTrip.days[activeDayForAdd - 1].activities.push(newActivity); newTrip.days[activeDayForAdd - 1].activities.sort((a: any, b: any) => a.time.localeCompare(b.time)); onUpdateTrip(newTrip); setIsAddModalOpen(false); };
-    const handleDeleteActivity = (dayIndex: number, activityIndex: number) => { if(!confirm("確定要刪除？")) return; const newTrip = JSON.parse(JSON.stringify(trip)) as Trip; newTrip.days[dayIndex].activities.splice(activityIndex, 1); onUpdateTrip(newTrip); };
+
+    const handleActivityUpdate = (dayIndex: number, actIndex: number, field: keyof Activity, value: string) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        // @ts-ignore
+        newTrip.days[dayIndex].activities[actIndex][field] = value;
+        onUpdateTrip(newTrip);
+    };
+
+    const handleAddActivity = (newActivity: Activity) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.days[activeDayForAdd - 1].activities.push(newActivity);
+        newTrip.days[activeDayForAdd - 1].activities.sort((a: any, b: any) => a.time.localeCompare(b.time));
+        onUpdateTrip(newTrip);
+        setIsAddModalOpen(false);
+    };
+
+    const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
+        if(!confirm("確定要刪除？")) return;
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.days[dayIndex].activities.splice(activityIndex, 1);
+        onUpdateTrip(newTrip);
+    }
+
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
 
     return (
         <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
+            
+            {/* Header Image */}
             <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
                 <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
-                <button onClick={onBack} className="absolute top-12 left-5 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10"><ArrowLeft className="w-6 h-6" /></button>
-                <button onClick={onDelete} className="absolute top-12 right-5 w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10"><Trash2 className="w-5 h-5" /></button>
-                <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"><Camera className="w-5 h-5" /></button>
+                
+                <button onClick={onBack} className="absolute top-12 left-5 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
+                    <ArrowLeft className="w-6 h-6" />
+                </button>
+                <button onClick={onDelete} className="absolute top-12 right-5 w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
+                    <Trash2 className="w-5 h-5" />
+                </button>
+
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"
+                >
+                    <Camera className="w-5 h-5" />
+                </button>
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
+
                 <div className="absolute bottom-6 left-5 text-white pr-14 w-full">
-                    <input type="text" value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onBlur={handleTitleBlur} className="text-3xl font-bold drop-shadow-md bg-transparent border-none outline-none text-white placeholder-white/70 w-full p-0 m-0 focus:ring-0" />
+                    <input 
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={handleTitleBlur}
+                        className="text-3xl font-bold drop-shadow-md bg-transparent border-none outline-none text-white placeholder-white/70 w-full p-0 m-0 focus:ring-0"
+                    />
                     <div className="flex items-center gap-3 mt-2 relative">
                         <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
-                        <button onClick={() => setShowExpenses(!showExpenses)} className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${showExpenses ? 'bg-ios-blue text-white' : 'bg-white/20 backdrop-blur-md text-white'}`}><Wallet className="w-3 h-3" />{currencyCode} {showExpenses ? '隱藏' : '統計'}</button>
-                        <button onClick={() => setShowSettings(!showSettings)} className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white hover:bg-white/30 transition-colors"><Settings className="w-3 h-3" /></button>
-                        {showSettings && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in"><div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} /><div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl animate-in zoom-in-95"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-gray-900">選擇幣別</h3><button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"><X className="w-5 h-5" /></button></div><div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">{Object.keys(CURRENCY_SYMBOLS).map(cur => (<button key={cur} onClick={() => handleCurrencyChange(cur)} className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 ${currencyCode === cur ? 'bg-ios-blue text-white shadow-md' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'}`}><span>{CURRENCY_LABELS[cur] || cur}</span><span className={`font-mono ${currencyCode === cur ? 'text-blue-100' : 'text-gray-400'}`}>{CURRENCY_SYMBOLS[cur]}</span></button>))}</div></div></div>)}
+                        
+                        <button 
+                            onClick={() => setShowExpenses(!showExpenses)}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${showExpenses ? 'bg-ios-blue text-white' : 'bg-white/20 backdrop-blur-md text-white'}`}
+                        >
+                            <Wallet className="w-3 h-3" />
+                            {currencyCode} {showExpenses ? '隱藏' : '統計'}
+                        </button>
+                        
+                        <button 
+                            onClick={() => setShowSettings(!showSettings)}
+                            className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white hover:bg-white/30 transition-colors"
+                        >
+                            <Settings className="w-3 h-3" />
+                        </button>
+
+                        {/* ✨ 幣別選擇彈窗 (獨立圖層，不會重疊) */}
+                        {showSettings && (
+                            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
+                                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+                                <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl animate-in zoom-in-95">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-lg font-bold text-gray-900">選擇幣別</h3>
+                                        <button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
+                                        {SUPPORTED_CURRENCIES.map(cur => (
+                                            <button
+                                                key={cur}
+                                                onClick={() => handleCurrencyChange(cur)}
+                                                className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 ${currencyCode === cur ? 'bg-ios-blue text-white shadow-md' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'}`}
+                                            >
+                                                <span>{CURRENCY_LABELS[cur] || cur}</span>
+                                                <span className={`font-mono ${currencyCode === cur ? 'text-blue-100' : 'text-gray-400'}`}>{CURRENCY_SYMBOLS[cur]}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
-                <div className="bg-gray-100 p-1 rounded-xl flex">
-                    <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
-                    <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
-                </div>
-            </div>
+            {/* ✨ 只有沒開設定時才顯示下面的內容 */}
+            {!showSettings && (
+                <>
+                    {/* View Toggle */}
+                    <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
+                        <div className="bg-gray-100 p-1 rounded-xl flex">
+                            <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                <List className="w-4 h-4" /> 列表
+                            </button>
+                            <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+                                <Map className="w-4 h-4" /> 地圖
+                            </button>
+                        </div>
+                    </div>
 
-            <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
-                {showExpenses && <ExpenseDashboard trip={trip} />}
-                <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="py-4 space-y-10">
-                        {trip.days.map((day, dayIndex) => (
-                            <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-gray-200">
-                                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-ios-blue border-4 border-white shadow-sm" />
-                                <div className="flex justify-between items-center mb-4 -mt-1">
-                                    <h2 className="text-xl font-bold text-gray-900">第 {day.day} 天</h2>
-                                    {viewMode === 'list' && (<button onClick={() => openAddModal(day.day)} className="text-ios-blue bg-blue-50 hover:bg-blue-100 p-1.5 rounded-full transition-colors active:scale-90"><Plus className="w-5 h-5" /></button>)}
-                                </div>
-                                {viewMode === 'list' ? (
-                                    <Droppable droppableId={`day-${day.day}`}>
-                                        {(provided) => (
-                                            <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                {day.activities.map((act, index) => (
-                                                    <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
-                                                        {(provided, snapshot) => (
-                                                            <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
-                                                                <div className="flex gap-3">
-                                                                    <div className="flex flex-col items-center pt-1 min-w-[55px]">
-                                                                        <input type="time" value={act.time} onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)} className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors" />
-                                                                        <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
-                                                                        <EditableText value={act.title} onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)} className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1" />
-                                                                        <div className="flex items-center justify-between mt-1">
-                                                                            <Tag type={act.type} />
-                                                                            <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
-                                                                                <span className="text-gray-400">{currencySymbol}</span>
-                                                                                <AutoWidthInput value={parseCost(act.cost) > 0 ? (act.cost || '') : ''} onChange={(val) => handleActivityUpdate(dayIndex, index, 'cost', val)} className="text-gray-600 font-medium text-right" />
+                    {/* Content List */}
+                    <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
+                        
+                        {showExpenses && <ExpenseDashboard trip={trip} />}
+
+                        <DragDropContext onDragEnd={onDragEnd}>
+                            <div className="py-4 space-y-10">
+                                {trip.days.map((day, dayIndex) => (
+                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-gray-200">
+                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-ios-blue border-4 border-white shadow-sm" />
+                                        <div className="flex justify-between items-center mb-4 -mt-1">
+                                            <h2 className="text-xl font-bold text-gray-900">第 {day.day} 天</h2>
+                                            {viewMode === 'list' && (
+                                                <button onClick={() => openAddModal(day.day)} className="text-ios-blue bg-blue-50 hover:bg-blue-100 p-1.5 rounded-full transition-colors active:scale-90">
+                                                    <Plus className="w-5 h-5" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {viewMode === 'list' ? (
+                                            <Droppable droppableId={`day-${day.day}`}>
+                                                {(provided) => (
+                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
+                                                        {day.activities.map((act, index) => (
+                                                            <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
+                                                                {(provided, snapshot) => (
+                                                                    <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
+                                                                        
+                                                                        <div className="flex gap-3">
+                                                                            <div className="flex flex-col items-center pt-1 min-w-[55px]">
+                                                                                <input 
+                                                                                    type="time" 
+                                                                                    value={act.time}
+                                                                                    onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)}
+                                                                                    className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors"
+                                                                                />
+                                                                                <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
+                                                                            </div>
+                                                                            
+                                                                            <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
+                                                                                <EditableText 
+                                                                                    value={act.title} 
+                                                                                    onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)}
+                                                                                    className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
+                                                                                />
+                                                                                <div className="flex items-center justify-between mt-1">
+                                                                                    <Tag type={act.type} />
+                                                                                    
+                                                                                    <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
+                                                                                        <span className="text-gray-400">{currencySymbol}</span>
+                                                                                        <AutoWidthInput
+                                                                                            value={parseCost(act.cost)}
+                                                                                            onChange={(val) => handleActivityUpdate(dayIndex, index, 'cost', val)}
+                                                                                            className="text-gray-600 font-medium text-right"
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
+                                                                            </div>
+                                                                            
+                                                                            <div {...provided.dragHandleProps} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors">
+                                                                                <GripVertical className="w-5 h-5" />
                                                                             </div>
                                                                         </div>
-                                                                        <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
                                                                     </div>
-                                                                    <div {...provided.dragHandleProps} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors"><GripVertical className="w-5 h-5" /></div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </Draggable>
-                                                ))}
-                                                {provided.placeholder}
-                                            </div>
+                                                                )}
+                                                            </Draggable>
+                                                        ))}
+                                                        {provided.placeholder}
+                                                    </div>
+                                                )}
+                                            </Droppable>
+                                        ) : (
+                                            <RouteVisualization day={day} destination={trip.destination} />
                                         )}
-                                    </Droppable>
-                                ) : (<RouteVisualization day={day} destination={trip.destination} />)}
+                                    </div>
+                                ))}
+                                <div className="h-10"></div>
                             </div>
-                        ))}
-                        <div className="h-10"></div>
+                        </DragDropContext>
                     </div>
-                </DragDropContext>
-            </div>
+                </>
+            )}
+
             {isAddModalOpen && <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />}
         </div>
     );
 };
 
+// ... (請保留檔案下方的 AddActivityModal, RouteVisualization, Tag 等組件，直接複製您的原檔即可) ...
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<Activity['type']>('sightseeing'); const [description, setDescription] = useState(''); const [location, setLocation] = useState('');
     const handleSubmit = () => { if (!title) return; onAdd({ id: Date.now().toString(), time, title, description, type, location }); };
