@@ -11,7 +11,7 @@ import { LoginView } from './views/LoginView';
 import { IOSButton, IOSInput } from './components/UI';
 import { supabase } from './services/supabase';
 
-// Helper: 時間加法 (例如 "09:00" + 90分鐘 = "10:30")
+// Helper: 時間加法
 const addMinutes = (timeStr: string, minutes: number): string => {
     try {
         if (!timeStr) return "09:00";
@@ -38,7 +38,7 @@ const App: React.FC = () => {
       setIsSyncing(true);
       const { data, error } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips = data.map((row: any) => ({ ...row.trip_data, id: row.id, isDeleted: false }));
+          const loadedTrips = data.map((row: any) => ({ ...row.trip_data, id: row.id, isDeleted: row.trip_data.isDeleted || false }));
           setTrips(loadedTrips);
       }
       setIsSyncing(false);
@@ -113,14 +113,32 @@ const App: React.FC = () => {
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
   
   const handleSoftDeleteTrip = (id: string) => {
-    if(confirm('確定要永久刪除此行程嗎？(雲端同步)')) {
-        setTrips(trips.filter(t => t.id !== id));
-        if (selectedTrip?.id === id) setSelectedTrip(null);
-        deleteTripFromCloud(id);
+    if(confirm('確定要將此行程移至保管箱嗎？')) {
+        const targetTrip = trips.find(t => t.id === id);
+        if (targetTrip) {
+            const deletedTrip = { ...targetTrip, isDeleted: true };
+            setTrips(prev => prev.map(t => t.id === id ? deletedTrip : t));
+            if (selectedTrip?.id === id) setSelectedTrip(null);
+            saveTripToCloud(deletedTrip); 
+        }
     }
   }
-  const handleRestoreTrip = (id: string) => {}; 
-  const handlePermanentDeleteTrip = (id: string) => {};
+  
+  const handleRestoreTrip = (id: string) => {
+      const targetTrip = trips.find(t => t.id === id);
+      if (targetTrip) {
+          const restoredTrip = { ...targetTrip, isDeleted: false };
+          setTrips(prev => prev.map(t => t.id === id ? restoredTrip : t));
+          saveTripToCloud(restoredTrip);
+      }
+  }; 
+
+  const handlePermanentDeleteTrip = (id: string) => {
+      if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
+          setTrips(prev => prev.filter(t => t.id !== id));
+          deleteTripFromCloud(id);
+      }
+  };
 
   const handleImportTrip = (tripData: Trip) => {
       const newTrip = { ...tripData, id: crypto.randomUUID(), isDeleted: false };
@@ -163,11 +181,11 @@ const App: React.FC = () => {
             </div>
         )}
 
-        <div className="flex-1 overflow-hidden relative w-full">
+        <div className="flex-1 overflow-hidden relative w-full no-scrollbar">
             {currentView === AppView.TRIPS && (
               <div className="h-full w-full">
                 <TripsView 
-                  trips={trips} 
+                  trips={trips.filter(t => !t.isDeleted)} 
                   user={user}
                   onLogout={handleLogout}
                   onAddTrip={handleAddTrip} 
@@ -180,7 +198,15 @@ const App: React.FC = () => {
             )}
             {currentView === AppView.EXPLORE && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ExploreView /></div>}
             {currentView === AppView.TOOLS && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ToolsView onUpdateBackground={handleUpdateBackground} /></div>}
-            {currentView === AppView.VAULT && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in flex items-center justify-center text-gray-400 text-sm">雲端版暫不支援垃圾桶功能</div>}
+            {currentView === AppView.VAULT && (
+                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
+                    <VaultView 
+                        deletedTrips={trips.filter(t => t.isDeleted)} 
+                        onRestoreTrip={handleRestoreTrip} 
+                        onPermanentDeleteTrip={handlePermanentDeleteTrip} 
+                    />
+                </div>
+            )}
         </div>
 
         <div className="flex-shrink-0 z-50 relative w-full bg-white/85 backdrop-blur-xl border-t border-gray-200/50">
@@ -204,7 +230,24 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
 );
 
 // --------------------------------------------------------------------------
-// ItineraryDetailView (支援時間編輯 + 智慧排序 + 固定 Header)
+// ✨ 新增：可編輯文字組件 (處理防抖動與存檔)
+// --------------------------------------------------------------------------
+const EditableText: React.FC<{ value: string, onSave: (val: string) => void, className?: string }> = ({ value, onSave, className }) => {
+    const [text, setText] = useState(value);
+    useEffect(() => { setText(value); }, [value]);
+    return (
+        <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => { if (text !== value) onSave(text); }}
+            className={`bg-transparent outline-none min-w-0 ${className}`}
+        />
+    );
+};
+
+// --------------------------------------------------------------------------
+// ItineraryDetailView
 // --------------------------------------------------------------------------
 
 const ItineraryDetailView: React.FC<{ 
@@ -217,7 +260,18 @@ const ItineraryDetailView: React.FC<{
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
+    const [editingTitle, setEditingTitle] = useState(trip.destination);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
+
+    const handleTitleBlur = () => {
+        if (editingTitle !== trip.destination && editingTitle.trim() !== "") {
+            onUpdateTrip({ ...trip, destination: editingTitle });
+        } else if (editingTitle.trim() === "") {
+             setEditingTitle(trip.destination);
+        }
+    };
 
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -231,7 +285,6 @@ const ItineraryDetailView: React.FC<{
         }
     };
 
-    // ✨ 智慧排序與時間重算
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         
@@ -240,17 +293,14 @@ const ItineraryDetailView: React.FC<{
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         
-        // 移動活動
         const [movedActivity] = newTrip.days[sourceDayIndex].activities.splice(result.source.index, 1);
         newTrip.days[destDayIndex].activities.splice(result.destination.index, 0, movedActivity);
 
-        // 🧠 自動重算時間邏輯
         const dayActivities = newTrip.days[destDayIndex].activities;
         if (dayActivities.length > 0) {
-            let currentTime = dayActivities[0].time; // 以第一個活動的時間為基準
-            
+            let currentTime = dayActivities[0].time;
             for (let i = 1; i < dayActivities.length; i++) {
-                currentTime = addMinutes(currentTime, 90); // 每個活動預設間隔 90 分鐘
+                currentTime = addMinutes(currentTime, 90);
                 dayActivities[i].time = currentTime;
             }
         }
@@ -258,10 +308,11 @@ const ItineraryDetailView: React.FC<{
         onUpdateTrip(newTrip);
     };
 
-    // ✨ 手動修改時間
-    const handleTimeChange = (dayIndex: number, actIndex: number, newTime: string) => {
+    // 統一的活動更新函式
+    const handleActivityUpdate = (dayIndex: number, actIndex: number, field: keyof Activity, value: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        newTrip.days[dayIndex].activities[actIndex].time = newTime;
+        // @ts-ignore
+        newTrip.days[dayIndex].activities[actIndex][field] = value;
         onUpdateTrip(newTrip);
     };
 
@@ -285,7 +336,7 @@ const ItineraryDetailView: React.FC<{
     return (
         <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
             
-            {/* Header Image (固定) */}
+            {/* Header Image */}
             <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
                 <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
@@ -305,8 +356,14 @@ const ItineraryDetailView: React.FC<{
                 </button>
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
 
-                <div className="absolute bottom-6 left-5 text-white pr-14">
-                    <h1 className="text-3xl font-bold drop-shadow-md">{trip.destination}</h1>
+                <div className="absolute bottom-6 left-5 text-white pr-14 w-full">
+                    <input 
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={handleTitleBlur}
+                        className="text-3xl font-bold drop-shadow-md bg-transparent border-none outline-none text-white placeholder-white/70 w-full p-0 m-0 focus:ring-0"
+                    />
                     <div className="flex items-center gap-2 mt-1">
                         <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
                         <span className="text-sm opacity-90">{trip.startDate}</span>
@@ -314,7 +371,7 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* View Toggle (固定) */}
+            {/* View Toggle */}
             <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
                 <div className="bg-gray-100 p-1 rounded-xl flex">
                     <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
@@ -326,7 +383,7 @@ const ItineraryDetailView: React.FC<{
                 </div>
             </div>
 
-            {/* Content List (捲動) */}
+            {/* Content List */}
             <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
                 <DragDropContext onDragEnd={onDragEnd}>
                     <div className="py-4 space-y-10">
@@ -351,19 +408,24 @@ const ItineraryDetailView: React.FC<{
                                                         {(provided, snapshot) => (
                                                             <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex gap-3 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
                                                                 
-                                                                {/* ✨ 可編輯的時間軸 */}
+                                                                {/* 時間軸 (可編輯) */}
                                                                 <div className="flex flex-col items-center pt-1 min-w-[55px]">
                                                                     <input 
                                                                         type="time" 
                                                                         value={act.time}
-                                                                        onChange={(e) => handleTimeChange(dayIndex, index, e.target.value)}
+                                                                        onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)}
                                                                         className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors"
                                                                     />
                                                                     <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
                                                                 </div>
                                                                 
+                                                                {/* ✨ 活動名稱 (可編輯) */}
                                                                 <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
-                                                                    <h3 className="font-semibold text-gray-900 truncate">{act.title}</h3>
+                                                                    <EditableText 
+                                                                        value={act.title} 
+                                                                        onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)}
+                                                                        className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
+                                                                    />
                                                                     <Tag type={act.type} />
                                                                     <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{act.description}</p>
                                                                 </div>
@@ -394,6 +456,7 @@ const ItineraryDetailView: React.FC<{
     );
 };
 
+// ... (後面的組件請保持原樣，務必複製回原本的代碼) ...
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<Activity['type']>('sightseeing'); const [description, setDescription] = useState(''); const [location, setLocation] = useState('');
     const handleSubmit = () => { if (!title) return; onAdd({ id: Date.now().toString(), time, title, description, type, location }); };
@@ -401,84 +464,29 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
         <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
     );
 };
-
-// --------------------------------------------------------------------------
-// ✨ 這裡已經修正了 Google Maps 網址格式
-// --------------------------------------------------------------------------
+// 記得把 RouteVisualization 也補上，確保地圖功能正常
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
-    const stops = day.activities
-        .filter(a => a.title || a.location)
-        .map(a => a.location || a.title);
-
+    const stops = day.activities.filter(a => a.title || a.location).map(a => a.location || a.title);
     let mapUrl = '';
-    if (stops.length === 0) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
-    } else if (stops.length === 1) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
-    } else {
+    if (stops.length === 0) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+    else if (stops.length === 1) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
+    else {
         const origin = encodeURIComponent(stops[0]);
         const dest = encodeURIComponent(stops[stops.length - 1]);
         const waypoints = stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|');
         mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
     }
-
     return (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
-            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center">
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
-                <Map className="w-8 h-8 text-ios-blue opacity-50" />
-                {stops.length > 0 && (
-                    <div className="absolute bottom-2 left-4 right-4 flex items-center justify-between text-[10px] text-ios-blue font-bold uppercase tracking-widest">
-                        <span>START</span>
-                        <div className="h-[2px] flex-1 bg-ios-blue/20 mx-2 relative">
-                            <div className="absolute right-0 -top-[3px] w-2 h-2 rounded-full bg-ios-blue"></div>
-                        </div>
-                        <span>END</span>
-                    </div>
-                )}
-            </div>
-
+            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center"><div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div><Map className="w-8 h-8 text-ios-blue opacity-50" /></div>
             <div className="p-5">
-                {stops.length === 0 ? (
-                    <div className="text-center text-gray-400 text-sm py-4">
-                        今天還沒有安排行程地點<br/>點擊上方「+」開始規劃
-                    </div>
-                ) : (
-                    <>
-                        <div className="space-y-0 mb-6">
-                            {stops.map((stop, index) => (
-                                <div key={index} className="flex gap-3 relative">
-                                    <div className="flex flex-col items-center w-6">
-                                        <div className={`w-3 h-3 rounded-full border-2 z-10 ${index === 0 ? 'bg-ios-blue border-ios-blue' : index === stops.length - 1 ? 'bg-red-500 border-red-500' : 'bg-white border-gray-300'}`}></div>
-                                        {index !== stops.length - 1 && (
-                                            <div className="w-[2px] flex-1 bg-gray-100 my-1"></div>
-                                        )}
-                                    </div>
-                                    <div className="pb-4 pt-[2px]">
-                                        <p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>
-                                            {stop}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <a 
-                            href={mapUrl} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200"
-                        >
-                            <Map className="w-5 h-5" />
-                            開啟 Google Maps 導航
-                        </a>
-                    </>
+                {stops.length === 0 ? <div className="text-center text-gray-400 text-sm py-4">今天還沒有安排行程地點</div> : (
+                    <><div className="space-y-0 mb-6 pl-2">{stops.map((stop, index) => (<div key={index} className="flex gap-4 relative"><div className="flex flex-col items-center w-4"><div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>{index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}</div><div className="pb-5 -mt-1 flex-1"><p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p></div></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"><Map className="w-5 h-5" />開啟 Google Maps 導航</a></>
                 )}
             </div>
         </div>
     );
 };
-
 const Tag: React.FC<{ type: string }> = ({ type }) => { const colors: any = { food: 'bg-orange-100 text-orange-600', sightseeing: 'bg-blue-100 text-blue-600', transport: 'bg-gray-100 text-gray-600', flight: 'bg-purple-100 text-purple-600', hotel: 'bg-indigo-100 text-indigo-600' }; return <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${colors[type] || colors.sightseeing}`}>{type}</span>; };
 
 export default App;
