@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { IOSHeader, IOSButton, IOSInput } from '../components/UI';
 import { Folder, FileText, MoreVertical, Search, Plus, Trash2, FileCheck, Image as ImageIcon, File as FileIcon, CheckCircle, Circle, Package, Shirt, Briefcase, Bath, Smartphone, CheckCircle2, ArrowLeft, RotateCcw, XCircle, Pin, GripHorizontal, GripVertical, Upload, HardDrive, Cloud, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -59,157 +59,12 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
     );
 };
 
-// --------------------------------------------------------------------------
-// 🧳 行李清單區塊 (Packing List Section)
-// --------------------------------------------------------------------------
-const PackingListSection: React.FC = () => {
-    const defaultItems: ChecklistItem[] = [
-        { id: '1', text: '護照', checked: false, category: 'documents' },
-        { id: '2', text: '簽證影本', checked: false, category: 'documents' },
-        { id: '3', text: '機票證明', checked: false, category: 'documents' },
-        { id: '4', text: '外幣/信用卡', checked: false, category: 'documents' },
-        { id: '5', text: '換洗衣物', checked: false, category: 'clothes' },
-        { id: '6', text: '保暖外套', checked: false, category: 'clothes' },
-        { id: '7', text: '牙刷牙膏', checked: false, category: 'toiletries' },
-        { id: '8', text: '手機充電器', checked: false, category: 'gadgets' },
-        { id: '9', text: '行動電源', checked: false, category: 'gadgets' },
-        { id: '10', text: '轉接頭', checked: false, category: 'gadgets' },
-    ];
+// ... (PackingListSection 保持不變，請保留原內容) ...
+const PackingListSection: React.FC = () => { const defaultItems: ChecklistItem[] = [ { id: '1', text: '護照', checked: false, category: 'documents' }, { id: '2', text: '簽證影本', checked: false, category: 'documents' }, { id: '3', text: '機票證明', checked: false, category: 'documents' }, { id: '4', text: '外幣/信用卡', checked: false, category: 'documents' }, { id: '5', text: '換洗衣物', checked: false, category: 'clothes' }, { id: '6', text: '保暖外套', checked: false, category: 'clothes' }, { id: '7', text: '牙刷牙膏', checked: false, category: 'toiletries' }, { id: '8', text: '手機充電器', checked: false, category: 'gadgets' }, { id: '9', text: '行動電源', checked: false, category: 'gadgets' }, { id: '10', text: '轉接頭', checked: false, category: 'gadgets' }, ]; const [items, setItems] = useState<ChecklistItem[]>(() => { try { const saved = localStorage.getItem('voyage_packing_list'); return saved ? JSON.parse(saved) : defaultItems; } catch (e) { return defaultItems; } }); const [newItemText, setNewItemText] = useState(''); const [addingToCategory, setAddingToCategory] = useState<ChecklistCategory | null>(null); useEffect(() => { localStorage.setItem('voyage_packing_list', JSON.stringify(items)); }, [items]); const toggleCheck = (id: string) => { setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i)); }; const deleteItem = (id: string) => { if(confirm('確定刪除此項目？')) { setItems(items.filter(i => i.id !== id)); } }; const addItem = (category: ChecklistCategory) => { if (!newItemText.trim()) return; const item: ChecklistItem = { id: Date.now().toString(), text: newItemText, checked: false, category: category }; setItems([...items, item]); setNewItemText(''); setAddingToCategory(null); }; const progress = items.length > 0 ? Math.round((items.filter(i => i.checked).length / items.length) * 100) : 0; const categories: { id: ChecklistCategory, label: string, icon: any, color: string }[] = [ { id: 'documents', label: '必備證件', icon: Briefcase, color: 'text-blue-500 bg-blue-50' }, { id: 'clothes', label: '衣物穿搭', icon: Shirt, color: 'text-pink-500 bg-pink-50' }, { id: 'toiletries', label: '盥洗/藥品', icon: Bath, color: 'text-cyan-500 bg-cyan-50' }, { id: 'gadgets', label: '3C 電子', icon: Smartphone, color: 'text-purple-500 bg-purple-50' }, { id: 'others', label: '其他小物', icon: Package, color: 'text-gray-500 bg-gray-50' }, ]; return ( <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500"> <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 sticky top-0 z-10"> <div className="flex justify-between items-end mb-2"> <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">準備進度</span> <span className="text-2xl font-bold text-ios-blue">{progress}%</span> </div> <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden"> <div className="h-full bg-ios-blue transition-all duration-500 ease-out shadow-[0_0_10px_rgba(0,122,255,0.5)]" style={{ width: `${progress}%` }} /> </div> </div> <div className="space-y-4"> {categories.map(cat => { const catItems = items.filter(i => i.category === cat.id); const completedCount = catItems.filter(i => i.checked).length; return ( <div key={cat.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm"> <div className="bg-gray-50/80 backdrop-blur-sm px-5 py-3 flex justify-between items-center border-b border-gray-100"> <div className="flex items-center gap-2.5 font-bold text-gray-900"> <div className={`p-1.5 rounded-lg ${cat.color}`}><cat.icon className="w-4 h-4" /></div>{cat.label} </div> <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-400 border border-gray-200 font-medium tabular-nums">{completedCount} / {catItems.length}</span> </div> <div className="p-1"> {catItems.map(item => ( <div key={item.id} onClick={() => toggleCheck(item.id)} className="p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-xl transition-colors group"> {item.checked ? (<CheckCircle2 className="w-6 h-6 text-ios-blue fill-blue-100 shrink-0 transition-transform scale-110" />) : (<Circle className="w-6 h-6 text-gray-300 shrink-0 hover:text-gray-400" />)} <span className={`text-[15px] flex-1 transition-all ${item.checked ? 'text-gray-400 line-through' : 'text-gray-800 font-medium'}`}>{item.text}</span> <button onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }} className="text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></button> </div> ))} {addingToCategory === cat.id ? ( <div className="p-3 flex gap-2 items-center bg-blue-50/50 rounded-xl mt-1 animate-in fade-in"> <input autoFocus type="text" placeholder="輸入項目名稱..." className="flex-1 bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm outline-none focus:border-ios-blue shadow-sm" value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { addItem(cat.id); } }} /> <button onClick={() => addItem(cat.id)} className="text-ios-blue font-bold text-sm px-2">新增</button> <button onClick={() => setAddingToCategory(null)} className="text-gray-400 text-sm px-2">取消</button> </div> ) : ( <button onClick={() => setAddingToCategory(cat.id)} className="w-full py-3 flex items-center justify-center gap-1 text-sm text-gray-400 hover:text-ios-blue hover:bg-gray-50 transition-colors rounded-xl mt-1 font-medium"><Plus className="w-4 h-4" /> 新增項目</button> )} </div> </div> ); })} </div> </div> ); };
 
-    const [items, setItems] = useState<ChecklistItem[]>(() => {
-        try {
-            const saved = localStorage.getItem('voyage_packing_list');
-            return saved ? JSON.parse(saved) : defaultItems;
-        } catch (e) {
-            return defaultItems;
-        }
-    });
-    const [newItemText, setNewItemText] = useState('');
-    const [addingToCategory, setAddingToCategory] = useState<ChecklistCategory | null>(null);
-
-    useEffect(() => {
-        localStorage.setItem('voyage_packing_list', JSON.stringify(items));
-    }, [items]);
-
-    const toggleCheck = (id: string) => {
-        setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
-    };
-
-    const deleteItem = (id: string) => {
-        if(confirm('確定刪除此項目？')) {
-            setItems(items.filter(i => i.id !== id));
-        }
-    };
-
-    const addItem = (category: ChecklistCategory) => {
-        if (!newItemText.trim()) return;
-        const item: ChecklistItem = {
-            id: Date.now().toString(),
-            text: newItemText,
-            checked: false,
-            category: category
-        };
-        setItems([...items, item]);
-        setNewItemText('');
-        setAddingToCategory(null);
-    };
-
-    const progress = items.length > 0 ? Math.round((items.filter(i => i.checked).length / items.length) * 100) : 0;
-
-    const categories: { id: ChecklistCategory, label: string, icon: any, color: string }[] = [
-        { id: 'documents', label: '必備證件', icon: Briefcase, color: 'text-blue-500 bg-blue-50' },
-        { id: 'clothes', label: '衣物穿搭', icon: Shirt, color: 'text-pink-500 bg-pink-50' },
-        { id: 'toiletries', label: '盥洗/藥品', icon: Bath, color: 'text-cyan-500 bg-cyan-50' },
-        { id: 'gadgets', label: '3C 電子', icon: Smartphone, color: 'text-purple-500 bg-purple-50' },
-        { id: 'others', label: '其他小物', icon: Package, color: 'text-gray-500 bg-gray-50' },
-    ];
-
-    return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 sticky top-0 z-10">
-                <div className="flex justify-between items-end mb-2">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">準備進度</span>
-                    <span className="text-2xl font-bold text-ios-blue">{progress}%</span>
-                </div>
-                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                        className="h-full bg-ios-blue transition-all duration-500 ease-out shadow-[0_0_10px_rgba(0,122,255,0.5)]" 
-                        style={{ width: `${progress}%` }}
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-4">
-                {categories.map(cat => {
-                    const catItems = items.filter(i => i.category === cat.id);
-                    const completedCount = catItems.filter(i => i.checked).length;
-                    
-                    return (
-                        <div key={cat.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
-                            <div className="bg-gray-50/80 backdrop-blur-sm px-5 py-3 flex justify-between items-center border-b border-gray-100">
-                                <div className="flex items-center gap-2.5 font-bold text-gray-900">
-                                    <div className={`p-1.5 rounded-lg ${cat.color}`}><cat.icon className="w-4 h-4" /></div>{cat.label}
-                                </div>
-                                <span className="text-xs bg-white px-2 py-0.5 rounded-full text-gray-400 border border-gray-200 font-medium tabular-nums">{completedCount} / {catItems.length}</span>
-                            </div>
-                            <div className="p-1">
-                                {catItems.map(item => (
-                                    <div 
-                                        key={item.id} 
-                                        onClick={() => toggleCheck(item.id)}
-                                        className="p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-xl transition-colors group"
-                                    >
-                                        {item.checked ? (
-                                            <CheckCircle2 className="w-6 h-6 text-ios-blue fill-blue-100 shrink-0 transition-transform scale-110" />
-                                        ) : (
-                                            <Circle className="w-6 h-6 text-gray-300 shrink-0 hover:text-gray-400" />
-                                        )}
-                                        <span className={`text-[15px] flex-1 transition-all ${item.checked ? 'text-gray-400 line-through' : 'text-gray-800 font-medium'}`}>{item.text}</span>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }}
-                                            className="text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                                {addingToCategory === cat.id ? (
-                                    <div className="p-3 flex gap-2 items-center bg-blue-50/50 rounded-xl mt-1 animate-in fade-in">
-                                        <input 
-                                            autoFocus
-                                            type="text" 
-                                            placeholder="輸入項目名稱..."
-                                            className="flex-1 bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm outline-none focus:border-ios-blue shadow-sm"
-                                            value={newItemText}
-                                            onChange={e => setNewItemText(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    addItem(cat.id);
-                                                }
-                                            }}
-                                        />
-                                        <button onClick={() => addItem(cat.id)} className="text-ios-blue font-bold text-sm px-2">新增</button>
-                                        <button onClick={() => setAddingToCategory(null)} className="text-gray-400 text-sm px-2">取消</button>
-                                    </div>
-                                ) : (
-                                    <button 
-                                        onClick={() => setAddingToCategory(cat.id)}
-                                        className="w-full py-3 flex items-center justify-center gap-1 text-sm text-gray-400 hover:text-ios-blue hover:bg-gray-50 transition-colors rounded-xl mt-1 font-medium"
-                                    >
-                                        <Plus className="w-4 h-4" /> 新增項目
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
 
 // --------------------------------------------------------------------------
-// 📂 文件管理區塊 (File Manager) - 修復手機捲動問題
+// 📂 文件管理區塊 (File Manager Section) - 修復按鈕無效問題
 // --------------------------------------------------------------------------
 const FileManagerSection: React.FC<{ 
     deletedTrips: Trip[], 
@@ -227,7 +82,6 @@ const FileManagerSection: React.FC<{
             return saved ? JSON.parse(saved) : INITIAL_FOLDERS;
         } catch { return INITIAL_FOLDERS; }
     });
-    
     const [files, setFiles] = useState<VaultFile[]>([]);
 
     useEffect(() => { localStorage.setItem('voyage_folders', JSON.stringify(folders)); }, [folders]);
@@ -255,6 +109,7 @@ const FileManagerSection: React.FC<{
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
 
+    // 🔥 移除 useMemo，直接計算變數
     const activeFiles = files.filter(f => !f.isDeleted);
     const deletedFiles = files.filter(f => f.isDeleted);
     const currentFolders = folders.filter(f => f.parentId === currentPath);
@@ -284,14 +139,11 @@ const FileManagerSection: React.FC<{
         const items = Array.from(sortedFolders);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
-        
         const otherFolders = folders.filter(f => f.parentId !== currentPath);
         setFolders([...otherFolders, ...items]);
     };
 
-    const onDragEnd = (result: DropResult) => {
-        // 檔案拖曳邏輯 (目前僅前端效果)
-    }
+    const onDragEnd = (result: DropResult) => { /* 檔案拖曳邏輯 */ }
 
     const toggleFolderPin = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -309,16 +161,13 @@ const FileManagerSection: React.FC<{
         const file = e.target.files?.[0];
         if(!file) return;
         if (file.size > 10 * 1024 * 1024) { alert("檔案過大！上限 10MB"); return; }
-
         setIsUploading(true);
         try {
             const user = (await supabase.auth.getUser()).data.user;
             if (!user) throw new Error("請先登入");
-
             const filePath = `${user.id}/${Date.now()}_${file.name}`;
             const { error: uploadError } = await supabase.storage.from('vault').upload(filePath, file);
             if (uploadError) throw uploadError;
-
             const newFileRec = {
                 user_id: user.id,
                 name: file.name,
@@ -331,15 +180,9 @@ const FileManagerSection: React.FC<{
             };
             const { error: dbError } = await supabase.from('vault_files').insert(newFileRec);
             if (dbError) throw dbError;
-
             await fetchFiles();
             alert("上傳成功！");
-
-        } catch (error: any) {
-            alert("上傳失敗：" + error.message);
-        } finally {
-            setIsUploading(false);
-        }
+        } catch (error: any) { alert("上傳失敗：" + error.message); } finally { setIsUploading(false); }
     };
 
     const handleOpenFile = async (file: VaultFile) => {
@@ -351,6 +194,7 @@ const FileManagerSection: React.FC<{
     };
 
     const updateFileStatus = async (id: string, updates: any) => {
+        console.log("Updating file:", id, updates);
         setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
         const dbUpdates: any = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
@@ -378,6 +222,7 @@ const FileManagerSection: React.FC<{
                 </div>
 
                 <div className="space-y-6">
+                    {/* 刪除的文件 */}
                     <div className="bg-red-50/50 rounded-3xl p-5 border border-red-100">
                         <h3 className="text-xs font-bold text-red-400 uppercase mb-3 ml-1 flex items-center gap-1"><FileIcon className="w-3 h-3" /> 文件</h3>
                         {deletedFiles.length === 0 ? (<p className="text-gray-400 text-sm text-center py-4">無檔案</p>) : (
@@ -389,14 +234,26 @@ const FileManagerSection: React.FC<{
                                             <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{file.name}</p><p className="text-[10px] text-gray-400">{file.size}</p></div>
                                          </div>
                                          <div className="flex gap-2">
-                                             <button onClick={() => updateFileStatus(file.id, { isDeleted: false })} className="p-1.5 bg-green-50 text-green-600 rounded-lg"><RotateCcw className="w-4 h-4" /></button>
-                                             <button onClick={() => handlePermanentDeleteFile(file.id, file.data)} className="p-1.5 bg-red-50 text-red-600 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                                             <button 
+                                                onClick={() => updateFileStatus(file.id, { isDeleted: false })}
+                                                className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"
+                                             >
+                                                <RotateCcw className="w-4 h-4" />
+                                             </button>
+                                             <button 
+                                                onClick={() => handlePermanentDeleteFile(file.id, file.data)}
+                                                className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                                             >
+                                                <XCircle className="w-4 h-4" />
+                                             </button>
                                          </div>
                                     </div>
                                 ))}
                             </div>
                         )}
                     </div>
+
+                    {/* 🔥 修正：刪除的行程 (Trip) */}
                     <div className="bg-red-50/50 rounded-3xl p-5 border border-red-100">
                         <h3 className="text-xs font-bold text-red-400 uppercase mb-3 ml-1 flex items-center gap-1"><Cloud className="w-3 h-3" /> 行程</h3>
                         {deletedTrips.length === 0 ? (<p className="text-gray-400 text-sm text-center py-4">無行程</p>) : (
@@ -408,8 +265,25 @@ const FileManagerSection: React.FC<{
                                             <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{trip.destination}</p><p className="text-[10px] text-gray-400">{trip.days.length} 天</p></div>
                                          </div>
                                          <div className="flex gap-2">
-                                             <button onClick={() => onRestoreTrip && onRestoreTrip(trip.id)} className="p-1.5 bg-green-50 text-green-600 rounded-lg"><RotateCcw className="w-4 h-4" /></button>
-                                             <button onClick={() => onPermanentDeleteTrip && onPermanentDeleteTrip(trip.id)} className="p-1.5 bg-red-50 text-red-600 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                                             {/* 🔥 這裡呼叫 props 傳入的函式 */}
+                                             <button 
+                                                onClick={() => {
+                                                    console.log("Restoring trip:", trip.id);
+                                                    if (onRestoreTrip) onRestoreTrip(trip.id);
+                                                }} 
+                                                className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"
+                                             >
+                                                <RotateCcw className="w-4 h-4" />
+                                             </button>
+                                             <button 
+                                                onClick={() => {
+                                                    console.log("Deleting trip:", trip.id);
+                                                    if (onPermanentDeleteTrip) onPermanentDeleteTrip(trip.id);
+                                                }} 
+                                                className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                                             >
+                                                <XCircle className="w-4 h-4" />
+                                             </button>
                                          </div>
                                     </div>
                                 ))}
@@ -425,6 +299,7 @@ const FileManagerSection: React.FC<{
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
+            {/* 1. 儲存空間 */}
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                 <div className="flex justify-between items-end mb-2">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">雲端空間</span>
@@ -440,6 +315,7 @@ const FileManagerSection: React.FC<{
                 </div>
             </div>
 
+            {/* 2. 導航 & 垃圾桶 */}
             <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                     {currentPath && (
@@ -456,9 +332,10 @@ const FileManagerSection: React.FC<{
                 )}
             </div>
 
+            {/* ✨ 使用 DragDropContext 包裹整個區域 */}
             <DragDropContext onDragEnd={onFolderDragEnd}>
 
-                {/* 3. 資料夾 (加入 touchAction: 'pan-y' 修復捲動) */}
+                {/* 3. 資料夾 (支援拖曳) */}
                 {sortedFolders.length > 0 && (
                     <Droppable droppableId="folders-list" type="FOLDER" direction="horizontal">
                         {(provided) => (
@@ -473,7 +350,6 @@ const FileManagerSection: React.FC<{
                                             <div 
                                                 ref={provided.innerRef}
                                                 {...provided.draggableProps}
-                                                // 🔥 關鍵修正：允許垂直捲動
                                                 style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
                                                 onClick={() => setCurrentPath(folder.id)}
                                                 className={`p-4 rounded-2xl border transition-all cursor-pointer relative group flex flex-col items-start 
@@ -503,7 +379,6 @@ const FileManagerSection: React.FC<{
                                                     {activeFiles.filter(f => f.parentId === folder.id).length} 項目
                                                 </p>
                                                 
-                                                {/* 右下角手柄 (加上 touch-none 防誤觸) */}
                                                 <div 
                                                     {...provided.dragHandleProps}
                                                     className="absolute bottom-2 right-2 p-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing z-10 touch-none"
@@ -521,7 +396,7 @@ const FileManagerSection: React.FC<{
                     </Droppable>
                 )}
 
-                {/* 4. 置頂檔案 */}
+                {/* 4. 置頂檔案 (不可拖曳) */}
                 {pinnedFiles.length > 0 && (
                     <div className="mb-6">
                         <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 ml-1 flex items-center gap-1"><Pin className="w-3 h-3" /> 置頂</h3>
@@ -542,7 +417,7 @@ const FileManagerSection: React.FC<{
                     </div>
                 )}
 
-                {/* 5. 檔案列表 (加入 touchAction: 'pan-y' 修復捲動) */}
+                {/* 5. 檔案列表 (支援拖曳) */}
                 <div className="space-y-2">
                     {currentFiles.length === 0 && currentFolders.length === 0 && !isCreatingFolder && (
                         <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-100 rounded-2xl">
@@ -565,7 +440,6 @@ const FileManagerSection: React.FC<{
                                                 <div 
                                                     ref={provided.innerRef}
                                                     {...provided.draggableProps}
-                                                    // 🔥 關鍵修正：允許垂直捲動
                                                     style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
                                                     onClick={() => handleOpenFile(file)}
                                                     className={`bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex items-center gap-3 transition-transform group cursor-pointer ${snapshot.isDragging ? 'z-50 shadow-lg opacity-90' : ''}`}
@@ -582,7 +456,7 @@ const FileManagerSection: React.FC<{
                                                         <button onClick={(e) => { e.stopPropagation(); updateFileStatus(file.id, { isDeleted: true }); }} className="p-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                                     </div>
 
-                                                    {/* 右側手柄 (加上 touch-none) */}
+                                                    {/* 檔案拖曳手柄 (右側) */}
                                                     <div 
                                                         {...provided.dragHandleProps}
                                                         className="p-2 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing touch-none shrink-0"
