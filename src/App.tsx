@@ -11,40 +11,7 @@ import { LoginView } from './views/LoginView';
 import { IOSButton, IOSInput } from './components/UI';
 import { supabase } from './services/supabase';
 import { generateItinerary } from './services/gemini';
-
-// Helper: 時間加法
-const addMinutes = (timeStr: string, minutes: number): string => {
-    try {
-        if (!timeStr) return "09:00";
-        const [h, m] = timeStr.split(':').map(Number);
-        const date = new Date();
-        date.setHours(h || 0, m || 0, 0, 0);
-        date.setMinutes(date.getMinutes() + minutes);
-        return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-        return timeStr;
-    }
-};
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-    'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
-};
-
-const CURRENCY_LABELS: Record<string, string> = {
-    'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元',
-    'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
-};
-
-const parseCost = (costStr?: string | number): number => {
-    if (!costStr) return 0;
-    if (typeof costStr === 'number') return costStr;
-    const cleanStr = costStr.toString().replace(/,/g, '');
-    const match = cleanStr.match(/(\d+(\.\d+)?)/);
-    if (match) {
-        return parseFloat(match[0]);
-    }
-    return 0;
-};
+import { ItineraryView } from './views/ItineraryView';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -59,7 +26,11 @@ const App: React.FC = () => {
       setIsSyncing(true);
       const { data, error } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips = data.map((row: any) => ({ ...row.trip_data, id: row.id, isDeleted: row.trip_data.isDeleted || false }));
+          const loadedTrips = data.map((row: any) => ({ 
+              ...row.trip_data, 
+              id: row.id, 
+              isDeleted: row.trip_data.isDeleted || false 
+          }));
           setTrips(loadedTrips);
       }
       setIsSyncing(false);
@@ -82,23 +53,21 @@ const App: React.FC = () => {
       const { error } = await supabase.from('trips').delete().eq('id', tripId);
       if (error) console.error("刪除失敗", error);
   };
-
-  const handleUpdateTrip = (updatedTrip: Trip) => {
-    setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-    setSelectedTrip(updatedTrip);
-    saveTripToCloud(updatedTrip);
-  };
   
+  // 🔥 關鍵修正：在這裡讀取 Supabase 存的頭貼
   useEffect(() => {
       const checkUser = async () => {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
               const userName = session.user.user_metadata?.full_name || 'User';
+              // 優先使用上傳的頭貼 (avatar_url)，如果沒有才用預設圖
+              const userAvatar = session.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`;
+              
               setUser({
                   id: session.user.id,
                   name: userName,
                   joinedDate: new Date(session.user.created_at).toLocaleDateString(),
-                  avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`
+                  avatar: userAvatar // 設定正確的頭貼
               });
           }
       };
@@ -133,15 +102,19 @@ const App: React.FC = () => {
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
   
+  const handleUpdateTrip = (updatedTrip: Trip) => {
+    setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+    setSelectedTrip(updatedTrip);
+    saveTripToCloud(updatedTrip);
+  };
+
   const handleSoftDeleteTrip = (id: string) => {
     if(confirm('確定要將此行程移至保管箱嗎？')) {
         const targetTrip = trips.find(t => t.id === id);
         if (targetTrip) {
             const deletedTrip = { ...targetTrip, isDeleted: true };
-            // 更新 UI
             setTrips(prev => prev.map(t => t.id === id ? deletedTrip : t));
             if (selectedTrip?.id === id) setSelectedTrip(null);
-            // 同步雲端
             saveTripToCloud(deletedTrip); 
         }
     }
@@ -156,14 +129,9 @@ const App: React.FC = () => {
       }
   }; 
 
-  // 🔥 修正：永久刪除 (Optimistic UI Update)
-  // 先從本地 trips 陣列移除，然後再發送 API 請求，這樣畫面就會秒刪
   const handlePermanentDeleteTrip = (id: string) => {
       if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
-          // 1. 更新 UI：過濾掉該 ID 的行程
-          setTrips(prevTrips => prevTrips.filter(t => t.id !== id));
-          
-          // 2. 同步雲端：發送刪除指令
+          setTrips(prev => prev.filter(t => t.id !== id));
           deleteTripFromCloud(id);
       }
   };
@@ -187,7 +155,7 @@ const App: React.FC = () => {
 
   if (selectedTrip) {
     return (
-      <ItineraryDetailView 
+      <ItineraryView 
         trip={selectedTrip} 
         onBack={() => setSelectedTrip(null)}
         onDelete={() => handleSoftDeleteTrip(selectedTrip.id)}
@@ -229,7 +197,6 @@ const App: React.FC = () => {
             {currentView === AppView.VAULT && (
                 <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
                     <VaultView 
-                        // 🔥 傳遞過濾後的已刪除行程列表
                         deletedTrips={trips.filter(t => t.isDeleted)} 
                         onRestoreTrip={handleRestoreTrip} 
                         onPermanentDeleteTrip={handlePermanentDeleteTrip} 
@@ -257,522 +224,5 @@ const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.Re
     <span className="text-[10px] font-medium">{label}</span>
   </button>
 );
-
-// --- ExpenseDashboard ---
-const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
-    const currencyCode = trip.currency || 'TWD';
-    const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
-
-    const stats = trip.days.reduce((acc, day) => {
-        day.activities.forEach(act => {
-            const cost = parseCost(act.cost);
-            if (cost > 0) {
-                acc.total += cost;
-                acc.byCategory[act.type] = (acc.byCategory[act.type] || 0) + cost;
-            }
-        });
-        return acc;
-    }, { total: 0, byCategory: {} as Record<string, number> });
-
-    const categories = [
-        { type: 'flight', label: '機票', color: 'bg-purple-500' },
-        { type: 'hotel', label: '住宿', color: 'bg-indigo-500' },
-        { type: 'transport', label: '交通', color: 'bg-gray-500' },
-        { type: 'food', label: '美食', color: 'bg-orange-500' },
-        { type: 'sightseeing', label: '景點', color: 'bg-blue-500' },
-    ];
-
-    return (
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6 animate-in slide-in-from-top-4">
-            <div className="flex items-end justify-between mb-4">
-                <div>
-                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">總花費 ({currencyCode})</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">
-                        <span className="text-lg align-top mr-1">{currencySymbol}</span>
-                        {stats.total.toLocaleString()}
-                    </h3>
-                </div>
-                <div className="p-2 bg-blue-50 rounded-full text-ios-blue">
-                    <TrendingUp className="w-6 h-6" />
-                </div>
-            </div>
-
-            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">
-                {categories.map(cat => {
-                    const amount = stats.byCategory[cat.type] || 0;
-                    const percent = stats.total > 0 ? (amount / stats.total) * 100 : 0;
-                    if (percent === 0) return null;
-                    return <div key={cat.type} style={{ width: `${percent}%` }} className={cat.color} title={cat.label} />;
-                })}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-                {categories.map(cat => {
-                    const amount = stats.byCategory[cat.type] || 0;
-                    if (amount === 0) return null;
-                    return (
-                        <div key={cat.type} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                                <span className="text-gray-600">{cat.label}</span>
-                            </div>
-                            <span className="font-bold text-gray-900">{currencySymbol}{amount.toLocaleString()}</span>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-const AutoWidthInput: React.FC<{ 
-    value: string | number, 
-    onChange: (val: string) => void,
-    placeholder?: string,
-    className?: string
-}> = ({ value, onChange, placeholder = '', className }) => {
-    const spanRef = useRef<HTMLSpanElement>(null);
-    const [width, setWidth] = useState(35);
-
-    useEffect(() => {
-        if (spanRef.current) {
-            setWidth(Math.max(35, spanRef.current.offsetWidth + 15)); 
-        }
-    }, [value]);
-
-    const displayValue = (value === 0 || value === '0') ? '0' : (value || '');
-
-    return (
-        <div className="relative inline-block">
-            <span ref={spanRef} className={`absolute opacity-0 pointer-events-none whitespace-pre ${className}`}>
-                {displayValue || placeholder}
-            </span>
-            <input
-                type="text"
-                value={displayValue}
-                placeholder={placeholder}
-                onChange={(e) => {
-                    const val = e.target.value;
-                    if (/^\d*\.?\d*$/.test(val)) {
-                        onChange(val);
-                    }
-                }}
-                style={{ width }}
-                className={`bg-transparent outline-none text-center min-w-[35px] ${className} placeholder:text-gray-300`}
-            />
-        </div>
-    );
-};
-
-const EditableText: React.FC<{ value: string, onSave: (val: string) => void, className?: string }> = ({ value, onSave, className }) => {
-    const [text, setText] = useState(value);
-    useEffect(() => { setText(value); }, [value]);
-    return (
-        <input
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onBlur={() => { if (text !== value) onSave(text); }}
-            className={`bg-transparent outline-none min-w-0 ${className}`}
-        />
-    );
-};
-
-const Tag: React.FC<{ type: string }> = ({ type }) => {
-    const config: Record<string, { color: string, label: string }> = {
-        sightseeing: { color: 'bg-blue-100 text-blue-600', label: '景點' },
-        food: { color: 'bg-orange-100 text-orange-600', label: '美食' },
-        transport: { color: 'bg-gray-100 text-gray-600', label: '交通' },
-        flight: { color: 'bg-purple-100 text-purple-600', label: '航班' },
-        hotel: { color: 'bg-indigo-100 text-indigo-600', label: '住宿' },
-        cafe: { color: 'bg-amber-100 text-amber-700', label: '咖啡廳' },
-        shopping: { color: 'bg-pink-100 text-pink-600', label: '購物' },
-        relax: { color: 'bg-emerald-100 text-emerald-600', label: '放鬆' },
-        bar: { color: 'bg-violet-100 text-violet-600', label: '酒吧' },
-        culture: { color: 'bg-rose-100 text-rose-600', label: '文化' },
-        activity: { color: 'bg-cyan-100 text-cyan-600', label: '體驗' },
-        default: { color: 'bg-gray-100 text-gray-500', label: '其他' }
-    };
-
-    const { color, label } = config[type] || config.default;
-
-    return (
-        <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wide transition-colors ${color}`}>
-            {label}
-        </span>
-    );
-};
-
-const EditableTag: React.FC<{ type: string, onChange: (newType: string) => void }> = ({ type, onChange }) => {
-    return (
-        <div className="relative group cursor-pointer w-fit">
-            <Tag type={type} />
-            <select 
-                value={type}
-                onChange={(e) => onChange(e.target.value)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs appearance-none"
-            >
-                <optgroup label="基本">
-                    <option value="sightseeing">景點</option>
-                    <option value="food">美食</option>
-                    <option value="transport">交通</option>
-                    <option value="flight">航班</option>
-                    <option value="hotel">住宿</option>
-                </optgroup>
-                <optgroup label="休閒娛樂">
-                    <option value="cafe">咖啡廳</option>
-                    <option value="shopping">購物</option>
-                    <option value="bar">酒吧</option>
-                    <option value="relax">放鬆/SPA</option>
-                </optgroup>
-                <optgroup label="其他">
-                    <option value="culture">文化/展覽</option>
-                    <option value="activity">體驗活動</option>
-                </optgroup>
-            </select>
-        </div>
-    );
-};
-
-// --------------------------------------------------------------------------
-// ItineraryDetailView
-// --------------------------------------------------------------------------
-
-const ItineraryDetailView: React.FC<{ 
-    trip: Trip; 
-    onBack: () => void; 
-    onDelete: () => void; 
-    onUpdateTrip: (t: Trip) => void; 
-}> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
-    
-    const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
-    const [editingTitle, setEditingTitle] = useState(trip.destination);
-    const [showExpenses, setShowExpenses] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
-
-    const currencyCode = trip.currency || 'TWD';
-    const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
-
-    const handleTitleBlur = () => {
-        if (editingTitle !== trip.destination && editingTitle.trim() !== "") {
-            onUpdateTrip({ ...trip, destination: editingTitle });
-        } else if (editingTitle.trim() === "") {
-             setEditingTitle(trip.destination);
-        }
-    };
-
-    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const newImage = reader.result as string;
-                onUpdateTrip({ ...trip, coverImage: newImage });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleCurrencyChange = (newCurrency: string) => {
-        onUpdateTrip({ ...trip, currency: newCurrency });
-        setShowSettings(false);
-    };
-
-    const onDragEnd = (result: DropResult) => {
-        if (!result.destination) return;
-        
-        const sourceDayIndex = parseInt(result.source.droppableId.replace('day-', '')) - 1;
-        const destDayIndex = parseInt(result.destination.droppableId.replace('day-', '')) - 1;
-
-        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        
-        const [movedActivity] = newTrip.days[sourceDayIndex].activities.splice(result.source.index, 1);
-        newTrip.days[destDayIndex].activities.splice(result.destination.index, 0, movedActivity);
-
-        const dayActivities = newTrip.days[destDayIndex].activities;
-        if (dayActivities.length > 0) {
-            let currentTime = dayActivities[0].time;
-            for (let i = 1; i < dayActivities.length; i++) {
-                currentTime = addMinutes(currentTime, 90);
-                dayActivities[i].time = currentTime;
-            }
-        }
-
-        onUpdateTrip(newTrip);
-    };
-
-    const handleActivityUpdate = (dayIndex: number, actIndex: number, field: keyof Activity, value: string) => {
-        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        // @ts-ignore
-        newTrip.days[dayIndex].activities[actIndex][field] = value;
-        onUpdateTrip(newTrip);
-    };
-
-    const handleAddActivity = (newActivity: Activity) => {
-        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        newTrip.days[activeDayForAdd - 1].activities.push(newActivity);
-        newTrip.days[activeDayForAdd - 1].activities.sort((a: any, b: any) => a.time.localeCompare(b.time));
-        onUpdateTrip(newTrip);
-        setIsAddModalOpen(false);
-    };
-
-    const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
-        if(!confirm("確定要刪除？")) return;
-        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        newTrip.days[dayIndex].activities.splice(activityIndex, 1);
-        onUpdateTrip(newTrip);
-    }
-
-    const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
-
-    return (
-        <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
-            
-            {/* Header Image */}
-            <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
-                <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
-                
-                <button onClick={onBack} className="absolute top-12 left-5 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
-                    <ArrowLeft className="w-6 h-6" />
-                </button>
-                <button onClick={onDelete} className="absolute top-12 right-5 w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-10">
-                    <Trash2 className="w-5 h-5" />
-                </button>
-
-                <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-6 right-5 w-9 h-9 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all z-20 shadow-sm"
-                >
-                    <Camera className="w-5 h-5" />
-                </button>
-                <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
-
-                <div className="absolute bottom-6 left-5 text-white pr-14 w-full">
-                    <input 
-                        type="text"
-                        value={editingTitle}
-                        onChange={(e) => setEditingTitle(e.target.value)}
-                        onBlur={handleTitleBlur}
-                        className="text-3xl font-bold drop-shadow-md bg-transparent border-none outline-none text-white placeholder-white/70 w-full p-0 m-0 focus:ring-0"
-                    />
-                    <div className="flex items-center gap-3 mt-2 relative">
-                        <span className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded text-xs font-medium">{trip.days.length} 天行程</span>
-                        
-                        <button 
-                            onClick={() => setShowExpenses(!showExpenses)}
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors ${showExpenses ? 'bg-ios-blue text-white' : 'bg-white/20 backdrop-blur-md text-white'}`}
-                        >
-                            <Wallet className="w-3 h-3" />
-                            {currencyCode} {showExpenses ? '隱藏' : '統計'}
-                        </button>
-                        
-                        <button 
-                            onClick={() => setShowSettings(!showSettings)}
-                            className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white hover:bg-white/30 transition-colors"
-                        >
-                            <Settings className="w-3 h-3" />
-                        </button>
-
-                        {/* 幣別選擇彈窗 (獨立圖層) */}
-                        {showSettings && (
-                            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
-                                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
-                                <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl animate-in zoom-in-95">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-bold text-gray-900">選擇幣別</h3>
-                                        <button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
-                                            <X className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                    <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
-                                        {Object.keys(CURRENCY_SYMBOLS).map(cur => (
-                                            <button
-                                                key={cur}
-                                                onClick={() => handleCurrencyChange(cur)}
-                                                className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium transition-all active:scale-95 ${currencyCode === cur ? 'bg-ios-blue text-white shadow-md' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'}`}
-                                            >
-                                                <span>{CURRENCY_LABELS[cur] || cur}</span>
-                                                <span className={`font-mono ${currencyCode === cur ? 'text-blue-100' : 'text-gray-400'}`}>{CURRENCY_SYMBOLS[cur]}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* View Toggle */}
-            {!showSettings && (
-                <>
-                    <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-white z-10 border-b border-gray-100">
-                        <div className="bg-gray-100 p-1 rounded-xl flex">
-                            <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-                                <List className="w-4 h-4" /> 列表
-                            </button>
-                            <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-semibold rounded-lg transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-                                <Map className="w-4 h-4" /> 地圖
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Content List */}
-                    <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
-                        
-                        {showExpenses && <ExpenseDashboard trip={trip} />}
-
-                        <DragDropContext onDragEnd={onDragEnd}>
-                            <div className="py-4 space-y-10">
-                                {trip.days.map((day, dayIndex) => (
-                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-gray-200">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-ios-blue border-4 border-white shadow-sm" />
-                                        <div className="flex justify-between items-center mb-4 -mt-1">
-                                            <h2 className="text-xl font-bold text-gray-900">第 {day.day} 天</h2>
-                                            {viewMode === 'list' && (
-                                                <button onClick={() => openAddModal(day.day)} className="text-ios-blue bg-blue-50 hover:bg-blue-100 p-1.5 rounded-full transition-colors active:scale-90">
-                                                    <Plus className="w-5 h-5" />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {viewMode === 'list' ? (
-                                            <Droppable droppableId={`day-${day.day}`}>
-                                                {(provided) => (
-                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                        {day.activities.map((act, index) => (
-                                                            <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
-                                                                {(provided, snapshot) => (
-                                                                    <div 
-                                                                        ref={provided.innerRef} 
-                                                                        {...provided.draggableProps} 
-                                                                        // 🔥 關鍵：強制允許垂直捲動，除了手柄以外的地方
-                                                                        style={{ 
-                                                                            ...provided.draggableProps.style, 
-                                                                            touchAction: 'pan-y' 
-                                                                        }}
-                                                                        className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50 opacity-90' : ''}`}
-                                                                    >
-                                                                        
-                                                                        <div className="flex gap-3">
-                                                                            <div className="flex flex-col items-center pt-1 min-w-[55px]">
-                                                                                <input 
-                                                                                    type="time" 
-                                                                                    value={act.time}
-                                                                                    onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)}
-                                                                                    className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors"
-                                                                                />
-                                                                                <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button>
-                                                                            </div>
-                                                                            
-                                                                            <div className="flex-1 min-w-0 border-l border-gray-100 pl-3">
-                                                                                <EditableText 
-                                                                                    value={act.title} 
-                                                                                    onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)}
-                                                                                    className="font-semibold text-gray-900 truncate w-full hover:bg-gray-50 rounded px-1 -ml-1"
-                                                                                />
-                                                                                <div className="flex items-center justify-between mt-1">
-                                                                                    {/* ✨ 可編輯標籤 */}
-                                                                                    <EditableTag 
-                                                                                        type={act.type} 
-                                                                                        onChange={(val) => handleActivityUpdate(dayIndex, index, 'type', val)} 
-                                                                                    />
-                                                                                    
-                                                                                    <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
-                                                                                        <span className="text-gray-400">{currencySymbol}</span>
-                                                                                        <AutoWidthInput
-                                                                                            value={parseCost(act.cost)}
-                                                                                            onChange={(val) => handleActivityUpdate(dayIndex, index, 'cost', val)}
-                                                                                            className="text-gray-600 font-medium text-right"
-                                                                                        />
-                                                                                    </div>
-                                                                                </div>
-                                                                                <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
-                                                                            </div>
-                                                                            
-                                                                            <div 
-                                                                                {...provided.dragHandleProps} 
-                                                                                className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors touch-none" // 🔥 手柄也要加 touch-none
-                                                                            >
-                                                                                <GripVertical className="w-5 h-5" />
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </Draggable>
-                                                        ))}
-                                                        {provided.placeholder}
-                                                    </div>
-                                                )}
-                                            </Droppable>
-                                        ) : (
-                                            <RouteVisualization day={day} destination={trip.destination} />
-                                        )}
-                                    </div>
-                                ))}
-                                <div className="h-10"></div>
-                            </div>
-                        </DragDropContext>
-                    </div>
-                </>
-            )}
-
-            {isAddModalOpen && <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />}
-        </div>
-    );
-};
-
-// ... (後面的組件請保持原樣，務必複製您原檔最下方的內容，包含 AddActivityModal, RouteVisualization, ImportTripModal) ...
-const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
-    const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<Activity['type']>('sightseeing'); const [description, setDescription] = useState(''); const [location, setLocation] = useState('');
-    const handleSubmit = () => { if (!title) return; onAdd({ id: Date.now().toString(), time, title, description, type, location }); };
-    return (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><optgroup label="基本"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></optgroup><optgroup label="休閒娛樂"><option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option></optgroup><optgroup label="其他"><option value="culture">文化/展覽</option><option value="activity">體驗活動</option></optgroup></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
-    );
-};
-const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
-    const stops = day.activities.filter(a => a.title || a.location).map(a => a.location || a.title);
-    let mapUrl = '';
-    if (stops.length === 0) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
-    else if (stops.length === 1) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
-    else {
-        const origin = encodeURIComponent(stops[0]);
-        const dest = encodeURIComponent(stops[stops.length - 1]);
-        const waypoints = stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|');
-        mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
-    }
-    return (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
-            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center"><div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div><Map className="w-8 h-8 text-ios-blue opacity-50" />{stops.length > 1 && (<div className="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[10px] text-ios-blue font-bold uppercase tracking-widest z-10"><span className="bg-white/80 backdrop-blur px-1.5 rounded">START</span><div className="h-[2px] flex-1 bg-ios-blue/20 mx-2 relative flex items-center"><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-1"></div><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-2"></div><div className="absolute right-0 -top-[3px] w-2 h-2 rounded-full bg-ios-blue"></div></div><span className="bg-white/80 backdrop-blur px-1.5 rounded">END</span></div>)}</div>
-            <div className="p-5">
-                {stops.length === 0 ? <div className="text-center text-gray-400 text-sm py-4">今天還沒有安排行程地點<br/>點擊上方「+」開始規劃</div> : (
-                    <><div className="space-y-0 mb-6 pl-2">{stops.map((stop, index) => (<div key={index} className="flex gap-4 relative"><div className="flex flex-col items-center w-4"><div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>{index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}</div><div className="pb-5 -mt-1 flex-1"><p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p>{index === 0 && <span className="inline-block mt-1 text-[10px] text-ios-blue bg-blue-50 px-1.5 py-0.5 rounded font-medium">起點</span>}{index === stops.length - 1 && <span className="inline-block mt-1 text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded font-medium">終點</span>}</div></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"><Map className="w-5 h-5" />開啟 Google Maps 導航</a><p className="text-center text-[10px] text-gray-400 mt-3">將自動帶入所有途經點規劃最佳路線</p></>
-                )}
-            </div>
-        </div>
-    );
-};
-const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
-    const [code, setCode] = useState('');
-    const [error, setError] = useState('');
-    const handleImport = () => {
-        try {
-            if (!code.trim()) return;
-            const jsonString = decodeURIComponent(escape(atob(code.trim())));
-            const tripData = JSON.parse(jsonString);
-            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
-        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
-    };
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
-    );
-};
 
 export default App;
