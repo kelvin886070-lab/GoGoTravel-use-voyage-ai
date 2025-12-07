@@ -12,7 +12,7 @@ if (!apiKey) {
 // 2. 初始化 Web SDK
 const genAI = new GoogleGenerativeAI(apiKey);
 // 修正：改用 1.5-flash，這是目前最穩定且免費額度最高的版本
-const modelName = "gemini-2.0-flash";
+const modelName = "gemini-1.5-flash";
 
 // --- Cache Helper System (快取系統) ---
 const CACHE_PREFIX = 'kelvin_cache_';
