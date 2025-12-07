@@ -298,7 +298,7 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
 const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
 
 const WeatherWidget: React.FC = () => {
-    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('voyage_weather_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
+    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_weather_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
     const [idx, setIdx] = useState(0);
     const [data, setData] = useState<WeatherInfo | null>(null);
     const [loading, setLoading] = useState(false);
@@ -306,11 +306,11 @@ const WeatherWidget: React.FC = () => {
     const [isAdding, setIsAdding] = useState(false);
     const [newLoc, setNewLoc] = useState('');
 
-    useEffect(() => { localStorage.setItem('voyage_weather_locs', JSON.stringify(locations)); }, [locations]);
+    useEffect(() => { localStorage.setItem('Kelvin Trip_weather_locs', JSON.stringify(locations)); }, [locations]);
     
     const fetchWeather = async () => {
         const currentLocation = locations[idx];
-        const cacheKey = `voyage_weather_cache_${currentLocation}`;
+        const cacheKey = `Kelvin Trip_weather_cache_${currentLocation}`;
         try {
             const cached = localStorage.getItem(cacheKey);
             if (cached) { const { data, timestamp } = JSON.parse(cached);
@@ -348,7 +348,7 @@ const WeatherWidget: React.FC = () => {
 };
 
 const TimeWidget: React.FC = () => {
-    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('voyage_time_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
+    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_time_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
     const [idx, setIdx] = useState(0);
     const [timezone, setTimezone] = useState<string | null>(null);
     const [timeStr, setTimeStr] = useState('');
@@ -357,13 +357,13 @@ const TimeWidget: React.FC = () => {
     const [newLoc, setNewLoc] = useState('');
     const [error, setError] = useState(false);
 
-    useEffect(() => { localStorage.setItem('voyage_time_locs', JSON.stringify(locations)); }, [locations]);
+    useEffect(() => { localStorage.setItem('Kelvin Trip_time_locs', JSON.stringify(locations)); }, [locations]);
     
     useEffect(() => { 
         setTimezone(null); setTimeStr('--:--'); setDateStr('載入中...'); setError(false); 
         const fetchTz = async () => { 
             const currentLocation = locations[idx]; 
-            const cacheKey = `voyage_timezone_cache_${currentLocation}`; 
+            const cacheKey = `Kelvin Trip_timezone_cache_${currentLocation}`; 
             const cachedTz = localStorage.getItem(cacheKey); 
             if (cachedTz) { setTimezone(cachedTz); return; } 
             const tz = await getTimezone(currentLocation); 

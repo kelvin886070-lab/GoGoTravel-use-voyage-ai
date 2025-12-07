@@ -138,14 +138,14 @@ const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     ];
 
     const [items, setItems] = useState<ChecklistItem[]>(() => {
-        const saved = localStorage.getItem('voyage_packing_list');
+        const saved = localStorage.getItem('Kelvin Trip_packing_list');
         return saved ? JSON.parse(saved) : defaultItems;
     });
     const [newItem, setNewItem] = useState('');
     const [activeCategory, setActiveCategory] = useState<ChecklistCategory>('documents');
 
     useEffect(() => {
-        localStorage.setItem('voyage_packing_list', JSON.stringify(items));
+        localStorage.setItem('Kelvin Trip_packing_list', JSON.stringify(items));
     }, [items]);
 
     const toggleCheck = (id: string) => {

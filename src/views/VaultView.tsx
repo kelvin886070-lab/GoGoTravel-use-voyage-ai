@@ -10,18 +10,11 @@ interface VaultViewProps {
     onPermanentDeleteTrip?: (id: string) => void;
 }
 
-const INITIAL_FOLDERS: VaultFolder[] = [
-    { id: 'f1', name: '機票憑證', parentId: null, isPinned: false },
-    { id: 'f2', name: '住宿確認', parentId: null, isPinned: false },
-    { id: 'f3', name: '保險單', parentId: null, isPinned: false },
-];
-
 export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onRestoreTrip, onPermanentDeleteTrip }) => {
     const [activeTab, setActiveTab] = useState<'checklist' | 'files'>('checklist');
 
     return (
         <div className="h-full flex flex-col w-full bg-transparent">
-            
             {/* Header (固定) */}
             <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-4">保管箱</h1>
@@ -43,7 +36,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
             </div>
 
             {/* Content (捲動) */}
-            {/* 修正 1: 確保 min-h-0 和 overflow-y-auto 正確設定，搭配 iOS 原生捲動 */}
             <div className="flex-1 min-h-0 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
                 {activeTab === 'checklist' ? (
                     <PackingListSection />
@@ -59,7 +51,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
     );
 };
 
-// --- PackingListSection ---
+// --- PackingListSection (更名 key 為 kelvin_packing_list) ---
 const PackingListSection: React.FC = () => { 
     const defaultItems: ChecklistItem[] = [ 
         { id: '1', text: '護照', checked: false, category: 'documents' }, 
@@ -74,11 +66,12 @@ const PackingListSection: React.FC = () => {
         { id: '10', text: '轉接頭', checked: false, category: 'gadgets' }, 
     ];
     
-    const [items, setItems] = useState<ChecklistItem[]>(() => { try { const saved = localStorage.getItem('voyage_packing_list'); return saved ? JSON.parse(saved) : defaultItems; } catch (e) { return defaultItems; } });
+    // 改名：從 Kelvin Trip_packing_list 改為 kelvin_packing_list
+    const [items, setItems] = useState<ChecklistItem[]>(() => { try { const saved = localStorage.getItem('kelvin_packing_list'); return saved ? JSON.parse(saved) : defaultItems; } catch (e) { return defaultItems; } });
     const [newItemText, setNewItemText] = useState(''); 
     const [addingToCategory, setAddingToCategory] = useState<ChecklistCategory | null>(null); 
     
-    useEffect(() => { localStorage.setItem('voyage_packing_list', JSON.stringify(items)); }, [items]);
+    useEffect(() => { localStorage.setItem('kelvin_packing_list', JSON.stringify(items)); }, [items]);
     
     const toggleCheck = (id: string) => { setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i)); }; 
     const deleteItem = (id: string) => { if(confirm('確定刪除此項目？')) { setItems(items.filter(i => i.id !== id)); } };
@@ -151,7 +144,7 @@ const PackingListSection: React.FC = () => {
 };
 
 // --------------------------------------------------------------------------
-//  文件管理區塊 (File Manager Section)
+//  文件管理區塊 (已升級：全 Supabase 同步)
 // --------------------------------------------------------------------------
 const FileManagerSection: React.FC<{ 
     deletedTrips: Trip[], 
@@ -162,20 +155,17 @@ const FileManagerSection: React.FC<{
     const [currentPath, setCurrentPath] = useState<string | null>(null);
     const [viewingTrash, setViewingTrash] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
-    const [folders, setFolders] = useState<VaultFolder[]>(() => {
-        try {
-            const saved = localStorage.getItem('voyage_folders');
-            return saved ? JSON.parse(saved) : INITIAL_FOLDERS;
-        } catch { return INITIAL_FOLDERS; }
-    });
+    
+    // --- State: 現在全部來自資料庫 ---
+    const [folders, setFolders] = useState<VaultFolder[]>([]);
     const [files, setFiles] = useState<VaultFile[]>([]);
 
-    useEffect(() => { localStorage.setItem('voyage_folders', JSON.stringify(folders)); }, [folders]);
-    
-    const fetchFiles = async () => {
-        const { data } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
-        if (data) {
-            const loadedFiles: VaultFile[] = data.map((row: any) => ({
+    // --- Fetchers ---
+    const fetchData = async () => {
+        // 1. 抓取檔案
+        const { data: fileData } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
+        if (fileData) {
+            setFiles(fileData.map((row: any) => ({
                 id: row.id,
                 name: row.name,
                 type: row.type as any,
@@ -183,63 +173,119 @@ const FileManagerSection: React.FC<{
                 date: new Date(row.created_at).toLocaleDateString(),
                 parentId: row.parent_id || null,
                 data: row.file_path,
-                isDeleted: row.is_deleted,
-                isPinned: row.is_pinned
-            }));
-            setFiles(loadedFiles);
+                isDeleted: !!row.is_deleted, 
+                isPinned: !!row.is_pinned
+            })));
+        }
+
+        // 2. 抓取資料夾 (新增)
+        const { data: folderData } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
+        if (folderData) {
+            setFolders(folderData.map((row: any) => ({
+                id: row.id,
+                name: row.name,
+                parentId: row.parent_id || null,
+                isPinned: !!row.is_pinned,
+                isDeleted: !!row.is_deleted
+            })));
         }
     };
 
-    useEffect(() => { fetchFiles(); }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
 
-    const activeFiles = files.filter(f => !f.isDeleted);
+    // --- Derived State ---
+    const allActiveFiles = files.filter(f => !f.isDeleted);
+    
+    const activeFolders = folders.filter(f => !f.isDeleted && f.parentId === currentPath);
+    const currentFiles = allActiveFiles.filter(f => f.parentId === currentPath);
+
+    const deletedFolders = folders.filter(f => f.isDeleted);
     const deletedFiles = files.filter(f => f.isDeleted);
-    const currentFolders = folders.filter(f => f.parentId === currentPath);
-    const currentFiles = activeFiles.filter(f => f.parentId === currentPath);
     
     const pinnedFiles = currentFiles.filter(f => f.isPinned);
     const unpinnedFiles = currentFiles.filter(f => !f.isPinned);
-    const sortedFolders = [...currentFolders].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
+    
+    const sortedFolders = [...activeFolders].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
     const currentFolderName = currentPath ? folders.find(f => f.id === currentPath)?.name : '我的文件';
 
-    const handleCreateFolder = () => {
+    // --- Actions (全部改為 Supabase 操作) ---
+
+    const handleCreateFolder = async () => {
         if(!newFolderName.trim()) return;
-        const newFolder: VaultFolder = {
-            id: Date.now().toString(),
-            name: newFolderName,
-            parentId: currentPath,
-            isPinned: false
-        };
-        setFolders(prev => [...prev, newFolder]);
-        setNewFolderName('');
-        setIsCreatingFolder(false);
+        
+        try {
+            const user = (await supabase.auth.getUser()).data.user;
+            if(!user) return;
+
+            const newFolder = {
+                user_id: user.id,
+                name: newFolderName,
+                parent_id: currentPath,
+                is_pinned: false,
+                is_deleted: false
+            };
+
+            const { error } = await supabase.from('vault_folders').insert(newFolder);
+            if(error) throw error;
+
+            setNewFolderName('');
+            setIsCreatingFolder(false);
+            fetchData(); // Refresh
+        } catch (e) {
+            console.error(e);
+            alert("建立資料夾失敗");
+        }
     };
 
     const onFolderDragEnd = (result: DropResult) => {
+        // 資料庫排序比較複雜，這裡暫時只做前端視覺效果，不寫入資料庫
         if (!result.destination) return;
         const items = Array.from(sortedFolders);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
-        // Note: This only reorders locally within the view. Persisting order requires updating the folder array correctly.
-        // For simplicity, we just update the state here, but in a real app, you might want an 'order' field.
-        const otherFolders = folders.filter(f => f.parentId !== currentPath);
-        // This simple merge puts reordered items at the end, which might be glitchy. 
-        // A better approach is usually needed for true reordering, but for now we keep it simple.
+        const otherFolders = folders.filter(f => f.isDeleted || f.parentId !== currentPath);
         setFolders([...otherFolders, ...items]);
+    };
+
+    const updateFolderStatus = async (id: string, updates: any) => {
+        // Optimistic UI
+        setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        
+        const dbUpdates: any = {};
+        if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
+        if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
+
+        const { error } = await supabase.from('vault_folders').update(dbUpdates).eq('id', id);
+        if(error) {
+            console.error(error);
+            fetchData(); // Revert on error
+        }
     };
 
     const toggleFolderPin = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        setFolders(prev => prev.map(f => f.id === id ? { ...f, isPinned: !f.isPinned } : f));
+        const folder = folders.find(f => f.id === id);
+        if(folder) updateFolderStatus(id, { isPinned: !folder.isPinned });
     };
     
     const handleDeleteFolder = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if(confirm("確定刪除此資料夾？")) {
+        if(confirm("確定將此資料夾移至垃圾桶？")) {
+            updateFolderStatus(id, { isDeleted: true });
+        }
+    }
+
+    const handleRestoreFolder = (id: string) => {
+        updateFolderStatus(id, { isDeleted: false });
+    }
+
+    const handlePermanentDeleteFolder = async (id: string) => {
+        if(confirm("確定要永久刪除此資料夾？此動作無法復原。")) {
             setFolders(prev => prev.filter(f => f.id !== id));
+            await supabase.from('vault_folders').delete().eq('id', id);
         }
     }
 
@@ -251,9 +297,14 @@ const FileManagerSection: React.FC<{
         try {
             const user = (await supabase.auth.getUser()).data.user;
             if (!user) throw new Error("請先登入");
-            const filePath = `${user.id}/${Date.now()}_${file.name}`;
+
+            const fileExt = file.name.split('.').pop();
+            const safeFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `${user.id}/${safeFileName}`;
+            
             const { error: uploadError } = await supabase.storage.from('vault').upload(filePath, file);
             if (uploadError) throw uploadError;
+
             const newFileRec = {
                 user_id: user.id,
                 name: file.name,
@@ -266,7 +317,7 @@ const FileManagerSection: React.FC<{
             };
             const { error: dbError } = await supabase.from('vault_files').insert(newFileRec);
             if (dbError) throw dbError;
-            await fetchFiles();
+            await fetchData();
             alert("上傳成功！");
         } catch (error: any) { alert("上傳失敗：" + error.message); } finally { setIsUploading(false); }
     };
@@ -284,13 +335,16 @@ const FileManagerSection: React.FC<{
         const dbUpdates: any = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
         if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
-        await supabase.from('vault_files').update(dbUpdates).eq('id', id);
+        
+        const { error } = await supabase.from('vault_files').update(dbUpdates).eq('id', id);
+        if (error) fetchData();
     };
     
     const handlePermanentDeleteFile = async (id: string, filePath?: string) => {
         if(confirm("確定要永久刪除？無法復原。")) {
             setFiles(prev => prev.filter(f => f.id !== id));
-            await supabase.from('vault_files').delete().eq('id', id);
+            const { error } = await supabase.from('vault_files').delete().eq('id', id);
+            if (error) { alert("刪除失敗"); return; }
             if (filePath) await supabase.storage.from('vault').remove([filePath]);
         }
     }
@@ -307,7 +361,35 @@ const FileManagerSection: React.FC<{
                 </div>
 
                 <div className="space-y-6">
-                    {/* 刪除的文件 */}
+                    
+                    {/* 1. 刪除的資料夾 */}
+                    <div className="bg-orange-50/50 rounded-3xl p-5 border border-orange-100">
+                        <h3 className="text-xs font-bold text-orange-400 uppercase mb-3 ml-1 flex items-center gap-1"><Folder className="w-3 h-3" /> 資料夾</h3>
+                        {deletedFolders.length === 0 ? (<p className="text-gray-400 text-sm text-center py-4">無資料夾</p>) : (
+                            <div className="space-y-2">
+                                {deletedFolders.map(folder => (
+                                    <div key={folder.id} className="bg-white p-3 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm">
+                                         <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center shrink-0 text-orange-400">
+                                                <Folder className="w-5 h-5" />
+                                            </div>
+                                            <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{folder.name}</p></div>
+                                         </div>
+                                         <div className="flex gap-2">
+                                             <button onClick={() => handleRestoreFolder(folder.id)} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100">
+                                                <RotateCcw className="w-4 h-4" />
+                                             </button>
+                                             <button onClick={() => handlePermanentDeleteFolder(folder.id)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                                                <XCircle className="w-4 h-4" />
+                                             </button>
+                                         </div>
+                                     </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 2. 刪除的文件 */}
                     <div className="bg-red-50/50 rounded-3xl p-5 border border-red-100">
                         <h3 className="text-xs font-bold text-red-400 uppercase mb-3 ml-1 flex items-center gap-1"><FileIcon className="w-3 h-3" /> 文件</h3>
                         {deletedFiles.length === 0 ? (<p className="text-gray-400 text-sm text-center py-4">無檔案</p>) : (
@@ -332,13 +414,13 @@ const FileManagerSection: React.FC<{
                         )}
                     </div>
 
-                    {/* 刪除的行程 (Trip) */}
-                    <div className="bg-red-50/50 rounded-3xl p-5 border border-red-100">
-                        <h3 className="text-xs font-bold text-red-400 uppercase mb-3 ml-1 flex items-center gap-1"><Cloud className="w-3 h-3" /> 行程</h3>
+                    {/* 3. 刪除的行程 */}
+                    <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100">
+                        <h3 className="text-xs font-bold text-blue-400 uppercase mb-3 ml-1 flex items-center gap-1"><Cloud className="w-3 h-3" /> 行程</h3>
                         {deletedTrips.length === 0 ? (<p className="text-gray-400 text-sm text-center py-4">無行程</p>) : (
                             <div className="space-y-2">
                                 {deletedTrips.map(trip => (
-                                    <div key={trip.id} className="bg-white p-3 rounded-xl border border-red-100 flex items-center justify-between shadow-sm">
+                                    <div key={trip.id} className="bg-white p-3 rounded-xl border border-blue-100 flex items-center justify-between shadow-sm">
                                          <div className="flex items-center gap-3 min-w-0">
                                             <div className="w-10 h-10 bg-gray-200 rounded-lg overflow-hidden shrink-0"><img src={trip.coverImage} className="w-full h-full object-cover grayscale opacity-60" alt="" /></div>
                                             <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{trip.destination}</p><p className="text-[10px] text-gray-400">{trip.days.length} 天</p></div>
@@ -364,7 +446,6 @@ const FileManagerSection: React.FC<{
     // --- 正常檔案瀏覽 ---
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
             {/* 1. 儲存空間 */}
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                 <div className="flex justify-between items-end mb-2">
@@ -416,7 +497,6 @@ const FileManagerSection: React.FC<{
                                             <div 
                                                 ref={provided.innerRef}
                                                 {...provided.draggableProps}
-                                                // 修正 2: 允許資料夾區域捲動
                                                 style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
                                                 onClick={() => setCurrentPath(folder.id)}
                                                 className={`p-4 rounded-2xl border transition-all cursor-pointer relative group flex flex-col items-start 
@@ -443,10 +523,9 @@ const FileManagerSection: React.FC<{
                                                 </div>
                                                 <h3 className="font-semibold text-gray-800 truncate w-full text-sm">{folder.name}</h3>
                                                 <p className="text-[10px] text-gray-500">
-                                                    {activeFiles.filter(f => f.parentId === folder.id).length} 項目
+                                                    {allActiveFiles.filter(f => f.parentId === folder.id).length} 項目
                                                 </p>
                                                 
-                                                {/* 修正 3: 拖曳手把禁止捲動 */}
                                                 <div 
                                                     {...provided.dragHandleProps}
                                                     className="absolute bottom-2 right-2 p-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing z-10 touch-none"
@@ -488,7 +567,7 @@ const FileManagerSection: React.FC<{
 
                 {/* 5. 檔案列表 (支援拖曳) */}
                 <div className="space-y-2">
-                    {currentFiles.length === 0 && currentFolders.length === 0 && !isCreatingFolder && (
+                    {currentFiles.length === 0 && sortedFolders.length === 0 && !isCreatingFolder && (
                         <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-100 rounded-2xl">
                             <HardDrive className="w-10 h-10 mx-auto mb-2 opacity-20" />
                             <p className="text-xs">此資料夾是空的</p>
@@ -509,7 +588,6 @@ const FileManagerSection: React.FC<{
                                                 <div 
                                                     ref={provided.innerRef}
                                                     {...provided.draggableProps}
-                                                    // 修正 4: 允許檔案區域捲動
                                                     style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
                                                     onClick={() => handleOpenFile(file)}
                                                     className={`bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex items-center gap-3 transition-transform group cursor-pointer ${snapshot.isDragging ? 'z-50 shadow-lg opacity-90' : ''}`}
@@ -526,7 +604,6 @@ const FileManagerSection: React.FC<{
                                                         <button onClick={(e) => { e.stopPropagation(); updateFileStatus(file.id, { isDeleted: true }); }} className="p-2 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                                     </div>
 
-                                                    {/* 修正 5: 檔案拖曳手柄 (右側) */}
                                                     <div 
                                                         {...provided.dragHandleProps}
                                                         className="p-2 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing touch-none shrink-0"
@@ -580,4 +657,4 @@ const FileManagerSection: React.FC<{
             )}
         </div>
     );
-}
+};

@@ -115,6 +115,7 @@ export interface VaultFolder {
     name: string;
     parentId: string | null;
     isPinned?: boolean;
+    isDeleted?: boolean;
 }
 
 export interface VaultFile {

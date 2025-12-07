@@ -72,7 +72,7 @@ const App: React.FC = () => {
   useEffect(() => {
       if (user) {
           fetchTrips();
-          const savedBg = localStorage.getItem(`voyage_${user.id}_bg_image`);
+          const savedBg = localStorage.getItem(`Kelvin Trip_${user.id}_bg_image`);
           if (savedBg) setBgImage(savedBg);
       } else {
           setTrips([]);
@@ -92,7 +92,7 @@ const App: React.FC = () => {
 
   const handleUpdateBackground = (img: string) => {
       setBgImage(img);
-      if(user) localStorage.setItem(`voyage_${user.id}_bg_image`, img);
+      if(user) localStorage.setItem(`Kelvin Trip_${user.id}_bg_image`, img);
   }
   
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
