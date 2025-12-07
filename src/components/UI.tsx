@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { Loader2, ChevronLeft, ChevronRight, X, Share, Link, MessageCircle, Copy } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Copy, MessageCircle } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -11,14 +10,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 export const IOSButton: React.FC<ButtonProps> = ({ 
   children, variant = 'primary', fullWidth, isLoading, className = '', ...props 
 }) => {
-  const baseStyles = "active:scale-95 transition-transform duration-200 font-semibold text-[17px] py-3 px-6 rounded-xl flex items-center justify-center gap-2";
+  const baseStyles = "active:scale-95 transition-transform duration-200 font-semibold text-[17px] py-3 px-6 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100";
   const variants = {
     primary: "bg-ios-blue text-white shadow-sm hover:brightness-110",
     secondary: "bg-white text-ios-blue shadow-sm hover:bg-gray-50",
     ghost: "bg-transparent text-ios-blue hover:bg-gray-100/50",
     danger: "bg-ios-red text-white shadow-sm hover:brightness-110"
   };
-
   return (
     <button 
       className={`${baseStyles} ${variants[variant]} ${fullWidth ? 'w-full' : ''} ${className} ${isLoading ? 'opacity-80' : ''}`}
@@ -49,7 +47,8 @@ export const IOSCard: React.FC<{ children: React.ReactNode; className?: string; 
 
 export const IOSInput: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
   <input 
-    className="w-full bg-ios-bg p-4 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-ios-blue/50 transition-all"
+    // 修正 1: 加上 text-base (16px)，防止 iOS Safari 在輸入時自動放大畫面
+    className="w-full bg-ios-bg p-4 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-ios-blue/50 transition-all text-base"
     {...props}
   />
 );
@@ -72,7 +71,7 @@ interface IOSShareSheetProps {
 
 export const IOSShareSheet: React.FC<IOSShareSheetProps> = ({ isOpen, onClose, url, title }) => {
     const [copied, setCopied] = useState(false);
-
+    
     if (!isOpen) return null;
 
     const handleCopy = () => {
@@ -92,17 +91,18 @@ export const IOSShareSheet: React.FC<IOSShareSheetProps> = ({ isOpen, onClose, u
 
     return (
         <>
-             <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity" onClick={onClose} />
-             <div className="fixed bottom-0 left-0 right-0 bg-gray-100 rounded-t-3xl z-50 pb-safe animate-in slide-in-from-bottom duration-300 max-w-md mx-auto overflow-hidden">
+             {/* 修正 2: 提高 z-index 到 60，確保覆蓋在 TabBar 之上 */}
+             <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] transition-opacity" onClick={onClose} style={{ touchAction: 'none' }} />
+             <div className="fixed bottom-0 left-0 right-0 bg-gray-100 rounded-t-3xl z-[60] pb-safe animate-in slide-in-from-bottom duration-300 max-w-md mx-auto overflow-hidden">
                 <div className="p-4 flex gap-4 overflow-x-auto no-scrollbar bg-white/50 backdrop-blur-md m-4 rounded-2xl border border-white/50">
-                    <div className="flex flex-col items-center gap-2 min-w-[70px]">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-14 h-14 rounded-xl shadow-sm" alt="LINE" onClick={handleLineShare} />
+                     <div className="flex flex-col items-center gap-2 min-w-[70px] cursor-pointer" onClick={handleLineShare}>
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-14 h-14 rounded-xl shadow-sm" alt="LINE" />
                         <span className="text-[10px] font-medium text-gray-600">LINE</span>
                     </div>
-                    {/* Fake AirDrop */}
+                     {/* Fake AirDrop */}
                      <div className="flex flex-col items-center gap-2 min-w-[70px] opacity-50 grayscale">
                         <div className="w-14 h-14 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                            <div className="w-8 h-8 rounded-full border-2 border-blue-500 flex items-center justify-center">
+                             <div className="w-8 h-8 rounded-full border-2 border-blue-500 flex items-center justify-center">
                                 <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-blue-500"></div>
                             </div>
                         </div>
@@ -111,20 +111,20 @@ export const IOSShareSheet: React.FC<IOSShareSheetProps> = ({ isOpen, onClose, u
                 </div>
 
                 <div className="mx-4 mb-2 bg-white/80 backdrop-blur-xl rounded-xl overflow-hidden divide-y divide-gray-200/50">
-                    <button onClick={handleCopy} className="w-full p-4 flex items-center justify-between active:bg-gray-200 transition-colors">
+                     <button onClick={handleCopy} className="w-full p-4 flex items-center justify-between active:bg-gray-200 transition-colors">
                         <span className="font-medium text-gray-900">複製連結</span>
                         <Copy className="w-5 h-5 text-gray-500" />
                     </button>
-                     <button onClick={handleLineShare} className="w-full p-4 flex items-center justify-between active:bg-gray-200 transition-colors">
+                      <button onClick={handleLineShare} className="w-full p-4 flex items-center justify-between active:bg-gray-200 transition-colors">
                         <span className="font-medium text-gray-900">分享至 LINE</span>
                         <MessageCircle className="w-5 h-5 text-green-500" />
                     </button>
-                </div>
+                 </div>
 
                 <div className="mx-4 mb-6">
                      <button onClick={onClose} className="w-full bg-white font-bold text-ios-blue py-3 rounded-xl active:bg-gray-200 transition-colors">
                         取消
-                     </button>
+                      </button>
                 </div>
 
                 {copied && (
@@ -171,14 +171,13 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
     const [viewDate, setViewDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string>(initialDate || '');
 
-    // Reset view when opening
     useEffect(() => {
         if (isOpen) {
             if (initialDate) {
                 setViewDate(new Date(initialDate));
                 setSelectedDate(initialDate);
             } else {
-                setViewDate(new Date());
+                 setViewDate(new Date());
             }
         }
     }, [isOpen, initialDate]);
@@ -187,19 +186,15 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
 
     const handlePrevMonth = () => setViewDate(new Date(year, month - 1, 1));
     const handleNextMonth = () => setViewDate(new Date(year, month + 1, 1));
-
+    
     const handleDayClick = (day: number) => {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         setSelectedDate(dateStr);
-        onSelect(dateStr);
-        // We assume onClose will be called by parent or we can call it here if we want auto-close
-        // onClose(); 
     };
 
     const isSelected = (day: number) => {
@@ -212,17 +207,16 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
         const today = new Date();
         return today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
     };
-
+    
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
     return (
         <>
-            {/* Backdrop */}
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity" onClick={onClose} />
+            {/* 修正 3: 提高 z-index 到 60，與 ShareSheet 一致 */}
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] transition-opacity" onClick={onClose} style={{ touchAction: 'none' }} />
             
-            {/* Bottom Sheet */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 pb-safe animate-in slide-in-from-bottom duration-300 shadow-2xl overflow-hidden max-w-md mx-auto">
-                {/* Header */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[60] pb-safe animate-in slide-in-from-bottom duration-300 shadow-2xl overflow-hidden max-w-md mx-auto">
+                 {/* Header */}
                 <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50">
                     <button onClick={onClose} className="text-gray-500 p-2 rounded-full hover:bg-gray-100">
                         取消
@@ -236,20 +230,20 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                 {/* Calendar Controls */}
                 <div className="p-4">
                     <div className="flex justify-between items-center mb-6">
-                        <button onClick={handlePrevMonth} className="p-2 hover:bg-gray-100 rounded-full text-gray-600">
+                         <button onClick={handlePrevMonth} className="p-2 hover:bg-gray-100 rounded-full text-gray-600">
                             <ChevronLeft className="w-5 h-5" />
                         </button>
                         <span className="text-lg font-bold text-gray-800">
-                            {year}年 {month + 1}月
+                             {year}年 {month + 1}月
                         </span>
                         <button onClick={handleNextMonth} className="p-2 hover:bg-gray-100 rounded-full text-gray-600">
-                            <ChevronRight className="w-5 h-5" />
+                             <ChevronRight className="w-5 h-5" />
                         </button>
                     </div>
 
                     {/* Weekdays */}
                     <div className="grid grid-cols-7 mb-2">
-                        {weekDays.map(d => (
+                         {weekDays.map(d => (
                             <div key={d} className="text-center text-xs font-medium text-gray-400 py-1">
                                 {d}
                             </div>
@@ -257,7 +251,7 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                     </div>
 
                     {/* Days Grid */}
-                    <div className="grid grid-cols-7 gap-y-2">
+                     <div className="grid grid-cols-7 gap-y-2">
                         {Array.from({ length: firstDayOfMonth }).map((_, i) => (
                             <div key={`empty-${i}`} />
                         ))}
@@ -269,16 +263,16 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                             return (
                                 <div key={day} className="flex justify-center">
                                     <button
-                                        onClick={() => handleDayClick(day)}
+                                         onClick={() => handleDayClick(day)}
                                         className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-200
-                                            ${selected 
+                                             ${selected 
                                                 ? 'bg-ios-blue text-white shadow-md scale-105' 
                                                 : 'text-gray-900 hover:bg-gray-100 active:scale-95'
                                             }
                                             ${today && !selected ? 'text-ios-blue font-bold bg-blue-50' : ''}
                                         `}
                                     >
-                                        {day}
+                                         {day}
                                     </button>
                                 </div>
                             );

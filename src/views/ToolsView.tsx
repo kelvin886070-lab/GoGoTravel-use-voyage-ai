@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, Phone, Thermometer, Image as ImageIcon, Upload, Mic, ExternalLink, Zap, ArrowRight, ArrowLeftRight, Ruler, Gauge, Weight, Plug, Siren, Plus, Ambulance, Backpack, CheckCircle, Circle, Trash2, Shirt, Smartphone, Briefcase, Bath, Package } from 'lucide-react';
+import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, Phone, Thermometer, Image as ImageIcon, Upload, Mic, ExternalLink, Zap, ArrowRight, ArrowLeftRight, Ruler, Gauge, Weight, Plug, Siren, Plus, Ambulance, Backpack, CheckCircle, Circle, Trash2, Shirt, Smartphone, Briefcase, Bath, Package, MapPin } from 'lucide-react';
 import { IOSHeader, IOSButton, IOSInput } from '../components/UI';
 import { translateText, getCurrencyRate, getLocalEmergencyInfo, getPlugInfo } from '../services/gemini';
 import { ToolType, type VoltageInfo, type ChecklistItem, type ChecklistCategory } from '../types';
@@ -35,7 +35,9 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ onUpdateBackground }) => {
   };
 
   if (activeTool) {
-    return <div className="min-h-screen bg-ios-bg/95 backdrop-blur-xl pb-24 animate-in slide-in-from-right duration-300 z-50 fixed inset-0 overflow-y-auto">{renderToolContent()}</div>;
+    // 修正 1: 使用 h-[100dvh] 確保全螢幕工具頁面高度正確，避免被手機網址列遮擋
+    // 加上 no-scrollbar 隱藏捲動條
+    return <div className="h-[100dvh] bg-ios-bg/95 backdrop-blur-xl pb-24 animate-in slide-in-from-right duration-300 z-50 fixed inset-0 overflow-y-auto no-scrollbar">{renderToolContent()}</div>;
   }
 
   return (
@@ -84,7 +86,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ onUpdateBackground }) => {
           title="緊急求助" 
           onClick={() => setActiveTool(ToolType.EMERGENCY)} 
         />
-         <ToolCard 
+        <ToolCard 
           icon={<ImageIcon className="w-7 h-7 text-white" />} 
           color="bg-purple-500" 
           title="更換背景" 
@@ -119,7 +121,7 @@ const ToolLayout: React.FC<{ title: string, onBack: () => void, children: React.
   </>
 );
 
-// --- Packing List Tool (New!) ---
+// --- Packing List Tool ---
 
 const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const defaultItems: ChecklistItem[] = [
@@ -169,7 +171,6 @@ const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     };
 
     const progress = Math.round((items.filter(i => i.checked).length / items.length) * 100) || 0;
-
     const categories: { id: ChecklistCategory, label: string, icon: any }[] = [
         { id: 'documents', label: '必備證件', icon: Briefcase },
         { id: 'clothes', label: '衣物穿搭', icon: Shirt },
@@ -199,7 +200,6 @@ const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 {categories.map(cat => {
                     const catItems = items.filter(i => i.category === cat.id);
                     const completedCount = catItems.filter(i => i.checked).length;
-                    
                     return (
                         <div key={cat.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
                             <div className="bg-gray-50 px-5 py-3 flex justify-between items-center">
@@ -253,7 +253,6 @@ const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                                 setActiveCategory(cat.id);
                                                 // Hack to trigger state update in next tick
                                                 setTimeout(() => {
-                                                    // Logic inside input onChange is better but this is quick for multiple inputs
                                                     const val = e.currentTarget.value;
                                                     if(val) {
                                                         setItems(prev => [...prev, {
@@ -285,6 +284,7 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [country, setCountry] = useState('');
     const [info, setInfo] = useState<VoltageInfo | null>(null);
     const [loading, setLoading] = useState(false);
+
     const fetchInfo = async () => {
         if(!country) return;
         setLoading(true);
@@ -313,7 +313,7 @@ const VoltageTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {info && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                     <div className="grid grid-cols-2 gap-4">
-                         <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group">
+                        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group">
                              <div className="absolute top-0 right-0 w-16 h-16 bg-yellow-100 rounded-bl-full -mr-4 -mt-4 opacity-50 group-hover:scale-110 transition-transform"></div>
                              <span className="text-xs font-bold text-gray-400 uppercase block mb-1">電壓</span>
                              <div className="flex items-baseline gap-1">
@@ -429,7 +429,7 @@ const UnitConverterTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                          <span className="text-6xl font-extralight tracking-wide text-white transition-all duration-300 block w-full truncate">
                              {result}
                          </span>
-                     </div>
+                    </div>
                 </div>
             </div>
         </ToolLayout>
@@ -482,6 +482,7 @@ const TranslateTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
   const handleTranslate = async () => {
     if(!input) return;
     setLoading(true);
@@ -496,6 +497,7 @@ const TranslateTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         : `https://translate.google.com/?sl=auto&tl=zh-TW&op=translate`;
       window.open(url, '_blank');
   };
+
   return (
     <ToolLayout title="即時翻譯" onBack={onBack}>
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mb-4">
@@ -547,6 +549,7 @@ const CurrencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
    const [to, setTo] = useState('TWD');
    const [result, setResult] = useState('');
    const [loading, setLoading] = useState(false);
+
    const convert = async () => {
      setLoading(true);
      const res = await getCurrencyRate(from, to, Number(amount));
@@ -613,7 +616,7 @@ const TransportTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <ToolLayout title="當地交通" onBack={onBack}>
             <div className="space-y-4">
-                <a href="https://www.google.com/maps" target="_blank" rel="noreferrer" className="block group">
+                <a href="http://googleusercontent.com/maps.google.com/?q=bus+stop+near+me" target="_blank" rel="noreferrer" className="block group">
                     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 transition-all active:scale-95 group-hover:shadow-md">
                         <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
                             <Bus className="w-7 h-7" />
@@ -634,7 +637,7 @@ const TransportTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <div className="flex-1">
                             <h3 className="font-bold text-lg text-gray-900">Uber</h3>
                             <p className="text-gray-500 text-sm">全球通用的叫車服務</p>
-                        </div>
+                         </div>
                         <ExternalLink className="text-gray-300 w-5 h-5" />
                     </div>
                 </a>
@@ -660,6 +663,7 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [location, setLocation] = useState('');
     const [info, setInfo] = useState('');
     const [loading, setLoading] = useState(false);
+
     const handleSearch = async () => {
         if(!location) return;
         setLoading(true);
@@ -729,7 +733,3 @@ const EmergencyTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </ToolLayout>
     );
 };
-
-const MapPin: React.FC<any> = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-);

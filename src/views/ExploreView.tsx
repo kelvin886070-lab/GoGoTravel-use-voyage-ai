@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plane, Hotel, Car, Ticket, Search, MapPin, Calendar, Users, ArrowRight } from 'lucide-react';
 import { IOSHeader, IOSCard, IOSButton, IOSInput, IOSDateInput, IOSDatePicker } from '../components/UI';
@@ -9,7 +8,9 @@ export const ExploreView: React.FC = () => {
     const [activeType, setActiveType] = useState<BookingType>('flight');
 
     return (
-        <div className="min-h-screen pb-24">
+        // 修正 1: 移除 min-h-screen，因為捲動是由 App.tsx 的外層容器控制的
+        // 保留 pb-24 以確保底部內容不會被 TabBar 遮住
+        <div className="w-full pb-24">
             <IOSHeader title="探索" />
             
             <div className="px-5 mt-6 space-y-8">
@@ -111,27 +112,27 @@ const FlightSearch = () => {
                                 value={origin}
                                 onChange={e => setOrigin(e.target.value)}
                             />
-                            <div className="text-xs text-gray-400">目前位置</div>
+                             <div className="text-xs text-gray-400">目前位置</div>
                          </InputGroup>
                     </div>
                     <div className="flex items-center justify-center text-gray-300">
-                        <ArrowRight className="w-6 h-6" />
+                         <ArrowRight className="w-6 h-6" />
                     </div>
                     <div className="flex-1">
                         <InputGroup icon={<MapPin />} label="目的地">
-                            <input 
+                             <input 
                                 className="w-full bg-transparent font-bold text-lg outline-none placeholder-gray-300 uppercase" 
                                 placeholder="例如: TYO" 
                                 value={dest}
                                 onChange={e => setDest(e.target.value)}
                             />
-                            <div className="text-xs text-gray-400">輸入機場或城市</div>
+                             <div className="text-xs text-gray-400">輸入機場或城市</div>
                         </InputGroup>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <InputGroup icon={<Calendar />} label="出發日期">
+                     <InputGroup icon={<Calendar />} label="出發日期">
                         <IOSDateInput 
                             value={dates.start} 
                             onClick={() => setPickerOpen('start')} 
@@ -139,7 +140,7 @@ const FlightSearch = () => {
                         />
                     </InputGroup>
                     <InputGroup icon={<Calendar />} label="回程日期">
-                         <IOSDateInput 
+                          <IOSDateInput 
                             value={dates.end} 
                             onClick={() => setPickerOpen('end')} 
                             placeholder="選擇回程"
@@ -148,7 +149,7 @@ const FlightSearch = () => {
                 </div>
 
                 <InputGroup icon={<Users />} label="乘客人數">
-                    <input className="w-full bg-transparent font-medium outline-none" placeholder="1 成人, 經濟艙" />
+                     <input className="w-full bg-transparent font-medium outline-none" placeholder="1 成人, 經濟艙" />
                 </InputGroup>
 
                 <IOSButton fullWidth className="mt-4 shadow-lg shadow-blue-200" onClick={handleSearch}>
@@ -192,7 +193,7 @@ const HotelSearch = () => {
                         value={dest}
                         onChange={e => setDest(e.target.value)}
                     />
-                </InputGroup>
+                 </InputGroup>
 
                 <div className="grid grid-cols-2 gap-3">
                      <InputGroup icon={<Calendar />} label="入住日期">
@@ -201,7 +202,7 @@ const HotelSearch = () => {
                             onClick={() => setPickerOpen('start')} 
                             placeholder="選擇入住"
                         />
-                    </InputGroup>
+                     </InputGroup>
                     <InputGroup icon={<Calendar />} label="退房日期">
                          <IOSDateInput 
                             value={dates.end} 
@@ -209,16 +210,16 @@ const HotelSearch = () => {
                             placeholder="選擇退房"
                         />
                     </InputGroup>
-                </div>
+                 </div>
 
                 <div className="flex gap-3">
                      <div className="flex-1">
                         <InputGroup icon={<Users />} label="成人">
-                             <input type="number" className="w-full bg-transparent font-medium outline-none" placeholder="2" />
+                              <input type="number" className="w-full bg-transparent font-medium outline-none" placeholder="2" />
                         </InputGroup>
                      </div>
                      <div className="flex-1">
-                        <InputGroup icon={<Users />} label="兒童">
+                         <InputGroup icon={<Users />} label="兒童">
                              <input type="number" className="w-full bg-transparent font-medium outline-none" placeholder="0" />
                         </InputGroup>
                      </div>
@@ -251,7 +252,7 @@ const CarSearch = () => {
              return;
         }
         // Link to Google Maps Car Rental search as it handles text queries well
-        const url = `https://www.google.com/maps/search/car+rental+in+${encodeURIComponent(location)}`;
+        const url = `http://googleusercontent.com/maps.google.com/?q=car+rental+in+${encodeURIComponent(location)}`;
         window.open(url, '_blank');
     };
 
@@ -265,7 +266,7 @@ const CarSearch = () => {
                         value={location}
                         onChange={e => setLocation(e.target.value)}
                     />
-                </InputGroup>
+                 </InputGroup>
 
                 <div className="grid grid-cols-2 gap-3">
                     <InputGroup icon={<Calendar />} label="取車日期">
@@ -274,7 +275,7 @@ const CarSearch = () => {
                             onClick={() => setPickerOpen('start')} 
                             placeholder="選擇取車"
                         />
-                    </InputGroup>
+                     </InputGroup>
                     <InputGroup icon={<Calendar />} label="還車日期">
                          <IOSDateInput 
                             value={dates.end} 
@@ -282,12 +283,12 @@ const CarSearch = () => {
                             placeholder="選擇還車"
                         />
                     </InputGroup>
-                </div>
+                 </div>
                 
                  <div className="flex items-center gap-2 mt-2">
                     <input type="checkbox" id="return-diff" className="rounded text-ios-blue focus:ring-ios-blue" />
                     <label htmlFor="return-diff" className="text-sm text-gray-600">甲地乙還</label>
-                </div>
+                 </div>
 
                 <IOSButton fullWidth className="mt-4 shadow-lg shadow-blue-200" onClick={handleSearch}>
                     搜尋租車 (Google Maps)
@@ -333,7 +334,7 @@ const TicketSearch = () => {
                 </div>
 
                 <div>
-                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">熱門關鍵字</h4>
+                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">熱門關鍵字</h4>
                     <div className="flex flex-wrap gap-2">
                         {['迪士尼樂園', '環球影城', '和服體驗', '富士山一日遊', '晴空塔', '新幹線'].map(tag => (
                             <button 
@@ -343,7 +344,7 @@ const TicketSearch = () => {
                             >
                                 {tag}
                             </button>
-                        ))}
+                         ))}
                     </div>
                 </div>
 
