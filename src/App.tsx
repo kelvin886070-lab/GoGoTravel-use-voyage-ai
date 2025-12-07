@@ -1,16 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Home, Compass, Briefcase, FileText, Camera, ArrowLeft, List, Map, Trash2, Plus, GripVertical, Clock, X, MapPin, DollarSign, Tag as TagIcon, Wallet, TrendingUp, PieChart, Sparkles, PenTool, Settings, Check, Utensils, Bed, Bus, Plane } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import React, { useState, useEffect } from 'react';
+import { Home, Compass, Briefcase, FileText } from 'lucide-react';
 import { AppView } from './types';
-import type { Trip, TripDay, User, Activity } from './types';
+import type { Trip, User } from './types';
 import { TripsView } from './views/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
 import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
-import { IOSButton, IOSInput } from './components/UI';
 import { supabase } from './services/supabase';
-import { generateItinerary } from './services/gemini';
 import { ItineraryView } from './views/ItineraryView';
 
 const App: React.FC = () => {
@@ -24,7 +21,7 @@ const App: React.FC = () => {
   const fetchTrips = async () => {
       if (!user) return;
       setIsSyncing(true);
-      const { data, error } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
+      const { data } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
           const loadedTrips = data.map((row: any) => ({ 
               ...row.trip_data, 
@@ -54,20 +51,18 @@ const App: React.FC = () => {
       if (error) console.error("刪除失敗", error);
   };
   
-  // 🔥 關鍵修正：在這裡讀取 Supabase 存的頭貼
   useEffect(() => {
       const checkUser = async () => {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
               const userName = session.user.user_metadata?.full_name || 'User';
-              // 優先使用上傳的頭貼 (avatar_url)，如果沒有才用預設圖
               const userAvatar = session.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`;
               
               setUser({
                   id: session.user.id,
                   name: userName,
                   joinedDate: new Date(session.user.created_at).toLocaleDateString(),
-                  avatar: userAvatar // 設定正確的頭貼
+                  avatar: userAvatar
               });
           }
       };
@@ -99,7 +94,9 @@ const App: React.FC = () => {
       setBgImage(img);
       if(user) localStorage.setItem(`voyage_${user.id}_bg_image`, img);
   }
+  
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
+  
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
   
   const handleUpdateTrip = (updatedTrip: Trip) => {
@@ -115,7 +112,7 @@ const App: React.FC = () => {
             const deletedTrip = { ...targetTrip, isDeleted: true };
             setTrips(prev => prev.map(t => t.id === id ? deletedTrip : t));
             if (selectedTrip?.id === id) setSelectedTrip(null);
-            saveTripToCloud(deletedTrip); 
+            saveTripToCloud(deletedTrip);
         }
     }
   }
@@ -127,7 +124,7 @@ const App: React.FC = () => {
           setTrips(prev => prev.map(t => t.id === id ? restoredTrip : t));
           saveTripToCloud(restoredTrip);
       }
-  }; 
+  };
 
   const handlePermanentDeleteTrip = (id: string) => {
       if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
@@ -152,7 +149,7 @@ const App: React.FC = () => {
   }
 
   if (!user) return <LoginView onLogin={handleLogin} />;
-
+  
   if (selectedTrip) {
     return (
       <ItineraryView 
@@ -165,6 +162,7 @@ const App: React.FC = () => {
   }
 
   return (
+    // 修正 1: 使用 h-[100dvh] 解決手機網址列遮擋問題
     <div className="h-[100dvh] w-full font-sans text-gray-900 bg-gray-50/80 overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
       
@@ -177,9 +175,13 @@ const App: React.FC = () => {
             </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden relative w-full">
+        {/* 修正 2: 
+            - 移除 overflow-hidden，改用 relative 讓子層決定。
+            - TripsView 和 VaultView 自己有 Header 和 Scroll 邏輯，直接渲染。
+            - ExploreView 和 ToolsView 需要外層幫忙加上 overflow-y-auto。
+        */}
+        <div className="flex-1 min-h-0 relative w-full flex flex-col">
             {currentView === AppView.TRIPS && (
-              <div className="h-full w-full">
                 <TripsView 
                   trips={trips.filter(t => !t.isDeleted)} 
                   user={user}
@@ -190,18 +192,27 @@ const App: React.FC = () => {
                   onDeleteTrip={handleSoftDeleteTrip}
                   onReorderTrips={handleReorderTrips}
                 />
-              </div>
             )}
-            {currentView === AppView.EXPLORE && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ExploreView /></div>}
-            {currentView === AppView.TOOLS && <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in"><ToolsView onUpdateBackground={handleUpdateBackground} /></div>}
-            {currentView === AppView.VAULT && (
+            
+            {currentView === AppView.EXPLORE && (
                 <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
-                    <VaultView 
-                        deletedTrips={trips.filter(t => t.isDeleted)} 
-                        onRestoreTrip={handleRestoreTrip} 
-                        onPermanentDeleteTrip={handlePermanentDeleteTrip} 
-                    />
+                    <ExploreView />
                 </div>
+            )}
+            
+            {currentView === AppView.TOOLS && (
+                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
+                    <ToolsView onUpdateBackground={handleUpdateBackground} />
+                </div>
+            )}
+            
+            {currentView === AppView.VAULT && (
+                // VaultView 內部已經有 Header 和 flex-col 結構，直接渲染即可
+                <VaultView 
+                    deletedTrips={trips.filter(t => t.isDeleted)} 
+                    onRestoreTrip={handleRestoreTrip} 
+                    onPermanentDeleteTrip={handlePermanentDeleteTrip} 
+                />
             )}
         </div>
 
