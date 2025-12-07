@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, 
     Wallet, TrendingUp, Settings, X, Utensils, Bed, Bus, Plane, 
-    Tag as TagIcon, Check 
+    Tag as TagIcon
 } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity } from '../types';
-import { IOSButton, IOSInput, IOSShareSheet } from '../components/UI';
+import { IOSInput } from '../components/UI';
 
 // --- Helpers ---
 const addMinutes = (timeStr: string, minutes: number): string => {
@@ -57,9 +57,7 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
         activity: { color: 'bg-cyan-100 text-cyan-600', label: '體驗', icon: TagIcon },
         default: { color: 'bg-gray-100 text-gray-500', label: '其他', icon: TagIcon }
     };
-
     const { color, label, icon: Icon } = config[type] || config.default;
-
     return (
         <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wide transition-colors flex items-center gap-1 w-fit ${color}`}>
             <Icon className="w-3 h-3" />
@@ -219,13 +217,12 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
     const stops = day.activities.filter(a => a.title || a.location).map(a => a.location || a.title);
     let mapUrl = '';
-    if (stops.length === 0) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
-    else if (stops.length === 1) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
+    if (stops.length === 0) mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(destination)}`;
+    else if (stops.length === 1) mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(stops[0])}`;
     else {
-        const origin = encodeURIComponent(stops[0]);
         const dest = encodeURIComponent(stops[stops.length - 1]);
-        const waypoints = stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|');
-        mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
+        const waypoints = stops.slice(0, -1).map(s => encodeURIComponent(s)).join('|');
+        mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
     }
     return (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
@@ -240,10 +237,19 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
 };
 
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
-    const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<Activity['type']>('sightseeing'); const [description, setDescription] = useState(''); const [location, setLocation] = useState('');
-    const handleSubmit = () => { if (!title) return; onAdd({ id: Date.now().toString(), time, title, description, type, location }); };
+    const [title, setTitle] = useState('');
+    const [time, setTime] = useState('09:00'); 
+    const [type, setType] = useState<Activity['type']>('sightseeing'); 
+    const [description, setDescription] = useState(''); 
+    const [location, setLocation] = useState('');
+    
+    const handleSubmit = () => { 
+        if (!title) return; 
+        onAdd({ id: Date.now().toString(), time, title, description, type, location }); 
+    };
+
     return (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><optgroup label="基本"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></optgroup><optgroup label="休閒娛樂"><option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option></optgroup><optgroup label="其他"><option value="culture">文化/展覽</option><option value="activity">體驗活動</option></optgroup></select></div><IOSButton fullWidth onClick={handleSubmit}>確認</IOSButton></div></div></div>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><optgroup label="基本"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></optgroup><optgroup label="休閒娛樂"><option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option></optgroup><optgroup label="其他"><option value="culture">文化/展覽</option><option value="activity">體驗活動</option></optgroup></select></div><button className="w-full py-3.5 rounded-xl bg-ios-blue text-white font-bold active:scale-95 transition-transform" onClick={handleSubmit}>確認</button></div></div></div>
     );
 };
 
@@ -251,7 +257,7 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 
 interface ItineraryViewProps { 
     trip: Trip; 
-    onBack: () => void; 
+    onBack: () => void;
     onDelete: () => void; 
     onUpdateTrip: (t: Trip) => void; 
 }
@@ -269,7 +275,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
-
+    
     const handleTitleBlur = () => {
         if (editingTitle !== trip.destination && editingTitle.trim() !== "") {
             onUpdateTrip({ ...trip, destination: editingTitle });
@@ -337,7 +343,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
 
     return (
-        <div className="bg-white h-full w-full flex flex-col relative animate-in slide-in-from-right duration-300">
+        // 修正 1: 使用 h-[100dvh] 確保在手機上佔滿全螢幕
+        <div className="bg-white h-[100dvh] w-full flex flex-col relative animate-in slide-in-from-right duration-300">
             
             {/* Header Image */}
             <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
@@ -388,7 +395,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
+                    {/* Content List: 修正 2: 加上 min-h-0 以確保 overflow-y-auto 生效 */}
+                    <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
                         {showExpenses && <ExpenseDashboard trip={trip} />}
                         <DragDropContext onDragEnd={onDragEnd}>
                             <div className="py-4 space-y-10">
@@ -406,7 +414,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                         {day.activities.map((act, index) => (
                                                             <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
                                                                 {(provided, snapshot) => (
-                                                                    <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style }} className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}>
+                                                                    <div 
+                                                                        ref={provided.innerRef} 
+                                                                        {...provided.draggableProps} 
+                                                                        // 修正 3: 加上 touchAction: 'pan-y'，允許手指在卡片上滑動頁面
+                                                                        style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} 
+                                                                        className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}
+                                                                    >
                                                                         <div className="flex gap-3">
                                                                             <div className="flex flex-col items-center pt-1 min-w-[55px]">
                                                                                 <input type="time" value={act.time} onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)} className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-ios-blue focus:text-ios-blue outline-none w-full text-center cursor-pointer transition-colors" />
@@ -423,7 +437,15 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                                 </div>
                                                                                 <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
                                                                             </div>
-                                                                            <div {...provided.dragHandleProps} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors"><GripVertical className="w-5 h-5" /></div>
+                                                                            
+                                                                            {/* 修正 4: 拖曳手把禁止捲動，確保拖曳功能正常 */}
+                                                                            <div 
+                                                                                {...provided.dragHandleProps} 
+                                                                                style={{ touchAction: 'none' }}
+                                                                                className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors"
+                                                                            >
+                                                                                <GripVertical className="w-5 h-5" />
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 )}
