@@ -1,18 +1,27 @@
 import React, { useState, useMemo, useEffect } from 'react';
+// 1. Lucide 圖示 (包含所有小工具、模態視窗、分段控制器需要的圖示)
 import { 
     Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, 
     PenTool, Image as ImageIcon, Clock, History, Loader2, CloudRain, 
     Cloud, Sun, CloudSun, Lock, CheckCircle, Camera, LogOut, 
-    ChevronLeft, ChevronRight, Sparkles 
+    ChevronLeft, ChevronRight, Sparkles,
+    User as UserIcon, Heart, Baby, Users, Armchair, Coffee, Footprints, Zap,
+    Utensils, ShoppingBag, Landmark, Trees, Palette, FerrisWheel, Shrub
 } from 'lucide-react';
+
+// 2. 拖曳套件
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
+
+// 3. 型別定義
 import type { Trip, TripDay, User, WeatherInfo } from '../types';
+
+// 4. 元件與服務
 import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
 // ============================================================================
-// 1. 小工具元件
+// 1. 小工具元件 (WeatherWidget, TimeWidget)
 // ============================================================================
 
 const WeatherWidget: React.FC = () => {
@@ -121,147 +130,7 @@ const TimeWidget: React.FC = () => {
 const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
 
 // ============================================================================
-// 2. 主視圖 (TripsView)
-// ============================================================================
-
-interface TripsViewProps {
-  trips: Trip[];
-  user: User;
-  onLogout: () => void;
-  onAddTrip: (trip: Trip) => void;
-  onImportTrip: (trip: Trip) => void;
-  onSelectTrip: (trip: Trip) => void;
-  onDeleteTrip: (id: string) => void;
-  onReorderTrips: (trips: Trip[]) => void;
-  onUpdateTrip?: (trip: Trip) => void;
-}
-
-export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, onDeleteTrip, onReorderTrips, onUpdateTrip }) => {
-  const [isCreating, setIsCreating] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
-
-  const { upcomingTrips, pastTrips } = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const upcoming = trips.filter(t => t.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
-    const past = trips.filter(t => t.endDate < today).sort((a, b) => b.startDate.localeCompare(a.startDate)); 
-    return { upcomingTrips: upcoming, pastTrips: past };
-  }, [trips]);
-
-  const displayTrips = activeTab === 'upcoming' ? upcomingTrips : pastTrips;
-
-  const onDragEnd = (result: DropResult) => {
-      if (!result.destination || activeTab === 'past') return; 
-      const newTrips = Array.from(trips);
-      onReorderTrips(newTrips);
-  };
-
-  return (
-    <div className="h-full flex flex-col w-full bg-transparent">
-      
-      {/* Header */}
-      <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
-        <div className="flex justify-between items-center mb-1">
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
-            <div className="flex gap-3">
-                <button onClick={() => setIsImporting(true)} className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform"><Download className="text-gray-700 w-5 h-5" /></button>
-                <button onClick={() => setIsCreating(true)} className="w-9 h-9 bg-ios-blue rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"><Plus className="text-white w-6 h-6" /></button>
-                <button onClick={() => setShowProfile(true)} className="w-9 h-9 rounded-full overflow-hidden border border-gray-200 shadow-sm active:scale-90 transition-transform"><img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /></button>
-            </div>
-        </div>
-      </div>
-
-      {/* Content (捲動區域) */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-4 space-y-6 pb-24 w-full scroll-smooth no-scrollbar">
-        
-        {/* 1. 小工具 (只在即將出發顯示) */}
-        {activeTab === 'upcoming' && <DashboardWidgets />}
-
-        {/* 2. 分段控制器 (Segmented Control) - 已移除圖示 */}
-        <div className="bg-gray-200/60 p-1 rounded-xl flex relative mb-2">
-             <button 
-                onClick={() => setActiveTab('upcoming')}
-                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-             >
-                即將出發
-             </button>
-             <button 
-                onClick={() => setActiveTab('past')}
-                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'past' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-             >
-                精彩回憶
-             </button>
-        </div>
-
-        {/* 3. 行程列表 (移除多餘標題) */}
-        <div className="mt-2">
-            <DragDropContext onDragEnd={onDragEnd}>
-                {displayTrips.length === 0 ? (
-                    <div className="text-center py-12 opacity-40 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200 mx-1">
-                        {activeTab === 'upcoming' ? (
-                             <><MapPin className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">尚無計畫，點擊右上角 + 開始規劃</p></>
-                        ) : (
-                             <><History className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">還沒有結束的旅程，趕快出發吧！</p></>
-                        )}
-                    </div>
-                ) : (
-                    <Droppable droppableId="trips-list">
-                        {(provided) => (
-                            <div className="space-y-4 pb-4" ref={provided.innerRef} {...provided.droppableProps}>
-                                {displayTrips.map((trip, index) => (
-                                    <Draggable key={trip.id} draggableId={trip.id} index={index} isDragDisabled={activeTab === 'past'}>
-                                        {(provided, snapshot) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.draggableProps}
-                                                style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-                                                className={`transition-all duration-200 ${snapshot.isDragging ? 'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
-                                            >
-                                                <TripCard 
-                                                   trip={trip} 
-                                                   onSelect={() => onSelectTrip(trip)} 
-                                                   onDelete={() => onDeleteTrip(trip.id)}
-                                                   onEdit={() => setEditingTrip(trip)}
-                                                   dragHandleProps={provided.dragHandleProps} 
-                                                   isPast={activeTab === 'past'}
-                                                />
-                                            </div>
-                                        )}
-                                    </Draggable>
-                                ))}
-                                {provided.placeholder}
-                            </div>
-                        )}
-                    </Droppable>
-                )}
-            </DragDropContext>
-        </div>
-        <MadeByFooter />
-      </div>
-
-      {/* Modals */}
-      {isCreating && <CreateTripModal onClose={() => setIsCreating(false)} onAddTrip={onAddTrip} />}
-      {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
-      {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
-      
-      {editingTrip && onUpdateTrip && (
-          <EditTripModal 
-            trip={editingTrip} 
-            onClose={() => setEditingTrip(null)} 
-            onUpdate={(updated) => {
-                onUpdateTrip(updated);
-                setEditingTrip(null);
-            }} 
-          />
-      )}
-    </div>
-  );
-};
-
-// ============================================================================
-// 3. TripCard 元件
+// 2. 輔助元件：TripCard, Modals (放在主視圖之前，確保被讀取)
 // ============================================================================
 
 const TripCard: React.FC<{ 
@@ -326,10 +195,6 @@ const TripCard: React.FC<{
     );
 };
 
-// ============================================================================
-// 4. EditTripModal (編輯行程日期與天數)
-// ============================================================================
-
 const EditTripModal: React.FC<{ trip: Trip, onClose: () => void, onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
     const [dest, setDest] = useState(trip.destination);
     const [start, setStart] = useState(trip.startDate);
@@ -387,7 +252,358 @@ const EditTripModal: React.FC<{ trip: Trip, onClose: () => void, onUpdate: (t: T
     );
 };
 
-// ... (以下 ProfileModal, CreateTripModal, ImportTripModal 保持不變，請保留原程式碼) ...
+const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
+    // 步驟狀態
+    const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+
+    // --- Step 1: 基本資訊 ---
+    const [destination, setDestination] = useState('');
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [days, setDays] = useState(3);
+
+    // --- Step 2: 風格與節奏 ---
+    const [companion, setCompanion] = useState('couple'); // solo, couple, family, friends, elderly
+    const [pace, setPace] = useState('standard'); // relaxed, standard, packed
+    const [transport, setTransport] = useState('public'); // public, car, taxi
+    const [vibe, setVibe] = useState('balanced'); // popular, balanced, hidden
+
+    // --- Step 3: 預算與細節 ---
+    const [budgetLevel, setBudgetLevel] = useState('standard'); // cheap, standard, luxury
+    const [customBudget, setCustomBudget] = useState(''); // 自訂金額
+    const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+    const [specificRequests, setSpecificRequests] = useState('');
+
+    // 定義興趣選項 (圖示 + 文字)
+    const INTEREST_OPTIONS = [
+        { id: 'photo', label: '攝影美拍', icon: <Camera className="w-4 h-4" /> },
+        { id: 'food', label: '美食巡禮', icon: <Utensils className="w-4 h-4" /> },
+        { id: 'shopping', label: '逛街購物', icon: <ShoppingBag className="w-4 h-4" /> },
+        { id: 'history', label: '歷史文化', icon: <Landmark className="w-4 h-4" /> },
+        { id: 'nature', label: '自然戶外', icon: <Trees className="w-4 h-4" /> },
+        { id: 'cafe', label: '咖啡廳', icon: <Coffee className="w-4 h-4" /> },
+        { id: 'art', label: '藝術展覽', icon: <Palette className="w-4 h-4" /> },
+        { id: 'spa', label: '放鬆 SPA', icon: <Sparkles className="w-4 h-4" /> },
+        { id: 'theme_park', label: '主題樂園', icon: <FerrisWheel className="w-4 h-4" /> },
+        { id: 'temple', label: '寺廟神社', icon: <Shrub className="w-4 h-4" /> },
+    ];
+
+    const toggleInterest = (label: string) => {
+        if (selectedInterests.includes(label)) {
+            setSelectedInterests(prev => prev.filter(i => i !== label));
+        } else {
+            setSelectedInterests(prev => [...prev, label]);
+        }
+    };
+
+    const buildPrompt = () => {
+        const companionMap: any = { solo: '獨旅', couple: '情侶/夫妻', family: '親子家庭(有小孩)', friends: '一群朋友', elderly: '帶長輩' };
+        const paceMap: any = { relaxed: '悠閒慢活(一天1-2點)', standard: '標準觀光(一天3-4點)', packed: '特種兵打卡(一天5+點)' };
+        const transportMap: any = { public: '大眾運輸', car: '自駕/包車', taxi: '計程車/Uber' };
+        const vibeMap: any = { popular: '經典熱門必去', balanced: '熱門與冷門均衡', hidden: '在地私房冷門' };
+        const budgetMap: any = { cheap: '經濟實惠', standard: '標準預算', luxury: '豪華享受' };
+
+        let prompt = `
+        [旅遊條件詳情]
+        - 旅伴組成：${companionMap[companion]}
+        - 旅遊步調：${paceMap[pace]}
+        - 交通方式：${transportMap[transport]} (請據此安排路線順暢度)
+        - 景點偏好：${vibeMap[vibe]}
+        - 預算等級：${budgetMap[budgetLevel]} ${customBudget ? `(具體預算參考：${customBudget})` : ''}
+        - 重點興趣：${selectedInterests.join(', ') || '無特別指定'}
+        - 特殊需求/許願：${specificRequests || '無'}
+        `;
+        return prompt;
+    };
+
+    const handleCreate = async () => {
+        setLoading(true);
+        try {
+            const fullPrompt = buildPrompt();
+            console.log("送給 AI 的 Prompt:", fullPrompt); 
+
+            const generatedDays = await generateItinerary(destination, days, fullPrompt);
+            
+            const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
+                return days.map(day => {
+                    let nextStartTime = "09:00";
+                    const activities = day.activities.map(act => {
+                        if (!act.time || !/^\d{2}:\d{2}$/.test(act.time)) {
+                            act.time = nextStartTime;
+                        } else {
+                            nextStartTime = act.time;
+                        }
+                        try {
+                            const [h, m] = nextStartTime.split(':').map(Number);
+                            const d = new Date();
+                            d.setHours(h || 9, m || 0, 0, 0);
+                            d.setMinutes(d.getMinutes() + 120);
+                            nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                        } catch (e) {}
+                        return act;
+                    });
+                    return { ...day, activities };
+                });
+            };
+
+            const daysWithTime = processGeneratedItinerary(generatedDays);
+            
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setDate(startDateObj.getDate() + (days - 1));
+
+            const finalImage = coverImage || `https://picsum.photos/800/600?random=${Date.now()}`;
+            
+            const newTrip: Trip = {
+                id: Date.now().toString(),
+                destination,
+                startDate: startDate,
+                endDate: endDateObj.toISOString().split('T')[0],
+                coverImage: finalImage,
+                days: daysWithTime,
+                isDeleted: false
+            };
+
+            onAddTrip(newTrip);
+            onClose();
+
+        } catch (e) {
+            alert("無法生成行程，請檢查網路或稍後再試。");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleManualCreate = () => {
+        const startDateObj = new Date(startDate);
+        const endDateObj = new Date(startDateObj);
+        endDateObj.setDate(startDateObj.getDate() + (days - 1));
+        
+        const emptyDays: TripDay[] = Array.from({length: days}, (_, i) => ({ day: i + 1, activities: [] }));
+        
+        const newTrip: Trip = {
+            id: Date.now().toString(),
+            destination: destination || '未命名行程',
+            startDate: startDate,
+            endDate: endDateObj.toISOString().split('T')[0],
+            coverImage: coverImage || `https://picsum.photos/800/600?random=${Date.now()}`,
+            days: emptyDays,
+            isDeleted: false
+        };
+        onAddTrip(newTrip);
+        onClose();
+    };
+
+    const [coverImage, setCoverImage] = useState('');
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => { setCoverImage(reader.result as string); };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const SelectionCard = ({ selected, onClick, icon, label, sub }: any) => (
+        <button 
+            onClick={onClick}
+            className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-200 ${selected ? 'bg-ios-blue/5 border-ios-blue ring-1 ring-ios-blue' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+        >
+            <div className={`mb-2 ${selected ? 'text-ios-blue' : 'text-gray-500'}`}>{icon}</div>
+            <span className={`text-xs font-bold ${selected ? 'text-ios-blue' : 'text-gray-700'}`}>{label}</span>
+            {sub && <span className="text-[10px] text-gray-400 mt-0.5">{sub}</span>}
+        </button>
+    );
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-md" onClick={onClose} />
+            <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh]">
+                
+                {/* Header & Progress */}
+                <div className="pt-6 px-6 pb-2 border-b border-gray-100 bg-white sticky top-0 z-20">
+                    <div className="flex justify-between items-center mb-4">
+                        <button onClick={step === 1 ? onClose : () => setStep(s => s - 1)} className="text-gray-400 hover:text-gray-600">
+                            {step === 1 ? <X className="w-6 h-6" /> : <ChevronLeft className="w-6 h-6" />}
+                        </button>
+                        <h2 className="font-bold text-lg text-gray-900">
+                            {step === 1 && '開始旅程'}
+                            {step === 2 && '風格與節奏'}
+                            {step === 3 && '細節偏好'}
+                        </h2>
+                        <div className="w-6"></div>
+                    </div>
+                    {/* 進度條 */}
+                    <div className="flex gap-2 mb-2">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${i <= step ? 'bg-ios-blue' : 'bg-gray-100'}`} />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Content (Scrollable) */}
+                <div className="p-6 overflow-y-auto min-h-0 flex-1 scroll-smooth">
+                    
+                    {/* Step 1: 基礎資訊 */}
+                    {step === 1 && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="relative w-full h-40 rounded-2xl overflow-hidden bg-gray-100 border border-gray-200 group">
+                                {coverImage ? (<img src={coverImage} alt="Cover" className="w-full h-full object-cover" />) : (<div className="w-full h-full flex flex-col items-center justify-center text-gray-400"><ImageIcon className="w-8 h-8 mb-2 opacity-50" /><span className="text-xs font-medium">設定封面 (選填)</span></div>)}
+                                <label className="absolute inset-0 flex items-center justify-center cursor-pointer hover:bg-black/5 transition-colors"><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div><label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">目的地</label><IOSInput autoFocus placeholder="例如：京都、紐約" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">出發日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl outline-none text-sm font-medium" /></div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">天數</label>
+                                        <IOSInput 
+                                            type="number" 
+                                            min={1} 
+                                            max={14} 
+                                            value={days} 
+                                            onChange={(e) => {
+                                                // 修正：使用 parseInt 自動移除開頭的 0
+                                                const val = parseInt(e.target.value, 10);
+                                                if (!isNaN(val)) setDays(val);
+                                                else if (e.target.value === '') setDays(0); // 允許暫時清空
+                                            }} 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: 風格設定 */}
+                    {step === 2 && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">這次跟誰去？</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <SelectionCard selected={companion === 'solo'} onClick={() => setCompanion('solo')} icon={<UserIcon className="w-5 h-5"/>} label="獨旅" />
+                                    <SelectionCard selected={companion === 'couple'} onClick={() => setCompanion('couple')} icon={<Heart className="w-5 h-5"/>} label="情侶" />
+                                    <SelectionCard selected={companion === 'family'} onClick={() => setCompanion('family')} icon={<Baby className="w-5 h-5"/>} label="親子" />
+                                    <SelectionCard selected={companion === 'friends'} onClick={() => setCompanion('friends')} icon={<Users className="w-5 h-5"/>} label="朋友" />
+                                    <SelectionCard selected={companion === 'elderly'} onClick={() => setCompanion('elderly')} icon={<Armchair className="w-5 h-5"/>} label="長輩" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">喜歡的步調？</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <SelectionCard selected={pace === 'relaxed'} onClick={() => setPace('relaxed')} icon={<Coffee className="w-5 h-5"/>} label="悠閒" sub="1-2 點/天" />
+                                    <SelectionCard selected={pace === 'standard'} onClick={() => setPace('standard')} icon={<Footprints className="w-5 h-5"/>} label="標準" sub="3-4 點/天" />
+                                    <SelectionCard selected={pace === 'packed'} onClick={() => setPace('packed')} icon={<Zap className="w-5 h-5"/>} label="特種兵" sub="5+ 點/天" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">交通方式</label>
+                                    <div className="space-y-2">
+                                        {[{id:'public',l:'大眾運輸'}, {id:'car',l:'自駕/包車'}, {id:'taxi',l:'計程車'}].map(opt => (
+                                            <button key={opt.id} onClick={() => setTransport(opt.id)} className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all ${transport === opt.id ? 'bg-ios-blue text-white border-ios-blue' : 'bg-white text-gray-600 border-gray-200'}`}>{opt.l}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">景點偏好</label>
+                                    <div className="space-y-2">
+                                        {[{id:'popular',l:'經典熱門'}, {id:'balanced',l:'均衡搭配'}, {id:'hidden',l:'私房冷門'}].map(opt => (
+                                            <button key={opt.id} onClick={() => setVibe(opt.id)} className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all ${vibe === opt.id ? 'bg-ios-blue text-white border-ios-blue' : 'bg-white text-gray-600 border-gray-200'}`}>{opt.l}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 3: 詳細設定 */}
+                    {step === 3 && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">預算等級</label>
+                                <div className="flex gap-2 mb-3">
+                                    {[{id:'cheap',l:'經濟 $'}, {id:'standard',l:'標準 $$'}, {id:'luxury',l:'豪華 $$$'}].map(opt => (
+                                        <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-xl font-bold text-sm border transition-all ${budgetLevel === opt.id ? 'bg-green-50 text-green-600 border-green-200 ring-1 ring-green-500' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>{opt.l}</button>
+                                    ))}
+                                </div>
+                                <input 
+                                    type="text" 
+                                    placeholder="或輸入具體預算 (例如：5萬/人)..." 
+                                    className="w-full bg-gray-50 border-b-2 border-gray-200 px-3 py-2 text-sm outline-none focus:border-green-500 transition-colors bg-transparent"
+                                    value={customBudget}
+                                    onChange={e => setCustomBudget(e.target.value)}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">興趣 (可多選)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {INTEREST_OPTIONS.map((item) => (
+                                        <button 
+                                            key={item.id} 
+                                            onClick={() => toggleInterest(item.label)}
+                                            className={`px-3 py-2 rounded-full text-xs font-bold transition-all border flex items-center gap-1.5 ${selectedInterests.includes(item.label) ? 'bg-ios-blue text-white border-ios-blue shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                                        >
+                                            {item.icon}
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase">許願池 / 特殊需求</label>
+                                <textarea 
+                                    className="w-full bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 h-24 resize-none" 
+                                    placeholder="例如：不想吃生食、一定要去環球影城、想住有浴缸的飯店..."
+                                    value={specificRequests}
+                                    onChange={e => setSpecificRequests(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="p-6 border-t border-gray-100 bg-gray-50/50 backdrop-blur-xl">
+                    {step < 3 ? (
+                        <div className="flex flex-col gap-3">
+                            <IOSButton fullWidth onClick={() => { if(destination) setStep(s => s + 1); else alert('請輸入目的地'); }}>下一步</IOSButton>
+                            {step === 1 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過 AI，手動建立空白行程</button>}
+                        </div>
+                    ) : (
+                        <div className="flex gap-3">
+                            <button onClick={handleManualCreate} className="flex-1 py-3 text-gray-500 font-bold text-sm bg-white border border-gray-200 rounded-xl">手動建立</button>
+                            <IOSButton fullWidth onClick={handleCreate} isLoading={loading} className="flex-[2]">
+                                <Sparkles className="w-4 h-4 mr-1" /> 生成夢幻行程
+                            </IOSButton>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
+    const [code, setCode] = useState('');
+    const [error, setError] = useState('');
+    const handleImport = () => {
+        try {
+            if (!code.trim()) return;
+            const jsonString = decodeURIComponent(escape(atob(code.trim())));
+            const tripData = JSON.parse(jsonString);
+            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
+        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
+    };
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
+    );
+};
 
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
@@ -525,116 +741,142 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
     );
 };
 
-const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
-    const [loading, setLoading] = useState(false);
-    const [destination, setDestination] = useState('');
-    const [days, setDays] = useState(3);
-    const [interests, setInterests] = useState('');
-    const [coverImage, setCoverImage] = useState('');
+// ============================================================================
+// 3. 主視圖 (TripsView)
+// ============================================================================
 
-    const handleCreate = async () => {
-        if (!destination) return;
-        setLoading(true);
-        try {
-          const generatedDays = await generateItinerary(destination, days, interests || 'general sightseeing');
-          // 智慧時間填補
-          const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
-              return days.map(day => {
-                  let nextStartTime = "09:00";
-                  const activities = day.activities.map(act => {
-                      if (!act.time || !/^\d{2}:\d{2}$/.test(act.time)) {
-                          act.time = nextStartTime;
-                      } else {
-                          nextStartTime = act.time;
-                      }
-                      try {
-                          const [h, m] = nextStartTime.split(':').map(Number);
-                          const d = new Date();
-                          d.setHours(h || 9, m || 0, 0, 0);
-                          d.setMinutes(d.getMinutes() + 120);
-                          nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                      } catch (e) {}
-                      return act;
-                  });
-                  return { ...day, activities };
-              });
-          };
-          const daysWithTime = processGeneratedItinerary(generatedDays);
-          createTrip(daysWithTime);
-        } catch (e) {
-          alert("無法生成行程，請檢查您的網路連線或 API 金鑰。");
-        } finally {
-          setLoading(false);
-        }
-    };
+interface TripsViewProps {
+  trips: Trip[];
+  user: User;
+  onLogout: () => void;
+  onAddTrip: (trip: Trip) => void;
+  onImportTrip: (trip: Trip) => void;
+  onSelectTrip: (trip: Trip) => void;
+  onDeleteTrip: (id: string) => void;
+  onReorderTrips: (trips: Trip[]) => void;
+  onUpdateTrip?: (trip: Trip) => void;
+}
 
-    const handleManualCreate = () => {
-        if(!destination) return;
-        const emptyDays: TripDay[] = Array.from({length: days}, (_, i) => ({ day: i + 1, activities: [] }));
-        createTrip(emptyDays);
-    };
+export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, onDeleteTrip, onReorderTrips, onUpdateTrip }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
 
-    const createTrip = (daysData: TripDay[]) => {
-        const finalImage = coverImage || `https://picsum.photos/800/600?random=${Date.now()}`;
-        const newTrip: Trip = {
-            id: Date.now().toString(), 
-            destination,
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date(Date.now() + days * 86400000).toISOString().split('T')[0],
-            coverImage: finalImage,
-            days: daysData,
-            isDeleted: false
-        };
-        onAddTrip(newTrip);
-        onClose();
-    }
+  const { upcomingTrips, pastTrips } = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = trips.filter(t => t.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const past = trips.filter(t => t.endDate < today).sort((a, b) => b.startDate.localeCompare(a.startDate)); 
+    return { upcomingTrips: upcoming, pastTrips: past };
+  }, [trips]);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => { setCoverImage(reader.result as string); };
-            reader.readAsDataURL(file);
-        }
-    };
+  const displayTrips = activeTab === 'upcoming' ? upcomingTrips : pastTrips;
 
-    return (
-        <div className="min-h-screen bg-white/95 backdrop-blur-md pb-24 animate-in slide-in-from-bottom-10 duration-300 fixed inset-0 z-50 overflow-y-auto">
-        <div className="pt-6 px-5 flex justify-between items-center mb-2"><button onClick={onClose} className="text-ios-blue text-lg">取消</button><h2 className="font-semibold text-lg">新行程</h2><div className="w-12"></div></div>
-        <div className="px-5 space-y-6">
-          <div className="text-center mb-2"><h3 className="text-2xl font-bold">規劃旅程</h3><p className="text-gray-500">輸入基本資訊以開始</p></div>
-          <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-gray-100 border border-gray-200 group">
-              {coverImage ? (<img src={coverImage} alt="Cover Preview" className="w-full h-full object-cover" />) : (<div className="w-full h-full flex flex-col items-center justify-center text-gray-400"><ImageIcon className="w-10 h-10 mb-2 opacity-50" /><span className="text-sm font-medium">設定封面照片</span></div>)}
-              <label className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center cursor-pointer"><div className="bg-white/90 backdrop-blur-sm text-gray-700 font-semibold py-2 px-4 rounded-full shadow-sm flex items-center gap-2 active:scale-95 transition-transform">{coverImage ? <PenTool className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{coverImage ? '更換圖片' : '上傳圖片'}</div><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
-              {coverImage && (<button onClick={() => setCoverImage('')} className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full backdrop-blur-md active:scale-90"><X className="w-4 h-4" /></button>)}
-          </div>
-          <div className="space-y-4">
-            <div><label className="block text-sm font-medium text-gray-500 mb-1 ml-1">目的地</label><IOSInput placeholder="例如：京都" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
-            <div><label className="block text-sm font-medium text-gray-500 mb-1 ml-1">天數</label><IOSInput type="number" min={1} max={14} value={days} onChange={(e) => setDays(Number(e.target.value))} /></div>
-            <div><label className="block text-sm font-medium text-gray-500 mb-1 ml-1">興趣偏好 (僅 AI 模式需要)</label><IOSInput placeholder="例如：美食、歷史、登山" value={interests} onChange={(e) => setInterests(e.target.value)} /></div>
-          </div>
-          <div className="pt-6 space-y-3 pb-10">
-            <IOSButton fullWidth onClick={handleCreate} isLoading={loading}><Sparkles className="w-5 h-5" />AI 智慧生成行程</IOSButton>
-            <IOSButton fullWidth variant="secondary" onClick={handleManualCreate} disabled={loading}><PenTool className="w-4 h-4" />手動建立空白行程</IOSButton>
-          </div>
+  const onDragEnd = (result: DropResult) => {
+      if (!result.destination || activeTab === 'past') return; 
+      const newTrips = Array.from(trips);
+      onReorderTrips(newTrips);
+  };
+
+  return (
+    <div className="h-full flex flex-col w-full bg-transparent">
+      
+      {/* Header (只保留標題與按鈕) */}
+      <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
+        <div className="flex justify-between items-center mb-1">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
+            <div className="flex gap-3">
+                <button onClick={() => setIsImporting(true)} className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform"><Download className="text-gray-700 w-5 h-5" /></button>
+                <button onClick={() => setIsCreating(true)} className="w-9 h-9 bg-ios-blue rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"><Plus className="text-white w-6 h-6" /></button>
+                <button onClick={() => setShowProfile(true)} className="w-9 h-9 rounded-full overflow-hidden border border-gray-200 shadow-sm active:scale-90 transition-transform"><img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /></button>
+            </div>
         </div>
       </div>
-    );
-};
 
-// --- Import Trip Modal ---
-const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
-    const [code, setCode] = useState('');
-    const [error, setError] = useState('');
-    const handleImport = () => {
-        try {
-            if (!code.trim()) return;
-            const jsonString = decodeURIComponent(escape(atob(code.trim())));
-            const tripData = JSON.parse(jsonString);
-            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
-        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
-    };
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
-    );
+      {/* Content (捲動區域) */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-4 space-y-6 pb-24 w-full scroll-smooth no-scrollbar">
+        
+        {/* 1. 小工具 (只在即將出發顯示) */}
+        {activeTab === 'upcoming' && <DashboardWidgets />}
+
+        {/* 2. 分段控制器 (Segmented Control) - 無圖示版 */}
+        <div className="bg-gray-200/60 p-1 rounded-xl flex relative mb-2">
+             <button 
+                onClick={() => setActiveTab('upcoming')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+             >
+                即將出發
+             </button>
+             <button 
+                onClick={() => setActiveTab('past')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'past' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+             >
+                精彩回憶
+             </button>
+        </div>
+
+        {/* 3. 行程列表 (移除多餘標題) */}
+        <div className="mt-2">
+            <DragDropContext onDragEnd={onDragEnd}>
+                {displayTrips.length === 0 ? (
+                    <div className="text-center py-12 opacity-40 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200 mx-1">
+                        {activeTab === 'upcoming' ? (
+                             <><MapPin className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">尚無計畫，點擊右上角 + 開始規劃</p></>
+                        ) : (
+                             <><History className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">還沒有結束的旅程，趕快出發吧！</p></>
+                        )}
+                    </div>
+                ) : (
+                    <Droppable droppableId="trips-list">
+                        {(provided) => (
+                            <div className="space-y-4 pb-4" ref={provided.innerRef} {...provided.droppableProps}>
+                                {displayTrips.map((trip, index) => (
+                                    <Draggable key={trip.id} draggableId={trip.id} index={index} isDragDisabled={activeTab === 'past'}>
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.draggableProps}
+                                                style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
+                                                className={`transition-all duration-200 ${snapshot.isDragging ? 'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
+                                            >
+                                                <TripCard 
+                                                   trip={trip} 
+                                                   onSelect={() => onSelectTrip(trip)} 
+                                                   onDelete={() => onDeleteTrip(trip.id)}
+                                                   onEdit={() => setEditingTrip(trip)}
+                                                   dragHandleProps={provided.dragHandleProps} 
+                                                   isPast={activeTab === 'past'}
+                                                />
+                                            </div>
+                                        )}
+                                    </Draggable>
+                                ))}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                )}
+            </DragDropContext>
+        </div>
+        <MadeByFooter />
+      </div>
+
+      {/* Modals */}
+      {isCreating && <CreateTripModal onClose={() => setIsCreating(false)} onAddTrip={onAddTrip} />}
+      {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
+      {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
+      
+      {editingTrip && onUpdateTrip && (
+          <EditTripModal 
+            trip={editingTrip} 
+            onClose={() => setEditingTrip(null)} 
+            onUpdate={(updated) => {
+                onUpdateTrip(updated);
+                setEditingTrip(null);
+            }} 
+          />
+      )}
+    </div>
+  );
 };
