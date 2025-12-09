@@ -214,6 +214,7 @@ const App: React.FC = () => {
                   onSelectTrip={handleTripSelect}
                   onDeleteTrip={handleSoftDeleteTrip}
                   onReorderTrips={handleReorderTrips}
+                  onUpdateTrip={handleUpdateTrip} // <--- 新增這一行！
                 />
             )}
             

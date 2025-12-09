@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, LogOut, ChevronLeft, ChevronRight, Loader2, CloudRain, Cloud, Sun, CloudSun, PenTool, Sparkles, Image as ImageIcon, Lock, CheckCircle, Camera } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+    Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, 
+    PenTool, Image as ImageIcon, Clock, History, Loader2, CloudRain, 
+    Cloud, Sun, CloudSun, Lock, CheckCircle, Camera, LogOut, 
+    ChevronLeft, ChevronRight, Sparkles 
+} from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
-import type { Trip, TripDay, WeatherInfo, User } from '../types';
+import type { Trip, TripDay, User, WeatherInfo } from '../types';
 import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
 // ============================================================================
-// 1. 小工具元件 (先定義這些，避免 ReferenceError)
+// 1. 小工具元件
 // ============================================================================
 
 const WeatherWidget: React.FC = () => {
@@ -113,7 +118,6 @@ const TimeWidget: React.FC = () => {
     return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 shadow-sm border border-white/60 relative overflow-hidden group flex flex-col justify-between">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-gray-300 hover:text-gray-900 z-20"><Plus className="w-4 h-4" /></button><div className="relative z-0 h-full flex flex-col justify-between"><div><span className="font-bold text-lg text-gray-900 block truncate max-w-[80%]">{locations[idx]}</span><span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span></div><div className="flex items-end justify-between"><span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span></div><div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1"><Calendar className="w-3 h-3" />{dateStr}</div></div><div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />))}</div></div>;
 };
 
-// 整合這兩個 widget 的容器元件 (這就是原本報錯找不到的元件)
 const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
 
 // ============================================================================
@@ -129,18 +133,28 @@ interface TripsViewProps {
   onSelectTrip: (trip: Trip) => void;
   onDeleteTrip: (id: string) => void;
   onReorderTrips: (trips: Trip[]) => void;
+  onUpdateTrip?: (trip: Trip) => void;
 }
 
-export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, onDeleteTrip, onReorderTrips }) => {
+export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, onDeleteTrip, onReorderTrips, onUpdateTrip }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+
+  const { upcomingTrips, pastTrips } = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = trips.filter(t => t.endDate >= today).sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const past = trips.filter(t => t.endDate < today).sort((a, b) => b.startDate.localeCompare(a.startDate)); 
+    return { upcomingTrips: upcoming, pastTrips: past };
+  }, [trips]);
+
+  const displayTrips = activeTab === 'upcoming' ? upcomingTrips : pastTrips;
 
   const onDragEnd = (result: DropResult) => {
-      if (!result.destination) return;
+      if (!result.destination || activeTab === 'past') return; 
       const newTrips = Array.from(trips);
-      const [reorderedItem] = newTrips.splice(result.source.index, 1);
-      newTrips.splice(result.destination.index, 0, reorderedItem);
       onReorderTrips(newTrips);
   };
 
@@ -148,35 +162,56 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
     <div className="h-full flex flex-col w-full bg-transparent">
       
       {/* Header */}
-      <div className="flex-shrink-0 pt-20 pb-6 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
-        <div className="flex gap-3 items-center absolute right-5 bottom-4">
-            <button onClick={() => setIsImporting(true)} className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform"><Download className="text-gray-700 w-5 h-5" /></button>
-            <button onClick={() => setIsCreating(true)} className="w-9 h-9 bg-ios-blue rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"><Plus className="text-white w-6 h-6" /></button>
-            <button onClick={() => setShowProfile(true)} className="w-9 h-9 rounded-full overflow-hidden border border-gray-200 shadow-sm active:scale-90 transition-transform"><img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /></button>
+      <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
+        <div className="flex justify-between items-center mb-1">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
+            <div className="flex gap-3">
+                <button onClick={() => setIsImporting(true)} className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform"><Download className="text-gray-700 w-5 h-5" /></button>
+                <button onClick={() => setIsCreating(true)} className="w-9 h-9 bg-ios-blue rounded-full flex items-center justify-center shadow-md active:scale-90 transition-transform"><Plus className="text-white w-6 h-6" /></button>
+                <button onClick={() => setShowProfile(true)} className="w-9 h-9 rounded-full overflow-hidden border border-gray-200 shadow-sm active:scale-90 transition-transform"><img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /></button>
+            </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
-        {/* 這裡呼叫 DashboardWidgets，現在它已經在上面定義好了，不會報錯 */}
-        <DashboardWidgets />
+      {/* Content (捲動區域) */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-4 space-y-6 pb-24 w-full scroll-smooth no-scrollbar">
+        
+        {/* 1. 小工具 (只在即將出發顯示) */}
+        {activeTab === 'upcoming' && <DashboardWidgets />}
 
-        <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 ml-1">我的旅程</h2>
-            
+        {/* 2. 分段控制器 (Segmented Control) - 已移除圖示 */}
+        <div className="bg-gray-200/60 p-1 rounded-xl flex relative mb-2">
+             <button 
+                onClick={() => setActiveTab('upcoming')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+             >
+                即將出發
+             </button>
+             <button 
+                onClick={() => setActiveTab('past')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-[8px] transition-all duration-200 ease-out flex items-center justify-center ${activeTab === 'past' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+             >
+                精彩回憶
+             </button>
+        </div>
+
+        {/* 3. 行程列表 (移除多餘標題) */}
+        <div className="mt-2">
             <DragDropContext onDragEnd={onDragEnd}>
-                {trips.length === 0 ? (
-                    <div className="text-center py-10 opacity-50 bg-white/50 rounded-3xl border border-gray-200/50">
-                        <MapPin className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                        <p>尚無行程，點擊右上角 + 開始規劃</p>
+                {displayTrips.length === 0 ? (
+                    <div className="text-center py-12 opacity-40 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200 mx-1">
+                        {activeTab === 'upcoming' ? (
+                             <><MapPin className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">尚無計畫，點擊右上角 + 開始規劃</p></>
+                        ) : (
+                             <><History className="w-10 h-10 mx-auto mb-3 text-gray-400" /><p className="text-sm font-medium">還沒有結束的旅程，趕快出發吧！</p></>
+                        )}
                     </div>
                 ) : (
                     <Droppable droppableId="trips-list">
                         {(provided) => (
                             <div className="space-y-4 pb-4" ref={provided.innerRef} {...provided.droppableProps}>
-                                {trips.map((trip, index) => (
-                                    <Draggable key={trip.id} draggableId={trip.id} index={index}>
+                                {displayTrips.map((trip, index) => (
+                                    <Draggable key={trip.id} draggableId={trip.id} index={index} isDragDisabled={activeTab === 'past'}>
                                         {(provided, snapshot) => (
                                             <div
                                                 ref={provided.innerRef}
@@ -188,7 +223,9 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                    trip={trip} 
                                                    onSelect={() => onSelectTrip(trip)} 
                                                    onDelete={() => onDeleteTrip(trip.id)}
+                                                   onEdit={() => setEditingTrip(trip)}
                                                    dragHandleProps={provided.dragHandleProps} 
+                                                   isPast={activeTab === 'past'}
                                                 />
                                             </div>
                                         )}
@@ -208,20 +245,33 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       {isCreating && <CreateTripModal onClose={() => setIsCreating(false)} onAddTrip={onAddTrip} />}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
       {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
+      
+      {editingTrip && onUpdateTrip && (
+          <EditTripModal 
+            trip={editingTrip} 
+            onClose={() => setEditingTrip(null)} 
+            onUpdate={(updated) => {
+                onUpdateTrip(updated);
+                setEditingTrip(null);
+            }} 
+          />
+      )}
     </div>
   );
 };
 
 // ============================================================================
-// 3. 其他輔助元件
+// 3. TripCard 元件
 // ============================================================================
 
 const TripCard: React.FC<{ 
     trip: Trip, 
     onSelect: () => void, 
     onDelete: () => void,
-    dragHandleProps?: DraggableProvidedDragHandleProps | null
-}> = ({ trip, onSelect, onDelete, dragHandleProps }) => {
+    onEdit: () => void, 
+    dragHandleProps?: DraggableProvidedDragHandleProps | null,
+    isPast?: boolean
+}> = ({ trip, onSelect, onDelete, onEdit, dragHandleProps, isPast }) => {
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
 
@@ -238,7 +288,7 @@ const TripCard: React.FC<{
 
     return (
         <>
-            <div className="relative w-full h-48 rounded-3xl overflow-hidden shadow-sm group select-none transition-shadow hover:shadow-md bg-white" onClick={onSelect}>
+            <div className={`relative w-full h-48 rounded-3xl overflow-hidden shadow-sm group select-none transition-shadow hover:shadow-md bg-white ${isPast ? 'grayscale-[0.5] opacity-90' : ''}`} onClick={onSelect}>
                 <div className="h-full w-full relative">
                     <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -247,29 +297,97 @@ const TripCard: React.FC<{
                         <div className="flex items-center gap-2 text-sm font-medium opacity-90 shadow-sm">
                             <Calendar className="w-4 h-4" />
                             <span>{trip.startDate}  {trip.days.length} 天</span>
+                            {isPast && <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">已完成</span>}
                         </div>
                     </div>
                      
-                    {/* 拖曳手把 */}
-                    <div 
-                        {...dragHandleProps}
-                        style={{ touchAction: 'none' }}
-                        className="absolute top-1/2 left-3 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white bg-black/20 backdrop-blur-sm rounded-full transition-colors"
-                        onClick={(e) => e.stopPropagation()} 
-                    >
-                            <GripVertical className="w-5 h-5 drop-shadow-md" />
-                    </div>
+                    {!isPast && (
+                        <div 
+                            {...dragHandleProps}
+                            style={{ touchAction: 'none' }}
+                            className="absolute top-1/2 left-3 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white bg-black/20 backdrop-blur-sm rounded-full transition-colors"
+                            onClick={(e) => e.stopPropagation()} 
+                        >
+                                <GripVertical className="w-5 h-5 drop-shadow-md" />
+                        </div>
+                    )}
 
                     <div className="absolute top-3 right-3 flex gap-2 z-20">
+                         <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all shadow-sm">
+                            <PenTool className="w-5 h-5" />
+                        </button>
                         <button onClick={prepareShare} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all shadow-sm"><Share className="w-5 h-5" /></button>
                         <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-2 bg-red-500/80 backdrop-blur-md rounded-full text-white hover:bg-red-600 active:scale-90 transition-all shadow-sm"><Trash2 className="w-5 h-5" /></button>
                     </div>
                 </div>
             </div>
-            <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin 規劃的 ${trip.destination} 之旅！`} />
+            <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} />
         </>
     );
 };
+
+// ============================================================================
+// 4. EditTripModal (編輯行程日期與天數)
+// ============================================================================
+
+const EditTripModal: React.FC<{ trip: Trip, onClose: () => void, onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
+    const [dest, setDest] = useState(trip.destination);
+    const [start, setStart] = useState(trip.startDate);
+    const [daysCount, setDaysCount] = useState(trip.days.length);
+
+    const handleSave = () => {
+        const startDateObj = new Date(start);
+        const finalEndDateObj = new Date(startDateObj);
+        finalEndDateObj.setDate(startDateObj.getDate() + (daysCount - 1));
+
+        let newDays = [...trip.days];
+        if (daysCount > trip.days.length) {
+            for (let i = trip.days.length + 1; i <= daysCount; i++) {
+                newDays.push({ day: i, activities: [] });
+            }
+        } else if (daysCount < trip.days.length) {
+            newDays = newDays.slice(0, daysCount);
+        }
+
+        onUpdate({
+            ...trip,
+            destination: dest,
+            startDate: start,
+            endDate: finalEndDateObj.toISOString().split('T')[0],
+            days: newDays
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">編輯行程資訊</h3>
+                    <button onClick={onClose}><X className="w-5 h-5" /></button>
+                </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">目的地</label>
+                        <IOSInput value={dest} onChange={e => setDest(e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">開始日期</label>
+                        <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full bg-gray-100 p-4 rounded-xl outline-none" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">總天數</label>
+                        <IOSInput type="number" min={1} max={30} value={daysCount} onChange={e => setDaysCount(Number(e.target.value))} />
+                        {daysCount < trip.days.length && <p className="text-red-500 text-xs mt-1 ml-1">注意：減少天數將會刪除末尾的行程安排。</p>}
+                    </div>
+                    <IOSButton fullWidth onClick={handleSave}>儲存變更</IOSButton>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ... (以下 ProfileModal, CreateTripModal, ImportTripModal 保持不變，請保留原程式碼) ...
 
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
