@@ -6,6 +6,120 @@ import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
 
+// ============================================================================
+// 1. 小工具元件 (先定義這些，避免 ReferenceError)
+// ============================================================================
+
+const WeatherWidget: React.FC = () => {
+    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_weather_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
+    const [idx, setIdx] = useState(0);
+    const [data, setData] = useState<WeatherInfo | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(false);
+    const [isAdding, setIsAdding] = useState(false);
+    const [newLoc, setNewLoc] = useState('');
+
+    useEffect(() => { localStorage.setItem('Kelvin Trip_weather_locs', JSON.stringify(locations)); }, [locations]);
+    
+    const fetchWeather = async () => {
+        const currentLocation = locations[idx];
+        const cacheKey = `Kelvin Trip_weather_cache_${currentLocation}`;
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) { 
+                const { data, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp < 30 * 60 * 1000) { setData(data); setLoading(false); return; } 
+            }
+        } catch(e) {}
+        
+        setLoading(true);
+        setError(false);
+        try { 
+            const res = await getWeatherForecast(currentLocation);
+            if(res) { 
+                setData(res);
+                localStorage.setItem(cacheKey, JSON.stringify({ data: res, timestamp: Date.now() }));
+            } else { setError(true); } 
+        } catch (e) { setError(true); } finally { setLoading(false); }
+    };
+
+    useEffect(() => { fetchWeather(); }, [idx, locations]);
+    const next = () => setIdx((idx + 1) % locations.length);
+    const prev = () => setIdx((idx - 1 + locations.length) % locations.length);
+    const handleAdd = () => { if(newLoc.trim()) { setLocations([...locations, newLoc]); setIdx(locations.length); setNewLoc(''); setIsAdding(false); } };
+    const handleDelete = (e: React.MouseEvent) => { e.stopPropagation(); if(locations.length > 1) { const newLocs = locations.filter((_, i) => i !== idx); setLocations(newLocs); setIdx(0); } };
+    
+    const getWeatherIcon = (condition: string = '') => { 
+        if(condition.includes('雨')) return <CloudRain className="w-8 h-8 text-blue-200" />;
+        if(condition.includes('雲') || condition.includes('陰')) return <Cloud className="w-8 h-8 text-gray-200" />; 
+        if(condition.includes('晴')) return <Sun className="w-8 h-8 text-yellow-300" />;
+        return <CloudSun className="w-8 h-8 text-white" />; 
+    };
+    
+    if(isAdding) { return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 flex flex-col justify-center border border-white/50 shadow-sm relative"><button onClick={() => setIsAdding(false)} className="absolute top-2 right-2 text-gray-400"><X className="w-4 h-4" /></button><p className="text-xs font-bold text-gray-400 mb-2 uppercase">新增城市</p><input autoFocus placeholder="例如：東京" className="w-full bg-gray-100 rounded-lg px-3 py-2 text-sm mb-2 outline-none" value={newLoc} onChange={e => setNewLoc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} /><button onClick={handleAdd} className="bg-ios-blue text-white rounded-lg py-1 text-xs font-bold">確認</button></div> }
+    
+    return <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl p-4 h-40 shadow-lg shadow-blue-200 text-white relative overflow-hidden group">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-white/50 hover:text-white z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-white/50 hover:text-white z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-white/30 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-white/50 hover:text-white z-20"><Plus className="w-4 h-4" /></button>{loading ? (<div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin w-6 h-6 opacity-50" /><span className="text-xs mt-2 opacity-50">{locations[idx]}</span></div>) : error || !data ? (<div className="flex flex-col items-center justify-center h-full"><span className="text-sm opacity-70">無法取得天氣</span><button onClick={fetchWeather} className="text-xs mt-2 underline bg-white/20 px-2 py-1 rounded">重試</button></div>) : (<div className="flex flex-col justify-between h-full relative z-0"><div><div className="flex items-start justify-between"><span className="font-bold text-lg truncate max-w-[80%]">{data.location.split(' ')[0]}</span></div><span className="text-xs font-medium opacity-80 bg-white/20 px-2 py-0.5 rounded-full inline-block mt-1">{data.condition}</span></div><div className="flex items-end justify-between"><span className="text-5xl font-extralight tracking-tighter">{data.temperature.replace(/[^0-9.-]/g, '')}</span><div className="mb-2">{getWeatherIcon(data.condition)}</div></div></div>)}<div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-white' : 'bg-white/30'}`} />))}</div></div>;
+};
+
+const TimeWidget: React.FC = () => {
+    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_time_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
+    const [idx, setIdx] = useState(0);
+    const [timezone, setTimezone] = useState<string | null>(null);
+    const [timeStr, setTimeStr] = useState('');
+    const [dateStr, setDateStr] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+    const [newLoc, setNewLoc] = useState('');
+    const [error, setError] = useState(false);
+
+    useEffect(() => { localStorage.setItem('Kelvin Trip_time_locs', JSON.stringify(locations)); }, [locations]);
+    
+    useEffect(() => { 
+        setTimezone(null); setTimeStr('--:--'); setDateStr('載入中...'); setError(false); 
+        const fetchTz = async () => { 
+            const currentLocation = locations[idx]; 
+            const cacheKey = `Kelvin Trip_timezone_cache_${currentLocation}`; 
+            const cachedTz = localStorage.getItem(cacheKey); 
+            if (cachedTz) { setTimezone(cachedTz); return; } 
+            const tz = await getTimezone(currentLocation); 
+            if (tz) { setTimezone(tz); localStorage.setItem(cacheKey, tz); } else { setError(true); setDateStr('時區錯誤'); } 
+        }; 
+        fetchTz(); 
+    }, [idx, locations]);
+
+    useEffect(() => { 
+        if (!timezone) return; 
+        const update = () => { 
+            try { 
+                const now = new Date(); 
+                const timeOpts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false }; 
+                const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', weekday: 'short', timeZone: timezone }; 
+                setTimeStr(new Intl.DateTimeFormat('en-US', timeOpts).format(now)); 
+                setDateStr(new Intl.DateTimeFormat('zh-TW', dateOpts).format(now)); 
+                setError(false); 
+            } catch (e) { setTimeStr('--:--'); setDateStr('格式錯誤'); setError(true); } 
+        }; 
+        update(); 
+        const timer = setInterval(update, 1000); 
+        return () => clearInterval(timer); 
+    }, [timezone]);
+
+    const next = () => setIdx((idx + 1) % locations.length);
+    const prev = () => setIdx((idx - 1 + locations.length) % locations.length);
+    const handleAdd = () => { if(newLoc.trim()) { setLocations([...locations, newLoc]); setIdx(locations.length); setNewLoc(''); setIsAdding(false); } };
+    const handleDelete = (e: React.MouseEvent) => { e.stopPropagation(); if(locations.length > 1) { const newLocs = locations.filter((_, i) => i !== idx); setLocations(newLocs); setIdx(0); } };
+    
+    if(isAdding) { return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 flex flex-col justify-center border border-white/50 shadow-sm relative"><button onClick={() => setIsAdding(false)} className="absolute top-2 right-2 text-gray-400"><X className="w-4 h-4" /></button><p className="text-xs font-bold text-gray-400 mb-2 uppercase">新增城市</p><input autoFocus placeholder="例如：東京" className="w-full bg-gray-100 rounded-lg px-3 py-2 text-sm mb-2 outline-none" value={newLoc} onChange={e => setNewLoc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} /><button onClick={handleAdd} className="bg-gray-900 text-white rounded-lg py-1 text-xs font-bold">確認</button></div> }
+    
+    return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 shadow-sm border border-white/60 relative overflow-hidden group flex flex-col justify-between">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-gray-300 hover:text-gray-900 z-20"><Plus className="w-4 h-4" /></button><div className="relative z-0 h-full flex flex-col justify-between"><div><span className="font-bold text-lg text-gray-900 block truncate max-w-[80%]">{locations[idx]}</span><span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span></div><div className="flex items-end justify-between"><span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span></div><div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1"><Calendar className="w-3 h-3" />{dateStr}</div></div><div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />))}</div></div>;
+};
+
+// 整合這兩個 widget 的容器元件 (這就是原本報錯找不到的元件)
+const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
+
+// ============================================================================
+// 2. 主視圖 (TripsView)
+// ============================================================================
+
 interface TripsViewProps {
   trips: Trip[];
   user: User;
@@ -44,8 +158,8 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
       </div>
 
       {/* Content */}
-      {/* 修正重點：補回 overflow-y-auto 與 no-scrollbar，這讓此區塊可以捲動 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 space-y-6 mt-4 pb-24 w-full scroll-smooth no-scrollbar">
+        {/* 這裡呼叫 DashboardWidgets，現在它已經在上面定義好了，不會報錯 */}
         <DashboardWidgets />
 
         <div className="space-y-6">
@@ -67,11 +181,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                             <div
                                                 ref={provided.innerRef}
                                                 {...provided.draggableProps}
-                                                // 確保卡片區域可以捲動 (pan-y)
-                                                style={{ 
-                                                    ...provided.draggableProps.style, 
-                                                    touchAction: 'pan-y' 
-                                                }}
+                                                style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
                                                 className={`transition-all duration-200 ${snapshot.isDragging ? 'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
                                             >
                                                 <TripCard 
@@ -102,7 +212,10 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   );
 };
 
-// --- Trip Card Component ---
+// ============================================================================
+// 3. 其他輔助元件
+// ============================================================================
+
 const TripCard: React.FC<{ 
     trip: Trip, 
     onSelect: () => void, 
@@ -137,7 +250,7 @@ const TripCard: React.FC<{
                         </div>
                     </div>
                      
-                    {/* 拖曳手把：禁止捲動，專門用於拖曳 */}
+                    {/* 拖曳手把 */}
                     <div 
                         {...dragHandleProps}
                         style={{ touchAction: 'none' }}
@@ -158,7 +271,6 @@ const TripCard: React.FC<{
     );
 };
 
-// --- Profile Modal ---
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
     const [isChanging, setIsChanging] = useState(false);
@@ -295,110 +407,6 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
     );
 };
 
-const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
-
-const WeatherWidget: React.FC = () => {
-    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_weather_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
-    const [idx, setIdx] = useState(0);
-    const [data, setData] = useState<WeatherInfo | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(false);
-    const [isAdding, setIsAdding] = useState(false);
-    const [newLoc, setNewLoc] = useState('');
-
-    useEffect(() => { localStorage.setItem('Kelvin Trip_weather_locs', JSON.stringify(locations)); }, [locations]);
-    
-    const fetchWeather = async () => {
-        const currentLocation = locations[idx];
-        const cacheKey = `Kelvin Trip_weather_cache_${currentLocation}`;
-        try {
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) { const { data, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < 30 * 60 * 1000) { setData(data); setLoading(false); return; } }
-        } catch(e) {}
-        
-        setLoading(true);
-        setError(false);
-        try { 
-            const res = await getWeatherForecast(currentLocation); 
-            if(res) { 
-                setData(res); 
-                localStorage.setItem(cacheKey, JSON.stringify({ data: res, timestamp: Date.now() }));
-            } else { setError(true); } 
-        } catch (e) { setError(true); } finally { setLoading(false); }
-    };
-
-    useEffect(() => { fetchWeather(); }, [idx, locations]);
-    
-    const next = () => setIdx((idx + 1) % locations.length);
-    const prev = () => setIdx((idx - 1 + locations.length) % locations.length);
-    const handleAdd = () => { if(newLoc.trim()) { setLocations([...locations, newLoc]); setIdx(locations.length); setNewLoc(''); setIsAdding(false); } };
-    const handleDelete = (e: React.MouseEvent) => { e.stopPropagation(); if(locations.length > 1) { const newLocs = locations.filter((_, i) => i !== idx); setLocations(newLocs); setIdx(0); } };
-    
-    const getWeatherIcon = (condition: string = '') => { 
-        if(condition.includes('雨')) return <CloudRain className="w-8 h-8 text-blue-200" />;
-        if(condition.includes('雲') || condition.includes('陰')) return <Cloud className="w-8 h-8 text-gray-200" />; 
-        if(condition.includes('晴')) return <Sun className="w-8 h-8 text-yellow-300" />;
-        return <CloudSun className="w-8 h-8 text-white" />; 
-    };
-    
-    if(isAdding) { return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 flex flex-col justify-center border border-white/50 shadow-sm relative"><button onClick={() => setIsAdding(false)} className="absolute top-2 right-2 text-gray-400"><X className="w-4 h-4" /></button><p className="text-xs font-bold text-gray-400 mb-2 uppercase">新增城市</p><input autoFocus placeholder="例如：東京" className="w-full bg-gray-100 rounded-lg px-3 py-2 text-sm mb-2 outline-none" value={newLoc} onChange={e => setNewLoc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} /><button onClick={handleAdd} className="bg-ios-blue text-white rounded-lg py-1 text-xs font-bold">確認</button></div> }
-    
-    return <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl p-4 h-40 shadow-lg shadow-blue-200 text-white relative overflow-hidden group">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-white/50 hover:text-white z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-white/50 hover:text-white z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-white/30 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-white/50 hover:text-white z-20"><Plus className="w-4 h-4" /></button>{loading ? (<div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin w-6 h-6 opacity-50" /><span className="text-xs mt-2 opacity-50">{locations[idx]}</span></div>) : error || !data ? (<div className="flex flex-col items-center justify-center h-full"><span className="text-sm opacity-70">無法取得天氣</span><button onClick={fetchWeather} className="text-xs mt-2 underline bg-white/20 px-2 py-1 rounded">重試</button></div>) : (<div className="flex flex-col justify-between h-full relative z-0"><div><div className="flex items-start justify-between"><span className="font-bold text-lg truncate max-w-[80%]">{data.location.split(' ')[0]}</span></div><span className="text-xs font-medium opacity-80 bg-white/20 px-2 py-0.5 rounded-full inline-block mt-1">{data.condition}</span></div><div className="flex items-end justify-between"><span className="text-5xl font-extralight tracking-tighter">{data.temperature.replace(/[^0-9.-]/g, '')}</span><div className="mb-2">{getWeatherIcon(data.condition)}</div></div></div>)}<div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-white' : 'bg-white/30'}`} />))}</div></div>;
-};
-
-const TimeWidget: React.FC = () => {
-    const [locations, setLocations] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('Kelvin Trip_time_locs') || '["台北"]'); } catch(e) { return ["台北"]; } });
-    const [idx, setIdx] = useState(0);
-    const [timezone, setTimezone] = useState<string | null>(null);
-    const [timeStr, setTimeStr] = useState('');
-    const [dateStr, setDateStr] = useState('');
-    const [isAdding, setIsAdding] = useState(false);
-    const [newLoc, setNewLoc] = useState('');
-    const [error, setError] = useState(false);
-
-    useEffect(() => { localStorage.setItem('Kelvin Trip_time_locs', JSON.stringify(locations)); }, [locations]);
-    
-    useEffect(() => { 
-        setTimezone(null); setTimeStr('--:--'); setDateStr('載入中...'); setError(false); 
-        const fetchTz = async () => { 
-            const currentLocation = locations[idx]; 
-            const cacheKey = `Kelvin Trip_timezone_cache_${currentLocation}`; 
-            const cachedTz = localStorage.getItem(cacheKey); 
-            if (cachedTz) { setTimezone(cachedTz); return; } 
-            const tz = await getTimezone(currentLocation); 
-            if (tz) { setTimezone(tz); localStorage.setItem(cacheKey, tz); } else { setError(true); setDateStr('時區錯誤'); } 
-        }; 
-        fetchTz(); 
-    }, [idx, locations]);
-
-    useEffect(() => { 
-        if (!timezone) return; 
-        const update = () => { 
-            try { 
-                const now = new Date(); 
-                const timeOpts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false }; 
-                const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', weekday: 'short', timeZone: timezone }; 
-                setTimeStr(new Intl.DateTimeFormat('en-US', timeOpts).format(now)); 
-                setDateStr(new Intl.DateTimeFormat('zh-TW', dateOpts).format(now)); 
-                setError(false); 
-            } catch (e) { setTimeStr('--:--'); setDateStr('格式錯誤'); setError(true); } 
-        }; 
-        update(); 
-        const timer = setInterval(update, 1000); 
-        return () => clearInterval(timer); 
-    }, [timezone]);
-
-    const next = () => setIdx((idx + 1) % locations.length);
-    const prev = () => setIdx((idx - 1 + locations.length) % locations.length);
-    const handleAdd = () => { if(newLoc.trim()) { setLocations([...locations, newLoc]); setIdx(locations.length); setNewLoc(''); setIsAdding(false); } };
-    const handleDelete = (e: React.MouseEvent) => { e.stopPropagation(); if(locations.length > 1) { const newLocs = locations.filter((_, i) => i !== idx); setLocations(newLocs); setIdx(0); } };
-    
-    if(isAdding) { return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 flex flex-col justify-center border border-white/50 shadow-sm relative"><button onClick={() => setIsAdding(false)} className="absolute top-2 right-2 text-gray-400"><X className="w-4 h-4" /></button><p className="text-xs font-bold text-gray-400 mb-2 uppercase">新增城市</p><input autoFocus placeholder="例如：東京" className="w-full bg-gray-100 rounded-lg px-3 py-2 text-sm mb-2 outline-none" value={newLoc} onChange={e => setNewLoc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} /><button onClick={handleAdd} className="bg-ios-blue text-white rounded-lg py-1 text-xs font-bold">確認</button></div> }
-    
-    return <div className="bg-white/80 backdrop-blur-md rounded-3xl p-4 h-40 shadow-sm border border-white/60 relative overflow-hidden group flex flex-col justify-between">{locations.length > 1 && (<><button onClick={prev} className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronLeft className="w-4 h-4" /></button><button onClick={next} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-900 z-10"><ChevronRight className="w-4 h-4" /></button></>)}{locations.length > 1 && (<button onClick={handleDelete} className="absolute top-2 left-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-20"><X className="w-3 h-3" /></button>)}<button onClick={() => setIsAdding(true)} className="absolute top-2 right-2 text-gray-300 hover:text-gray-900 z-20"><Plus className="w-4 h-4" /></button><div className="relative z-0 h-full flex flex-col justify-between"><div><span className="font-bold text-lg text-gray-900 block truncate max-w-[80%]">{locations[idx]}</span><span className="text-xs font-medium text-gray-500 uppercase tracking-wide">當地時間</span></div><div className="flex items-end justify-between"><span className="text-5xl font-mono tracking-tighter text-gray-900">{timeStr}</span></div><div className="text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 flex items-center gap-1"><Calendar className="w-3 h-3" />{dateStr}</div></div><div className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1">{locations.map((_, i) => (<div key={i} className={`w-1 h-1 rounded-full ${i === idx ? 'bg-gray-800' : 'bg-gray-300'}`} />))}</div></div>;
-};
-
 const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
     const [loading, setLoading] = useState(false);
     const [destination, setDestination] = useState('');
@@ -505,10 +513,10 @@ const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) =
             if (!code.trim()) return;
             const jsonString = decodeURIComponent(escape(atob(code.trim())));
             const tripData = JSON.parse(jsonString);
-            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程連結'); }
-        } catch (e) { setError('連結解析失敗，請確認連結是否完整'); }
+            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
+        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
     };
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程連結</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上連結..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
     );
 };
