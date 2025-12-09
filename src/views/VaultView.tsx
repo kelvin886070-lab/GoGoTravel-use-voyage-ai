@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Folder, FileText, Plus, Trash2, Image as ImageIcon, File as FileIcon, CheckCircle, Circle, Package, Shirt, Briefcase, Bath, Smartphone, CheckCircle2, ArrowLeft, RotateCcw, XCircle, Pin, GripVertical, Upload, HardDrive, Cloud, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, ChecklistItem, ChecklistCategory, VaultFolder, VaultFile } from '../types';
@@ -9,6 +9,14 @@ interface VaultViewProps {
     onRestoreTrip?: (id: string) => void;
     onPermanentDeleteTrip?: (id: string) => void;
 }
+
+// 定義新用戶預設的資料夾結構
+const DEFAULT_FOLDERS_CONFIG = [
+    { name: '機票憑證', isPinned: true },
+    { name: '住宿憑證', isPinned: true },
+    { name: '保險單', isPinned: true },
+    { name: '行程參考圖', isPinned: true },
+];
 
 export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onRestoreTrip, onPermanentDeleteTrip }) => {
     const [activeTab, setActiveTab] = useState<'checklist' | 'files'>('checklist');
@@ -51,7 +59,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
     );
 };
 
-// --- PackingListSection (更名 key 為 kelvin_packing_list) ---
+// --- PackingListSection (行李清單) ---
 const PackingListSection: React.FC = () => { 
     const defaultItems: ChecklistItem[] = [ 
         { id: '1', text: '護照', checked: false, category: 'documents' }, 
@@ -66,7 +74,7 @@ const PackingListSection: React.FC = () => {
         { id: '10', text: '轉接頭', checked: false, category: 'gadgets' }, 
     ];
     
-    // 改名：從 Kelvin Trip_packing_list 改為 kelvin_packing_list
+    // Key 已更新為 kelvin_packing_list
     const [items, setItems] = useState<ChecklistItem[]>(() => { try { const saved = localStorage.getItem('kelvin_packing_list'); return saved ? JSON.parse(saved) : defaultItems; } catch (e) { return defaultItems; } });
     const [newItemText, setNewItemText] = useState(''); 
     const [addingToCategory, setAddingToCategory] = useState<ChecklistCategory | null>(null); 
@@ -144,7 +152,7 @@ const PackingListSection: React.FC = () => {
 };
 
 // --------------------------------------------------------------------------
-//  文件管理區塊 (已升級：全 Supabase 同步)
+//  文件管理區塊 (已修復：全 Supabase 同步 + 自動初始化 + 垃圾桶)
 // --------------------------------------------------------------------------
 const FileManagerSection: React.FC<{ 
     deletedTrips: Trip[], 
@@ -156,13 +164,71 @@ const FileManagerSection: React.FC<{
     const [viewingTrash, setViewingTrash] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     
-    // --- State: 現在全部來自資料庫 ---
+    // --- State: 全部來自資料庫 ---
     const [folders, setFolders] = useState<VaultFolder[]>([]);
     const [files, setFiles] = useState<VaultFile[]>([]);
 
+    // 關鍵修正：防止 useEffect 重複執行導致預設資料夾建立兩次
+    const isInitializingRef = useRef(false);
+
     // --- Fetchers ---
     const fetchData = async () => {
-        // 1. 抓取檔案
+        const user = (await supabase.auth.getUser()).data.user;
+        if (!user) return;
+
+        // 1. 抓取資料夾
+        const { data: folderData } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
+        
+        // --- 核心功能：如果資料夾是空的，自動幫新用戶建立預設資料夾 ---
+        if (folderData && folderData.length === 0) {
+            
+            // 檢查鎖
+            if (isInitializingRef.current) return;
+            isInitializingRef.current = true;
+
+            console.log("新用戶：正在初始化預設資料夾...");
+            
+            const defaultFolders = DEFAULT_FOLDERS_CONFIG.map(f => ({
+                user_id: user.id,
+                name: f.name,
+                parent_id: null,
+                is_pinned: f.isPinned,
+                is_deleted: false
+            }));
+            
+            // 寫入資料庫
+            const { error } = await supabase.from('vault_folders').insert(defaultFolders);
+            
+            if (!error) {
+                // 寫入成功後，重新抓取一次資料
+                const { data: newFolders } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
+                if (newFolders) {
+                    setFolders(newFolders.map((row: any) => ({
+                        id: row.id,
+                        name: row.name,
+                        parentId: row.parent_id || null,
+                        isPinned: !!row.is_pinned,
+                        isDeleted: !!row.is_deleted
+                    })));
+                }
+                return; // 結束這回合
+            } else {
+                console.error("初始化資料夾失敗", error);
+                isInitializingRef.current = false; // 失敗才釋放鎖，允許重試
+            }
+
+        } else if (folderData) {
+            // 如果已經有資料夾，就正常載入
+            setFolders(folderData.map((row: any) => ({
+                id: row.id,
+                name: row.name,
+                parentId: row.parent_id || null,
+                isPinned: !!row.is_pinned,
+                isDeleted: !!row.is_deleted
+            })));
+        }
+
+        // 2. 抓取檔案
         const { data: fileData } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
         if (fileData) {
             setFiles(fileData.map((row: any) => ({
@@ -175,18 +241,6 @@ const FileManagerSection: React.FC<{
                 data: row.file_path,
                 isDeleted: !!row.is_deleted, 
                 isPinned: !!row.is_pinned
-            })));
-        }
-
-        // 2. 抓取資料夾 (新增)
-        const { data: folderData } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
-        if (folderData) {
-            setFolders(folderData.map((row: any) => ({
-                id: row.id,
-                name: row.name,
-                parentId: row.parent_id || null,
-                isPinned: !!row.is_pinned,
-                isDeleted: !!row.is_deleted
             })));
         }
     };
@@ -204,14 +258,14 @@ const FileManagerSection: React.FC<{
 
     const deletedFolders = folders.filter(f => f.isDeleted);
     const deletedFiles = files.filter(f => f.isDeleted);
-    
     const pinnedFiles = currentFiles.filter(f => f.isPinned);
     const unpinnedFiles = currentFiles.filter(f => !f.isPinned);
     
+    // 排序：置頂的在前
     const sortedFolders = [...activeFolders].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
     const currentFolderName = currentPath ? folders.find(f => f.id === currentPath)?.name : '我的文件';
 
-    // --- Actions (全部改為 Supabase 操作) ---
+    // --- Actions ---
 
     const handleCreateFolder = async () => {
         if(!newFolderName.trim()) return;
@@ -233,7 +287,7 @@ const FileManagerSection: React.FC<{
 
             setNewFolderName('');
             setIsCreatingFolder(false);
-            fetchData(); // Refresh
+            fetchData();
         } catch (e) {
             console.error(e);
             alert("建立資料夾失敗");
@@ -241,7 +295,7 @@ const FileManagerSection: React.FC<{
     };
 
     const onFolderDragEnd = (result: DropResult) => {
-        // 資料庫排序比較複雜，這裡暫時只做前端視覺效果，不寫入資料庫
+        // 前端排序暫時效果 (不寫入 DB，避免複雜)
         if (!result.destination) return;
         const items = Array.from(sortedFolders);
         const [reorderedItem] = items.splice(result.source.index, 1);
@@ -261,7 +315,7 @@ const FileManagerSection: React.FC<{
         const { error } = await supabase.from('vault_folders').update(dbUpdates).eq('id', id);
         if(error) {
             console.error(error);
-            fetchData(); // Revert on error
+            fetchData(); // 失敗則還原
         }
     };
 
@@ -522,6 +576,7 @@ const FileManagerSection: React.FC<{
                                                     </div>
                                                 </div>
                                                 <h3 className="font-semibold text-gray-800 truncate w-full text-sm">{folder.name}</h3>
+                                                {/* 修正：使用 allActiveFiles 計算項目數量，這樣才能包含所有檔案 */}
                                                 <p className="text-[10px] text-gray-500">
                                                     {allActiveFiles.filter(f => f.parentId === folder.id).length} 項目
                                                 </p>
@@ -567,6 +622,7 @@ const FileManagerSection: React.FC<{
 
                 {/* 5. 檔案列表 (支援拖曳) */}
                 <div className="space-y-2">
+                    {/* 修正：使用 currentFiles 判斷當前資料夾是否為空 */}
                     {currentFiles.length === 0 && sortedFolders.length === 0 && !isCreatingFolder && (
                         <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-100 rounded-2xl">
                             <HardDrive className="w-10 h-10 mx-auto mb-2 opacity-20" />
@@ -657,4 +713,4 @@ const FileManagerSection: React.FC<{
             )}
         </div>
     );
-};
+}
