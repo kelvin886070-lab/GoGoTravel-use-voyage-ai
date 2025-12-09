@@ -18,8 +18,61 @@ const App: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const fetchTrips = async () => {
-      if (!user) return;
+  // --- 核心邏輯：讀取使用者資料 ---
+  const fetchUserData = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+          const userName = session.user.user_metadata?.full_name || 'User';
+          // 關鍵：每次都重新讀取 avatar_url，確保是最新上傳的
+          const userAvatar = session.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`;
+          
+          setUser({
+              id: session.user.id,
+              name: userName,
+              joinedDate: new Date(session.user.created_at).toLocaleDateString(),
+              avatar: userAvatar
+          });
+          
+          // 載入背景設定
+          const savedBg = localStorage.getItem(`voyage_${session.user.id}_bg_image`);
+          if (savedBg) setBgImage(savedBg);
+          
+          // 載入行程
+          fetchTrips(session.user.id);
+      } else {
+          setUser(null);
+          setTrips([]);
+      }
+  };
+
+  // --- 核心修正：加入 Auth 監聽器 ---
+  // 這會自動處理「登入成功」、「登出」的所有狀態變化
+  useEffect(() => {
+      // 1. 初始化檢查
+      fetchUserData();
+
+      // 2. 監聽登入/登出事件 (解決登出後再登入頭貼消失的問題)
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN') {
+              console.log("偵測到登入，正在更新使用者資料...");
+              fetchUserData(); // 登入後，立刻重抓最新資料 (包含新頭貼)
+          } else if (event === 'SIGNED_OUT') {
+              console.log("已登出");
+              setUser(null);
+              setCurrentView(AppView.TRIPS);
+              setSelectedTrip(null);
+          }
+      });
+
+      return () => {
+          authListener.subscription.unsubscribe();
+      };
+  }, []);
+
+  const fetchTrips = async (userId?: string) => {
+      const currentUserId = userId || user?.id;
+      if (!currentUserId) return;
+      
       setIsSyncing(true);
       const { data } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
@@ -50,49 +103,23 @@ const App: React.FC = () => {
       const { error } = await supabase.from('trips').delete().eq('id', tripId);
       if (error) console.error("刪除失敗", error);
   };
-  
-  useEffect(() => {
-      const checkUser = async () => {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-              const userName = session.user.user_metadata?.full_name || 'User';
-              const userAvatar = session.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`;
-              
-              setUser({
-                  id: session.user.id,
-                  name: userName,
-                  joinedDate: new Date(session.user.created_at).toLocaleDateString(),
-                  avatar: userAvatar
-              });
-          }
-      };
-      checkUser();
-  }, []);
 
-  useEffect(() => {
-      if (user) {
-          fetchTrips();
-          const savedBg = localStorage.getItem(`Kelvin Trip_${user.id}_bg_image`);
-          if (savedBg) setBgImage(savedBg);
-      } else {
-          setTrips([]);
-      }
-  }, [user]);
-
-  const handleLogin = (newUser: User) => { setUser(newUser); };
+  // handleLogin 改為空函式，因為我們現在靠 onAuthStateChange 自動處理
+  const handleLogin = (newUser: User) => { 
+      // 觸發 fetchUserData 來確保資料是最新的
+      fetchUserData();
+  };
 
   const handleLogout = async () => {
       if(confirm("確定要登出嗎？")) {
           await supabase.auth.signOut();
-          setUser(null);
-          setCurrentView(AppView.TRIPS);
-          setSelectedTrip(null);
+          // 狀態清除交給 onAuthStateChange 處理
       }
   };
 
   const handleUpdateBackground = (img: string) => {
       setBgImage(img);
-      if(user) localStorage.setItem(`Kelvin Trip_${user.id}_bg_image`, img);
+      if(user) localStorage.setItem(`voyage_${user.id}_bg_image`, img);
   }
   
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
@@ -162,7 +189,7 @@ const App: React.FC = () => {
   }
 
   return (
-    // 修正 1: 使用 h-[100dvh] 解決手機網址列遮擋問題
+    // 修正: 使用 h-[100dvh] 解決手機網址列遮擋問題
     <div className="h-[100dvh] w-full font-sans text-gray-900 bg-gray-50/80 overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
       
@@ -175,11 +202,7 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* 修正 2: 
-            - 移除 overflow-hidden，改用 relative 讓子層決定。
-            - TripsView 和 VaultView 自己有 Header 和 Scroll 邏輯，直接渲染。
-            - ExploreView 和 ToolsView 需要外層幫忙加上 overflow-y-auto。
-        */}
+        {/* 修正: 確保 overflow 正常運作 */}
         <div className="flex-1 min-h-0 relative w-full flex flex-col">
             {currentView === AppView.TRIPS && (
                 <TripsView 
@@ -207,7 +230,6 @@ const App: React.FC = () => {
             )}
             
             {currentView === AppView.VAULT && (
-                // VaultView 內部已經有 Header 和 flex-col 結構，直接渲染即可
                 <VaultView 
                     deletedTrips={trips.filter(t => t.isDeleted)} 
                     onRestoreTrip={handleRestoreTrip} 
