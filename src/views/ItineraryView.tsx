@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, TrendingUp, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, RefreshCw } from 'lucide-react';
 import type { Trip, TripDay, Activity } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { IOSInput } from '../components/UI';
@@ -171,7 +171,7 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
                     className={`p-2.5 rounded-full transition-all active:scale-90 ${convertedTotal ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
                     title="換算匯率"
                 >
-                    {isConverting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingUp className="w-5 h-5" />}
+                    {isConverting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ArrowLeftRight className="w-5 h-5" />}
                 </button>
             </div>
 
