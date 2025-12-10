@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-    ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, 
-    Wallet, TrendingUp, Settings, X, Utensils, Bed, Bus, Plane, 
-    Tag as TagIcon
-} from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, TrendingUp, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, RefreshCw } from 'lucide-react';
 import type { Trip, TripDay, Activity } from '../types';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { IOSInput } from '../components/UI';
+import { getCurrencyRate } from '../services/gemini';
 
 // --- Helpers ---
 const addMinutes = (timeStr: string, minutes: number): string => {
@@ -17,18 +14,14 @@ const addMinutes = (timeStr: string, minutes: number): string => {
         date.setHours(h || 0, m || 0, 0, 0);
         date.setMinutes(date.getMinutes() + minutes);
         return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-        return timeStr;
-    }
+    } catch (e) { return timeStr; }
 };
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
     'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
 };
-
 const CURRENCY_LABELS: Record<string, string> = {
-    'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元',
-    'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
+    'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元', 'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
 };
 
 const parseCost = (costStr?: string | number): number => {
@@ -60,8 +53,7 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
     const { color, label, icon: Icon } = config[type] || config.default;
     return (
         <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wide transition-colors flex items-center gap-1 w-fit ${color}`}>
-            <Icon className="w-3 h-3" />
-            {label}
+            <Icon className="w-3 h-3" /> {label}
         </span>
     );
 };
@@ -70,68 +62,30 @@ const EditableTag: React.FC<{ type: string, onChange: (newType: string) => void 
     return (
         <div className="relative group cursor-pointer w-fit">
             <Tag type={type} />
-            <select 
-                value={type}
-                onChange={(e) => onChange(e.target.value)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]"
-            >
+            <select value={type} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]">
                 <optgroup label="基本">
-                    <option value="sightseeing">景點</option>
-                    <option value="food">美食</option>
-                    <option value="transport">交通</option>
-                    <option value="flight">航班</option>
-                    <option value="hotel">住宿</option>
+                    <option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option>
                 </optgroup>
                 <optgroup label="休閒娛樂">
-                    <option value="cafe">咖啡廳</option>
-                    <option value="shopping">購物</option>
-                    <option value="bar">酒吧</option>
-                    <option value="relax">放鬆/SPA</option>
+                    <option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option>
                 </optgroup>
                 <optgroup label="其他">
-                    <option value="culture">文化/展覽</option>
-                    <option value="activity">體驗活動</option>
+                    <option value="culture">文化/展覽</option><option value="activity">體驗活動</option>
                 </optgroup>
             </select>
         </div>
     );
 };
 
-const AutoWidthInput: React.FC<{ 
-    value: string | number, 
-    onChange: (val: string) => void,
-    placeholder?: string,
-    className?: string
-}> = ({ value, onChange, placeholder = '', className }) => {
+const AutoWidthInput: React.FC<{ value: string | number, onChange: (val: string) => void, placeholder?: string, className?: string }> = ({ value, onChange, placeholder = '', className }) => {
     const spanRef = useRef<HTMLSpanElement>(null);
     const [width, setWidth] = useState(35);
-
-    useEffect(() => {
-        if (spanRef.current) {
-            setWidth(Math.max(35, spanRef.current.offsetWidth + 15)); 
-        }
-    }, [value]);
-
+    useEffect(() => { if (spanRef.current) setWidth(Math.max(35, spanRef.current.offsetWidth + 15)); }, [value]);
     const displayValue = (value === 0 || value === '0') ? '0' : (value || '');
-
     return (
         <div className="relative inline-block">
-            <span ref={spanRef} className={`absolute opacity-0 pointer-events-none whitespace-pre ${className}`}>
-                {displayValue || placeholder}
-            </span>
-            <input
-                type="text"
-                value={displayValue}
-                placeholder={placeholder}
-                onChange={(e) => {
-                    const val = e.target.value;
-                    if (/^\d*\.?\d*$/.test(val)) {
-                        onChange(val);
-                    }
-                }}
-                style={{ width }}
-                className={`bg-transparent outline-none text-center min-w-[35px] ${className} placeholder:text-gray-300`}
-            />
+            <span ref={spanRef} className={`absolute opacity-0 pointer-events-none whitespace-pre ${className}`}>{displayValue || placeholder}</span>
+            <input type="text" value={displayValue} placeholder={placeholder} onChange={(e) => { const val = e.target.value; if (/^\d*\.?\d*$/.test(val)) onChange(val); }} style={{ width }} className={`bg-transparent outline-none text-center min-w-[35px] ${className} placeholder:text-gray-300`} />
         </div>
     );
 };
@@ -139,27 +93,24 @@ const AutoWidthInput: React.FC<{
 const EditableText: React.FC<{ value: string, onSave: (val: string) => void, className?: string }> = ({ value, onSave, className }) => {
     const [text, setText] = useState(value);
     useEffect(() => { setText(value); }, [value]);
-    return (
-        <input
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onBlur={() => { if (text !== value) onSave(text); }}
-            className={`bg-transparent outline-none min-w-0 ${className}`}
-        />
-    );
+    return <input type="text" value={text} onChange={(e) => setText(e.target.value)} onBlur={() => { if (text !== value) onSave(text); }} className={`bg-transparent outline-none min-w-0 ${className}`} />;
 };
 
+// --- ExpenseDashboard ---
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+    
+    const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
+    const [isConverting, setIsConverting] = useState(false);
 
     const stats = trip.days.reduce((acc, day) => {
         day.activities.forEach(act => {
             const cost = parseCost(act.cost);
             if (cost > 0) {
                 acc.total += cost;
-                acc.byCategory[act.type] = (acc.byCategory[act.type] || 0) + cost;
+                const type = act.type || 'other'; 
+                acc.byCategory[type] = (acc.byCategory[type] || 0) + cost;
             }
         });
         return acc;
@@ -170,23 +121,60 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
         { type: 'hotel', label: '住宿', color: 'bg-indigo-500' },
         { type: 'transport', label: '交通', color: 'bg-gray-500' },
         { type: 'food', label: '美食', color: 'bg-orange-500' },
+        { type: 'cafe', label: '咖啡', color: 'bg-amber-500' },
         { type: 'sightseeing', label: '景點', color: 'bg-blue-500' },
+        { type: 'shopping', label: '購物', color: 'bg-pink-500' },
+        { type: 'relax', label: '放鬆', color: 'bg-emerald-500' },
+        { type: 'bar', label: '酒吧', color: 'bg-violet-500' },
+        { type: 'culture', label: '文化', color: 'bg-rose-500' },
+        { type: 'activity', label: '體驗', color: 'bg-cyan-500' },
+        { type: 'other', label: '其他', color: 'bg-gray-400' },
     ];
+
+    const handleConvert = async () => {
+        if (convertedTotal || stats.total === 0) {
+             setConvertedTotal(null);
+             return;
+        }
+        setIsConverting(true);
+        const targetCurrency = currencyCode === 'TWD' ? 'USD' : 'TWD';
+        const res = await getCurrencyRate(currencyCode, targetCurrency, stats.total);
+        setConvertedTotal(res);
+        setIsConverting(false);
+    };
 
     return (
         <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-6 animate-in slide-in-from-top-4">
-            <div className="flex items-end justify-between mb-4">
+            <div className="flex items-start justify-between mb-4">
                 <div>
                     <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">總花費 ({currencyCode})</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mt-1">
-                        <span className="text-lg align-top mr-1">{currencySymbol}</span>
+                    <h3 className="text-3xl font-black text-gray-900 mt-1 tracking-tight">
+                        <span className="text-lg font-bold text-gray-400 mr-1">{currencySymbol}</span>
                         {stats.total.toLocaleString()}
                     </h3>
+                    
+                    <div className="h-5 mt-1"> 
+                        {isConverting ? (
+                            <span className="text-xs text-gray-400 flex items-center gap-1 animate-pulse">
+                                <RefreshCw className="w-3 h-3 animate-spin" /> 計算即時匯率中...
+                            </span>
+                        ) : convertedTotal ? (
+                            <span className="text-sm font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-lg">
+                                {convertedTotal}
+                            </span>
+                        ) : null}
+                    </div>
                 </div>
-                <div className="p-2 bg-blue-50 rounded-full text-ios-blue">
-                    <TrendingUp className="w-6 h-6" />
-                </div>
+                
+                <button 
+                    onClick={handleConvert}
+                    className={`p-2.5 rounded-full transition-all active:scale-90 ${convertedTotal ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                    title="換算匯率"
+                >
+                    {isConverting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <TrendingUp className="w-5 h-5" />}
+                </button>
             </div>
+
             <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">
                 {categories.map(cat => {
                     const amount = stats.byCategory[cat.type] || 0;
@@ -195,7 +183,8 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
                     return <div key={cat.type} style={{ width: `${percent}%` }} className={cat.color} title={cat.label} />;
                 })}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4">
                 {categories.map(cat => {
                     const amount = stats.byCategory[cat.type] || 0;
                     if (amount === 0) return null;
@@ -203,7 +192,7 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
                         <div key={cat.type} className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-1.5">
                                 <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                                <span className="text-gray-600">{cat.label}</span>
+                                <span className="text-gray-600 font-medium">{cat.label}</span>
                             </div>
                             <span className="font-bold text-gray-900">{currencySymbol}{amount.toLocaleString()}</span>
                         </div>
@@ -222,7 +211,7 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
     else {
         const dest = encodeURIComponent(stops[stops.length - 1]);
         const waypoints = stops.slice(0, -1).map(s => encodeURIComponent(s)).join('|');
-        mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
+        mapUrl = `http://googleusercontent.com/maps.google.com/?daddr=${dest}&waypoints=${waypoints}&travelmode=transit`;
     }
     return (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
@@ -239,15 +228,10 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState('');
     const [time, setTime] = useState('09:00'); 
-    const [type, setType] = useState<Activity['type']>('sightseeing'); 
+    const [type, setType] = useState<string>('sightseeing'); 
     const [description, setDescription] = useState(''); 
     const [location, setLocation] = useState('');
-    
-    const handleSubmit = () => { 
-        if (!title) return; 
-        onAdd({ id: Date.now().toString(), time, title, description, type, location }); 
-    };
-
+    const handleSubmit = () => { if (!title) return; onAdd({ time, title, description, type, location }); };
     return (
         <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-3xl rounded-t-3xl p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-gray-900">新增第 {day} 天</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-gray-100 rounded-xl py-3 px-3" /><select value={type} onChange={e => setType(e.target.value as any)} className="w-full bg-gray-100 rounded-xl py-3 px-3"><optgroup label="基本"><option value="sightseeing">景點</option><option value="food">美食</option><option value="transport">交通</option><option value="flight">航班</option><option value="hotel">住宿</option></optgroup><optgroup label="休閒娛樂"><option value="cafe">咖啡廳</option><option value="shopping">購物</option><option value="bar">酒吧</option><option value="relax">放鬆/SPA</option></optgroup><optgroup label="其他"><option value="culture">文化/展覽</option><option value="activity">體驗活動</option></optgroup></select></div><button className="w-full py-3.5 rounded-xl bg-ios-blue text-white font-bold active:scale-95 transition-transform" onClick={handleSubmit}>確認</button></div></div></div>
     );
@@ -256,10 +240,10 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 // --- Main View Component ---
 
 interface ItineraryViewProps { 
-    trip: Trip; 
+    trip: Trip;
     onBack: () => void;
     onDelete: () => void; 
-    onUpdateTrip: (t: Trip) => void; 
+    onUpdateTrip: (t: Trip) => void;
 }
 
 export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
@@ -272,10 +256,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
 
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+    
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
-    
     const handleTitleBlur = () => {
         if (editingTitle !== trip.destination && editingTitle.trim() !== "") {
             onUpdateTrip({ ...trip, destination: editingTitle });
@@ -295,7 +279,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             reader.readAsDataURL(file);
         }
     };
-
     const handleCurrencyChange = (newCurrency: string) => {
         onUpdateTrip({ ...trip, currency: newCurrency });
         setShowSettings(false);
@@ -332,7 +315,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         onUpdateTrip(newTrip);
         setIsAddModalOpen(false);
     };
-
     const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
         if(!confirm("確定要刪除？")) return;
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
@@ -343,9 +325,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
 
     return (
-        // 修正 1: 使用 h-[100dvh] 確保在手機上佔滿全螢幕
         <div className="bg-white h-[100dvh] w-full flex flex-col relative animate-in slide-in-from-right duration-300">
-            
             {/* Header Image */}
             <div className="flex-shrink-0 h-64 relative group z-10 shadow-sm">
                 <img src={trip.coverImage} className="w-full h-full object-cover" alt="Cover" />
@@ -364,7 +344,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         <button onClick={() => setShowSettings(!showSettings)} className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white hover:bg-white/30 transition-colors"><Settings className="w-3 h-3" /></button>
                         
                         {showSettings && (
-                            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
+                             <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
                                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
                                 <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl animate-in zoom-in-95">
                                     <div className="flex justify-between items-center mb-4">
@@ -395,7 +375,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </div>
 
-                    {/* Content List: 修正 2: 加上 min-h-0 以確保 overflow-y-auto 生效 */}
+                    {/* Content List */}
                     <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
                         {showExpenses && <ExpenseDashboard trip={trip} />}
                         <DragDropContext onDragEnd={onDragEnd}>
@@ -408,7 +388,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                             {viewMode === 'list' && (<button onClick={() => openAddModal(day.day)} className="text-ios-blue bg-blue-50 hover:bg-blue-100 p-1.5 rounded-full transition-colors active:scale-90"><Plus className="w-5 h-5" /></button>)}
                                         </div>
                                         {viewMode === 'list' ? (
-                                            <Droppable droppableId={`day-${day.day}`}>
+                                            <Droppable droppableId={`day-${dayIndex + 1}`}>
                                                 {(provided) => (
                                                     <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
                                                         {day.activities.map((act, index) => (
@@ -417,7 +397,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                     <div 
                                                                         ref={provided.innerRef} 
                                                                         {...provided.draggableProps} 
-                                                                        // 修正 3: 加上 touchAction: 'pan-y'，允許手指在卡片上滑動頁面
                                                                         style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} 
                                                                         className={`bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50' : ''}`}
                                                                     >
@@ -437,8 +416,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                                 </div>
                                                                                 <p className="text-xs text-gray-500 line-clamp-1 mt-1">{act.description}</p>
                                                                             </div>
-                                                                            
-                                                                            {/* 修正 4: 拖曳手把禁止捲動，確保拖曳功能正常 */}
                                                                             <div 
                                                                                 {...provided.dragHandleProps} 
                                                                                 style={{ touchAction: 'none' }}

@@ -11,33 +11,31 @@ const CACHE_PREFIX = 'kelvin_cache_';
 const CACHE_TTL = {
     WEATHER: 30,
     TIMEZONE: 10080,
-    CURRENCY: 60,
+    CURRENCY: 60, // 匯率快取 60 分鐘
     STATIC_INFO: 1440,
     ITINERARY: 60
 };
 
 // ==========================================================
-// 核心：智慧型 API 呼叫 (針對你的 2.5 環境優化)
+// 核心：純 HTTP 請求函式 (已加入 Console Log)
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
-    
-    // 根據你的診斷報告，這些是你帳號裡有的模型
-    // 我們依序嘗試，直到找到一個能用的
+    // 定義模型候選名單 (優先順序)
     const candidateModels = [
-        "gemini-2.5-flash",       // 首選：最新版
-        "gemini-2.0-flash-exp",   // 備選：實驗版 (通常免費額度高)
-        "gemini-1.5-flash-latest",// 嘗試最新別名
-        "gemini-1.5-flash"        // 最後嘗試舊版
+        "gemini-2.5-flash",       // 最新快速模型
+        "gemini-2.0-flash-exp",   // 實驗性模型
+        "gemini-1.5-flash",       // 穩定版
+        "gemini-1.5-flash-001"    // 備用舊版
     ];
 
     let lastError = null;
 
     for (const model of candidateModels) {
-        // ⚠️ 關鍵修正：新模型 (2.5) 必須用 v1接口
-        const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
         try {
-            console.log(`🚀 [Kelvin Trip] 嘗試模型: ${model}`);
+            // 🚀 Log 1: 顯示正在嘗試的模型
+            console.log(`🚀 [Kelvin Trip] 嘗試呼叫模型: ${model}`);
             
             const response = await fetch(url, {
                 method: 'POST',
@@ -49,30 +47,29 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 
             if (response.ok) {
                 const data = await response.json();
+                // ✅ Log 2: 顯示成功訊息
                 console.log(`✅ 成功！模型 ${model} 正常運作。`);
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
                 const err = await response.json().catch(() => ({}));
                 console.warn(`⚠️ 模型 ${model} 失敗:`, err.error?.message || response.status);
                 
-                // 如果是 429 (額度滿)，這表示模型存在但不能用，換下一個試試
                 if (response.status === 429) {
                     lastError = new Error(`模型 ${model} 額度已滿 (429)`);
-                    continue; 
+                    continue; // 試下一個模型
                 }
-                
-                // 如果是 404 (找不到)，當然換下一個
-                lastError = new Error(`模型 ${model} 不存在 (404)`);
+                lastError = new Error(`模型 ${model} 回傳 ${response.status}`);
             }
         } catch (e: any) {
+            console.error(`❌ 模型 ${model} 連線錯誤:`, e);
             lastError = e;
         }
     }
 
-    throw lastError || new Error("所有可用模型都嘗試失敗，請檢查 API Key 狀態。");
+    throw lastError || new Error("所有可用模型測試失敗，請確認 API Key。");
 }
 
-// --- 快取邏輯 (不變) ---
+// --- 快取邏輯 ---
 async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinutes: number): Promise<T> {
     const cacheKey = `${CACHE_PREFIX}${key}`;
     const cached = localStorage.getItem(cacheKey);
@@ -89,7 +86,6 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinu
     } catch (error) { throw error; }
 }
 
-// JSON 解析工具 (不變)
 const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
     try {
@@ -107,18 +103,41 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 // ==========================================================
 // 1. 行程生成
 // ==========================================================
-export const generateItinerary = async (destination: string, days: number, interests: string): Promise<TripDay[]> => {
-  const cacheKey = `itinerary_${destination}_${days}_${interests}`;
+export const generateItinerary = async (
+    destination: string, 
+    days: number, 
+    userPrompt: string, 
+    currency: string 
+): Promise<TripDay[]> => {
+  
+  const cacheKey = `itinerary_${destination}_${days}_${currency}_${userPrompt.substring(0, 20)}`;
   
   return fetchWithCache(cacheKey, async () => {
       const prompt = `
-        You are a travel assistant. Create a ${days}-day itinerary for ${destination}.
-        User interests: ${interests}.
+        Role: Professional Travel Planner.
+        Task: Create a ${days}-day itinerary for ${destination}.
+        User Preferences: ${userPrompt}
         
-        Strictly follow this JSON format rule. Output ONLY the JSON string.
-        Language: Traditional Chinese (繁體中文).
+        CRITICAL REQUIREMENTS:
+        1. **Currency**: Estimate costs in **${currency}**. 
+           - The "cost" field must contain ONLY the number (e.g., 2500). Do NOT add symbols.
+        
+        2. **Categories**: You MUST classify each activity into exactly ONE of these types (lowercase):
+           - "sightseeing" (landmarks, parks, museums)
+           - "food" (restaurants, street food)
+           - "cafe" (coffee shops)
+           - "shopping" (malls, markets)
+           - "transport" (bus, train, flight)
+           - "hotel" (accommodation)
+           - "relax" (spa, onsen)
+           - "bar" (nightlife)
+           - "culture" (temples, art)
+           - "activity" (theme parks, workshops)
+           - "other" (if nothing else fits)
 
-        JSON Structure Example:
+        3. **Format**: Output valid JSON only.
+
+        JSON Structure:
         [
           {
             "day": 1,
@@ -126,16 +145,16 @@ export const generateItinerary = async (destination: string, days: number, inter
               {
                 "time": "09:00",
                 "title": "Activity Name",
-                "description": "Brief description",
-                "category": "sightseeing",
-                "location": "Location Name",
-                "cost": "100 TWD"
+                "description": "Short description",
+                "category": "food", 
+                "location": "Address",
+                "cost": "1500" 
               }
             ]
           }
         ]
         
-        Generate JSON:
+        Language: Traditional Chinese (繁體中文).
       `;
 
       try {
@@ -150,27 +169,34 @@ export const generateItinerary = async (destination: string, days: number, inter
 };
 
 // ==========================================================
-// 2. 翻譯
+// 2. 匯率查詢 (優先使用即時 API)
 // ==========================================================
-export const translateText = async (text: string, targetLang: string): Promise<string> => {
-  const cacheKey = `trans_${text.substring(0, 30)}_${targetLang}`; 
-  return fetchWithCache(cacheKey, async () => {
-      try {
-        const prompt = `Translate to ${targetLang}: "${text}". Only output the translated text.`;
-        return await callGeminiDirectly(prompt);
-      } catch (error) {
-        return "翻譯暫時無法使用";
-      }
-  }, 1440);
+
+// 輔助函式：從公開 API 抓取匯率
+const fetchRealTimeRate = async (from: string, to: string): Promise<number | null> => {
+    try {
+        const res = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
+        const data = await res.json();
+        return data.rates[to] || null;
+    } catch (e) {
+        console.warn("Real-time rate fetch failed, falling back to Gemini.");
+        return null;
+    }
 };
 
-// ==========================================================
-// 3. 匯率
-// ==========================================================
 export const getCurrencyRate = async (from: string, to: string, amount: number): Promise<string> => {
+   // 1. 先嘗試抓即時匯率
+   const realRate = await fetchRealTimeRate(from, to);
+   
+   if (realRate !== null) {
+       const total = (amount * realRate).toLocaleString(undefined, { maximumFractionDigits: 0 });
+       return `≈ ${total} ${to}`; 
+   }
+
+   // 2. Fallback: 使用 Gemini
    return fetchWithCache(`rate_${from}_${to}_${amount}`, async () => {
        try {
-        const prompt = `10 words max: Exchange rate ${amount} ${from} to ${to}? Output: "約 X TWD"`;
+        const prompt = `Exchange rate: ${amount} ${from} to ${to}. Output format: "≈ X ${to}" (number only).`;
         const text = await callGeminiDirectly(prompt);
         return text.trim();
       } catch (error) { return "無法取得匯率"; }
@@ -178,8 +204,18 @@ export const getCurrencyRate = async (from: string, to: string, amount: number):
 }
 
 // ==========================================================
-// 4. 緊急資訊
+// 3. 其他工具 (翻譯、緊急資訊、電壓、天氣)
 // ==========================================================
+export const translateText = async (text: string, targetLang: string): Promise<string> => {
+  const cacheKey = `trans_${text.substring(0, 30)}_${targetLang}`; 
+  return fetchWithCache(cacheKey, async () => {
+      try {
+        const prompt = `Translate to ${targetLang}: "${text}". Only output the translated text.`;
+        return await callGeminiDirectly(prompt);
+      } catch (error) { return "翻譯暫時無法使用"; }
+  }, 1440);
+};
+
 export const getLocalEmergencyInfo = async (location: string): Promise<string> => {
   return fetchWithCache(`emergency_${location}`, async () => {
       try {
@@ -189,22 +225,16 @@ export const getLocalEmergencyInfo = async (location: string): Promise<string> =
   }, CACHE_TTL.STATIC_INFO);
 }
 
-// ==========================================================
-// 5. 電壓
-// ==========================================================
 export const getPlugInfo = async (country: string): Promise<VoltageInfo | null> => {
   return fetchWithCache(`plug_${country}`, async () => {
       try {
-        const prompt = `Return JSON for voltage in ${country}: { "country": "${country}", "voltage": "220V", "frequency": "60Hz", "plugTypes": ["A", "B"], "description": "Info" }`;
+        const prompt = `Return JSON: { "country": "${country}", "voltage": "220V", "frequency": "60Hz", "plugTypes": ["A", "B"], "description": "Info" }`;
         const text = await callGeminiDirectly(prompt);
         return parseJSON<VoltageInfo>(text);
     } catch (error) { return null; }
   }, CACHE_TTL.STATIC_INFO);
 }
 
-// ==========================================================
-// WeatherAPI (不變)
-// ==========================================================
 export const getWeatherForecast = async (location: string): Promise<WeatherInfo | null> => {
   return fetchWithCache(`weather_${location}`, async () => {
       if (!weatherApiKey) return null;
@@ -212,14 +242,6 @@ export const getWeatherForecast = async (location: string): Promise<WeatherInfo 
         const response = await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${weatherApiKey}&q=${location}&days=1&aqi=no&alerts=no&lang=zh_tw`);
         if (!response.ok) throw new Error("Weather API failed");
         const data = await response.json();
-        
-        const getIcon = (code: number): any => {
-            if ([1000].includes(code)) return 'sun';
-            if ([1003, 1006, 1009].includes(code)) return 'cloud';
-            if (code > 1000) return 'rain';
-            return 'cloud';
-        };
-
         return {
           location: data.location.name,
           temperature: `${Math.round(data.current.temp_c)}°C`,
@@ -243,10 +265,7 @@ export const getTimezone = async (location: string): Promise<string | null> => {
         if (weatherApiKey) {
             try {
                 const response = await fetch(`https://api.weatherapi.com/v1/timezone.json?key=${weatherApiKey}&q=${location}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    return data.location.tz_id; 
-                }
+                if (response.ok) { return (await response.json()).location.tz_id; }
             } catch (e) {}
         }
         return Intl.DateTimeFormat().resolvedOptions().timeZone;

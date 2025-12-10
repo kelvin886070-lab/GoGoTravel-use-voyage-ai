@@ -49,6 +49,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 email: email,
                 password: inputPassword,
             });
+
             if (error) throw error;
             if (data.user) {
                 // 讀取使用者原本設定的顯示名稱 (Metadata)
@@ -65,6 +66,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     data: { full_name: inputName } // 儲存顯示名稱
                 }
             });
+
             if (error) throw error;
             if (data.user) {
                 // 註冊成功，直接登入
@@ -72,10 +74,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             }
         } else if (mode === 'reset') {
              // --- 重置密碼模式 ---
-             // 因為我們用的是虛擬 Email，無法真的寄信。
-             // 這裡實作「帳號重置」功能 (刪除舊帳號讓使用者重來，需謹慎)
-             // 但因為 Supabase 安全性，前端無法直接刪除 User。
-             // 所以這裡我們顯示提示訊息。
              setError('由於使用虛擬帳號，請聯繫管理員 (Kelvin) 幫您重置密碼。');
              setLoading(false);
              return;
@@ -98,7 +96,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       const user: User = {
           id: uid,
           name: name,
-          password: '***',
+          // 移除 password 欄位，因為 User 型別定義中沒有它
           joinedDate: new Date().toLocaleDateString(),
           avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${name}&backgroundColor=e5e7eb`
       };
@@ -170,7 +168,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                                 type="password" 
                                 value={inputPassword} 
                                 onChange={e => setInputPassword(e.target.value)} 
-                                placeholder="••••••" 
+                                placeholder="" 
                                 className="text-xs bg-transparent outline-none text-base text-gray-900 tracking-widest font-medium" 
                             />
                         </div>

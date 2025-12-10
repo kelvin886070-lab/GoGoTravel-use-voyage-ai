@@ -1,21 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-// 1. Lucide 圖示 (包含所有小工具、模態視窗、分段控制器需要的圖示)
 import { 
     Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, 
     PenTool, Image as ImageIcon, Clock, History, Loader2, CloudRain, 
     Cloud, Sun, CloudSun, Lock, CheckCircle, Camera, LogOut, 
     ChevronLeft, ChevronRight, Sparkles,
     User as UserIcon, Heart, Baby, Users, Armchair, Coffee, Footprints, Zap,
-    Utensils, ShoppingBag, Landmark, Trees, Palette, FerrisWheel, Shrub
+    Utensils, ShoppingBag, Landmark, Trees, Palette, FerrisWheel, Shrub,
+    Coins
 } from 'lucide-react';
 
-// 2. 拖曳套件
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
-
-// 3. 型別定義
 import type { Trip, TripDay, User, WeatherInfo } from '../types';
-
-// 4. 元件與服務
 import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
 import { generateItinerary, getWeatherForecast, getTimezone } from '../services/gemini';
 import { supabase } from '../services/supabase';
@@ -130,7 +125,7 @@ const TimeWidget: React.FC = () => {
 const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
 
 // ============================================================================
-// 2. 輔助元件：TripCard, Modals (放在主視圖之前，確保被讀取)
+// 2. 輔助元件：TripCard, Modals (放在主視圖之前)
 // ============================================================================
 
 const TripCard: React.FC<{ 
@@ -260,7 +255,9 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     // --- Step 1: 基本資訊 ---
     const [destination, setDestination] = useState('');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [days, setDays] = useState(3);
+    
+    // 天數預設為空字串，類型為 number | string (方便輸入)
+    const [days, setDays] = useState<number | string>('');
 
     // --- Step 2: 風格與節奏 ---
     const [companion, setCompanion] = useState('couple'); // solo, couple, family, friends, elderly
@@ -271,10 +268,11 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     // --- Step 3: 預算與細節 ---
     const [budgetLevel, setBudgetLevel] = useState('standard'); // cheap, standard, luxury
     const [customBudget, setCustomBudget] = useState(''); // 自訂金額
+    const [currency, setCurrency] = useState('TWD'); // 新增：幣別選擇
     const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
     const [specificRequests, setSpecificRequests] = useState('');
 
-    // 定義興趣選項 (圖示 + 文字)
+    // 定義興趣選項
     const INTEREST_OPTIONS = [
         { id: 'photo', label: '攝影美拍', icon: <Camera className="w-4 h-4" /> },
         { id: 'food', label: '美食巡禮', icon: <Utensils className="w-4 h-4" /> },
@@ -286,6 +284,16 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         { id: 'spa', label: '放鬆 SPA', icon: <Sparkles className="w-4 h-4" /> },
         { id: 'theme_park', label: '主題樂園', icon: <FerrisWheel className="w-4 h-4" /> },
         { id: 'temple', label: '寺廟神社', icon: <Shrub className="w-4 h-4" /> },
+    ];
+
+    // 定義常用幣別
+    const CURRENCIES = [
+        { code: 'TWD', label: '新台幣' },
+        { code: 'JPY', label: '日圓' },
+        { code: 'USD', label: '美元' },
+        { code: 'KRW', label: '韓元' },
+        { code: 'CNY', label: '人民幣' },
+        { code: 'EUR', label: '歐元' },
     ];
 
     const toggleInterest = (label: string) => {
@@ -317,12 +325,19 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     };
 
     const handleCreate = async () => {
+        // 驗證天數是否有效
+        const tripDays = Number(days);
+        if (!tripDays || tripDays <= 0) {
+            alert("請輸入有效的天數");
+            return;
+        }
+
         setLoading(true);
         try {
             const fullPrompt = buildPrompt();
-            console.log("送給 AI 的 Prompt:", fullPrompt); 
-
-            const generatedDays = await generateItinerary(destination, days, fullPrompt);
+            
+            // 呼叫 AI：傳入幣別參數
+            const generatedDays = await generateItinerary(destination, tripDays, fullPrompt, currency);
             
             const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
                 return days.map(day => {
@@ -333,6 +348,21 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                         } else {
                             nextStartTime = act.time;
                         }
+                        // 修正：將 AI 回傳的 category 對應到前端需要的 type
+                        const rawCategory = (act.category || 'other').toLowerCase();
+                        let mappedType = 'other';
+                        
+                        if (['sightseeing', 'landmark', 'museum', 'park'].some(k => rawCategory.includes(k))) mappedType = 'sightseeing';
+                        else if (['food', 'restaurant', 'snack'].some(k => rawCategory.includes(k))) mappedType = 'food';
+                        else if (['cafe', 'coffee'].some(k => rawCategory.includes(k))) mappedType = 'cafe';
+                        else if (['shopping', 'mall', 'market'].some(k => rawCategory.includes(k))) mappedType = 'shopping';
+                        else if (['transport', 'bus', 'train', 'flight'].some(k => rawCategory.includes(k))) mappedType = 'transport';
+                        else if (['hotel', 'accommodation'].some(k => rawCategory.includes(k))) mappedType = 'hotel';
+                        else if (['relax', 'spa', 'onsen'].some(k => rawCategory.includes(k))) mappedType = 'relax';
+                        else if (['bar', 'club', 'nightlife'].some(k => rawCategory.includes(k))) mappedType = 'bar';
+                        else if (['culture', 'temple', 'art'].some(k => rawCategory.includes(k))) mappedType = 'culture';
+                        else if (['activity', 'theme park', 'workshop'].some(k => rawCategory.includes(k))) mappedType = 'activity';
+
                         try {
                             const [h, m] = nextStartTime.split(':').map(Number);
                             const d = new Date();
@@ -340,7 +370,8 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             d.setMinutes(d.getMinutes() + 120);
                             nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                         } catch (e) {}
-                        return act;
+                        
+                        return { ...act, type: mappedType };
                     });
                     return { ...day, activities };
                 });
@@ -350,7 +381,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
             
             const startDateObj = new Date(startDate);
             const endDateObj = new Date(startDateObj);
-            endDateObj.setDate(startDateObj.getDate() + (days - 1));
+            endDateObj.setDate(startDateObj.getDate() + (tripDays - 1));
 
             const finalImage = coverImage || `https://picsum.photos/800/600?random=${Date.now()}`;
             
@@ -361,7 +392,8 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                 endDate: endDateObj.toISOString().split('T')[0],
                 coverImage: finalImage,
                 days: daysWithTime,
-                isDeleted: false
+                isDeleted: false,
+                currency: currency // 儲存使用者選擇的幣別
             };
 
             onAddTrip(newTrip);
@@ -375,11 +407,17 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     };
 
     const handleManualCreate = () => {
+        const tripDays = Number(days);
+        if (!tripDays || tripDays <= 0) {
+            alert("請輸入有效的天數");
+            return;
+        }
+
         const startDateObj = new Date(startDate);
         const endDateObj = new Date(startDateObj);
-        endDateObj.setDate(startDateObj.getDate() + (days - 1));
+        endDateObj.setDate(startDateObj.getDate() + (tripDays - 1));
         
-        const emptyDays: TripDay[] = Array.from({length: days}, (_, i) => ({ day: i + 1, activities: [] }));
+        const emptyDays: TripDay[] = Array.from({length: tripDays}, (_, i) => ({ day: i + 1, activities: [] }));
         
         const newTrip: Trip = {
             id: Date.now().toString(),
@@ -388,7 +426,8 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
             endDate: endDateObj.toISOString().split('T')[0],
             coverImage: coverImage || `https://picsum.photos/800/600?random=${Date.now()}`,
             days: emptyDays,
-            isDeleted: false
+            isDeleted: false,
+            currency: currency
         };
         onAddTrip(newTrip);
         onClose();
@@ -462,12 +501,11 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                             type="number" 
                                             min={1} 
                                             max={14} 
-                                            value={days} 
+                                            value={days}
+                                            placeholder="輸入天數" 
                                             onChange={(e) => {
-                                                // 修正：使用 parseInt 自動移除開頭的 0
-                                                const val = parseInt(e.target.value, 10);
-                                                if (!isNaN(val)) setDays(val);
-                                                else if (e.target.value === '') setDays(0); // 允許暫時清空
+                                                const val = e.target.value;
+                                                setDays(val === '' ? '' : parseInt(val, 10));
                                             }} 
                                         />
                                     </div>
@@ -530,13 +568,29 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                         <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-xl font-bold text-sm border transition-all ${budgetLevel === opt.id ? 'bg-green-50 text-green-600 border-green-200 ring-1 ring-green-500' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>{opt.l}</button>
                                     ))}
                                 </div>
-                                <input 
-                                    type="text" 
-                                    placeholder="或輸入具體預算 (例如：5萬/人)..." 
-                                    className="w-full bg-gray-50 border-b-2 border-gray-200 px-3 py-2 text-sm outline-none focus:border-green-500 transition-colors bg-transparent"
-                                    value={customBudget}
-                                    onChange={e => setCustomBudget(e.target.value)}
-                                />
+                                <div className="flex gap-2">
+                                    <div className="relative w-1/3">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Coins className="h-4 w-4 text-gray-400" />
+                                        </div>
+                                        <select 
+                                            value={currency}
+                                            onChange={(e) => setCurrency(e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-2 text-sm outline-none focus:border-ios-blue appearance-none font-medium"
+                                        >
+                                            {CURRENCIES.map(c => (
+                                                <option key={c.code} value={c.code}>{c.code} {c.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="或輸入具體預算..." 
+                                        className="w-2/3 bg-gray-50 border-b-2 border-gray-200 px-3 py-2 text-sm outline-none focus:border-green-500 transition-colors bg-transparent"
+                                        value={customBudget}
+                                        onChange={e => setCustomBudget(e.target.value)}
+                                    />
+                                </div>
                             </div>
 
                             <div>
@@ -572,7 +626,13 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                 <div className="p-6 border-t border-gray-100 bg-gray-50/50 backdrop-blur-xl">
                     {step < 3 ? (
                         <div className="flex flex-col gap-3">
-                            <IOSButton fullWidth onClick={() => { if(destination) setStep(s => s + 1); else alert('請輸入目的地'); }}>下一步</IOSButton>
+                            <IOSButton fullWidth onClick={() => { 
+                                if (!destination) return alert('請輸入目的地');
+                                if (!days || Number(days) <= 0) return alert('請輸入有效天數');
+                                setStep(s => s + 1); 
+                            }}>
+                                下一步
+                            </IOSButton>
                             {step === 1 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過 AI，手動建立空白行程</button>}
                         </div>
                     ) : (
@@ -589,20 +649,12 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     );
 };
 
+// --- Import Trip Modal ---
 const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
-    const handleImport = () => {
-        try {
-            if (!code.trim()) return;
-            const jsonString = decodeURIComponent(escape(atob(code.trim())));
-            const tripData = JSON.parse(jsonString);
-            if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); }
-        } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); }
-    };
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>
-    );
+    const handleImport = () => { try { if (!code.trim()) return; const jsonString = decodeURIComponent(escape(atob(code.trim()))); const tripData = JSON.parse(jsonString); if (tripData && tripData.destination && tripData.days) { onImportTrip(tripData); onClose(); } else { setError('無效的行程代碼'); } } catch (e) { setError('代碼解析失敗，請確認代碼是否完整'); } };
+    return (<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-3xl w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程代碼</p><textarea className="w-full h-32 bg-gray-50 rounded-xl p-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-ios-blue/50 mb-2 resize-none" placeholder="在此貼上代碼..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>);
 };
 
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
@@ -611,134 +663,9 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [msg, setMsg] = useState('');
-
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        try {
-            setUploading(true);
-            if (!e.target.files || e.target.files.length === 0) return;
-
-            const file = e.target.files[0];
-            if (file.size > 2 * 1024 * 1024) {
-                alert('圖片太大了！請上傳小於 2MB 的照片。');
-                return;
-            }
-
-            const fileExt = file.name.split('.').pop();
-            const fileName = `avatar_${Date.now()}.${fileExt}`;
-            const filePath = `${user.id}/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(filePath, file, { upsert: true });
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('avatars')
-                .getPublicUrl(filePath);
-
-            const { error: updateError } = await supabase.auth.updateUser({
-                data: { avatar_url: publicUrl }
-            });
-            if (updateError) throw updateError;
-
-            alert('頭貼更新成功！');
-            window.location.reload(); 
-
-        } catch (error: any) {
-            console.error(error);
-            alert('上傳失敗：' + error.message);
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const handleChangePassword = async () => {
-        if (newPassword.length < 6) {
-            alert("密碼長度至少需要 6 碼");
-            return;
-        }
-        setLoading(true);
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        setLoading(false);
-        if (error) {
-            alert("修改失敗：" + error.message);
-        } else {
-            setMsg("密碼修改成功！");
-            setNewPassword('');
-            setTimeout(() => {
-                setIsChanging(false);
-                setMsg('');
-            }, 1500);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white/90 backdrop-blur-xl rounded-[32px] w-full max-w-sm p-6 relative z-10 shadow-2xl animate-in zoom-in-95 border border-white/50">
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1">
-                    <X className="w-5 h-5" />
-                </button>
-                
-                <div className="flex flex-col items-center mb-6 pt-2">
-                    <div className="relative group cursor-pointer">
-                        <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-4 border-white mb-4 relative bg-gray-200">
-                            <img src={user.avatar} alt={user.name} className="w-full h-full object-cover transition-opacity group-hover:opacity-80" />
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {uploading ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Camera className="w-8 h-8 text-white drop-shadow-md" />}
-                            </div>
-                        </div>
-                        <input type="file" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer rounded-full" />
-                        <div className="absolute bottom-4 right-0 bg-white p-1.5 rounded-full shadow-md border border-gray-100 pointer-events-none text-gray-500">
-                            <PenTool className="w-3 h-3" />
-                        </div>
-                    </div>
-
-                    <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
-                    <p className="text-sm text-gray-500 font-medium">Kelvin 會員  {user.joinedDate} 加入</p>
-                </div>
-
-                <div className="bg-white/60 rounded-2xl p-4 mb-4 flex justify-around border border-gray-100 shadow-sm">
-                    <div className="text-center">
-                        <span className="block text-xl font-bold text-gray-900">{tripCount}</span>
-                        <span className="text-xs text-gray-500 uppercase tracking-wide">規劃行程</span>
-                    </div>
-                    <div className="w-px bg-gray-200"></div>
-                    <div className="text-center opacity-50">
-                        <span className="block text-xl font-bold text-gray-900">0</span>
-                        <span className="text-xs text-gray-500 uppercase tracking-wide">分享次數</span>
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    {!isChanging ? (
-                        <button onClick={() => setIsChanging(true)} className="w-full py-3 rounded-xl bg-white text-gray-600 text-sm font-bold shadow-sm border border-gray-100 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors">
-                            <Lock className="w-4 h-4" /> 修改密碼
-                        </button>
-                    ) : (
-                        <div className="bg-white/80 rounded-2xl p-3 border border-gray-200 animate-in slide-in-from-top-2">
-                            {msg ? (
-                                <div className="text-green-600 text-center text-sm font-bold flex items-center justify-center gap-2 py-2">
-                                    <CheckCircle className="w-5 h-5" /> {msg}
-                                </div>
-                            ) : (
-                                <div className="flex gap-2">
-                                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="輸入新密碼" className="flex-1 bg-gray-100 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-ios-blue/50" autoFocus />
-                                    <button onClick={handleChangePassword} disabled={loading || !newPassword} className="bg-ios-blue text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50">
-                                        {loading ? '...' : '儲存'}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                <button onClick={onLogout} className="w-full py-3.5 rounded-xl bg-red-50 text-red-500 font-bold text-base hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-2">
-                    <LogOut className="w-5 h-5" /> 登出帳號
-                </button>
-            </div>
-        </div>
-    );
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { try { setUploading(true); if (!e.target.files || e.target.files.length === 0) return; const file = e.target.files[0]; if (file.size > 2 * 1024 * 1024) { alert('圖片太大了！請上傳小於 2MB 的照片。'); return; } const fileExt = file.name.split('.').pop(); const fileName = `avatar_${Date.now()}.${fileExt}`; const filePath = `${user.id}/${fileName}`; const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true }); if (uploadError) throw uploadError; const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath); const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } }); if (updateError) throw updateError; alert('頭貼更新成功！'); window.location.reload(); } catch (error: any) { console.error(error); alert('上傳失敗：' + error.message); } finally { setUploading(false); } };
+    const handleChangePassword = async () => { if (newPassword.length < 6) { alert("密碼長度至少需要 6 碼"); return; } setLoading(true); const { error } = await supabase.auth.updateUser({ password: newPassword }); setLoading(false); if (error) { alert("修改失敗：" + error.message); } else { setMsg("密碼修改成功！"); setNewPassword(''); setTimeout(() => { setIsChanging(false); setMsg(''); }, 1500); } };
+    return (<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} /><div className="bg-white/90 backdrop-blur-xl rounded-[32px] w-full max-w-sm p-6 relative z-10 shadow-2xl animate-in zoom-in-95 border border-white/50"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1"><X className="w-5 h-5" /></button><div className="flex flex-col items-center mb-6 pt-2"><div className="relative group cursor-pointer"><div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-4 border-white mb-4 relative bg-gray-200"><img src={user.avatar} alt={user.name} className="w-full h-full object-cover transition-opacity group-hover:opacity-80" /><div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">{uploading ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Camera className="w-8 h-8 text-white drop-shadow-md" />}</div></div><input type="file" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer rounded-full" /><div className="absolute bottom-4 right-0 bg-white p-1.5 rounded-full shadow-md border border-gray-100 pointer-events-none text-gray-500"><PenTool className="w-3 h-3" /></div></div><h2 className="text-2xl font-bold text-gray-900">{user.name}</h2><p className="text-sm text-gray-500 font-medium">Kelvin 會員  {user.joinedDate} 加入</p></div><div className="bg-white/60 rounded-2xl p-4 mb-4 flex justify-around border border-gray-100 shadow-sm"><div className="text-center"><span className="block text-xl font-bold text-gray-900">{tripCount}</span><span className="text-xs text-gray-500 uppercase tracking-wide">規劃行程</span></div><div className="w-px bg-gray-200"></div><div className="text-center opacity-50"><span className="block text-xl font-bold text-gray-900">0</span><span className="text-xs text-gray-500 uppercase tracking-wide">分享次數</span></div></div><div className="mb-4">{!isChanging ? (<button onClick={() => setIsChanging(true)} className="w-full py-3 rounded-xl bg-white text-gray-600 text-sm font-bold shadow-sm border border-gray-100 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"><Lock className="w-4 h-4" /> 修改密碼</button>) : (<div className="bg-white/80 rounded-2xl p-3 border border-gray-200 animate-in slide-in-from-top-2">{msg ? (<div className="text-green-600 text-center text-sm font-bold flex items-center justify-center gap-2 py-2"><CheckCircle className="w-5 h-5" /> {msg}</div>) : (<div className="flex gap-2"><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="輸入新密碼" className="flex-1 bg-gray-100 rounded-lg px-3 text-sm outline-none focus:ring-2 focus:ring-ios-blue/50" autoFocus /><button onClick={handleChangePassword} disabled={loading || !newPassword} className="bg-ios-blue text-white px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50">{loading ? '...' : '儲存'}</button></div>)}</div>)}</div><button onClick={onLogout} className="w-full py-3.5 rounded-xl bg-red-50 text-red-500 font-bold text-base hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-2"><LogOut className="w-5 h-5" /> 登出帳號</button></div></div>);
 };
 
 // ============================================================================
@@ -782,7 +709,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
       
-      {/* Header (只保留標題與按鈕) */}
+      {/* Header */}
       <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-ios-bg/95 backdrop-blur-xl z-40 border-b border-gray-200/50 w-full transition-all sticky top-0">
         <div className="flex justify-between items-center mb-1">
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">行程</h1>
@@ -794,13 +721,13 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         </div>
       </div>
 
-      {/* Content (捲動區域) */}
+      {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-4 space-y-6 pb-24 w-full scroll-smooth no-scrollbar">
         
         {/* 1. 小工具 (只在即將出發顯示) */}
         {activeTab === 'upcoming' && <DashboardWidgets />}
 
-        {/* 2. 分段控制器 (Segmented Control) - 無圖示版 */}
+        {/* 2. 分段控制器 */}
         <div className="bg-gray-200/60 p-1 rounded-xl flex relative mb-2">
              <button 
                 onClick={() => setActiveTab('upcoming')}
@@ -816,7 +743,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
              </button>
         </div>
 
-        {/* 3. 行程列表 (移除多餘標題) */}
+        {/* 3. 行程列表 */}
         <div className="mt-2">
             <DragDropContext onDragEnd={onDragEnd}>
                 {displayTrips.length === 0 ? (
