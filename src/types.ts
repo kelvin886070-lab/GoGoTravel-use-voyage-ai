@@ -1,6 +1,6 @@
 // src/types.ts
 
-// 1. App 視圖切換 (修正：使用 const 取代 enum，解決紅底錯誤)
+// 1. App 視圖切換 (使用 const 取代 enum，避開紅底錯誤)
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
@@ -10,7 +10,7 @@ export const AppView = {
 } as const;
 export type AppView = typeof AppView[keyof typeof AppView];
 
-// 2. 小工具類型 (修正：使用 const 取代 enum)
+// 2. 小工具類型
 export const ToolType = {
   TRANSLATE: 'translate',
   CURRENCY: 'currency',
@@ -33,7 +33,7 @@ export interface User {
 
 // 4. 行程細節相關
 export interface Activity {
-  id?: string; // 確保有 id
+  id?: string;
   time: string;
   title: string;
   description: string;

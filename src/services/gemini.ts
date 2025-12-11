@@ -11,21 +11,21 @@ const CACHE_PREFIX = 'kelvin_cache_';
 const CACHE_TTL = {
     WEATHER: 30,
     TIMEZONE: 10080,
-    CURRENCY: 60, // 匯率快取 60 分鐘
+    CURRENCY: 60,
     STATIC_INFO: 1440,
     ITINERARY: 60
 };
 
 // ==========================================================
-// 核心：純 HTTP 請求函式 (已加入 Console Log)
+// 核心：純 HTTP 請求函式
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
-    // 定義模型候選名單 (優先順序)
+    // 修正模型清單與順序：
     const candidateModels = [
-        "gemini-2.5-flash",       // 最新快速模型
-        "gemini-2.0-flash-exp",   // 實驗性模型
-        "gemini-1.5-flash",       // 穩定版
-        "gemini-1.5-flash-001"    // 備用舊版
+        "gemini-2.5-flash",       // 首選：您指定的模型
+        "gemini-2.0-flash-exp",   // 備用 1：最新實驗版
+        "gemini-1.5-flash-001",   // 備用 2：修正名稱 (加 -001 避免 404)
+        "gemini-1.5-flash"        // 備用 3：通用名稱
     ];
 
     let lastError = null;
@@ -34,7 +34,6 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
         try {
-            // 🚀 Log 1: 顯示正在嘗試的模型
             console.log(`🚀 [Kelvin Trip] 嘗試呼叫模型: ${model}`);
             
             const response = await fetch(url, {
@@ -47,26 +46,26 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 
             if (response.ok) {
                 const data = await response.json();
-                // ✅ Log 2: 顯示成功訊息
                 console.log(`✅ 成功！模型 ${model} 正常運作。`);
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
                 const err = await response.json().catch(() => ({}));
-                console.warn(`⚠️ 模型 ${model} 失敗:`, err.error?.message || response.status);
+                console.warn(`⚠️ 模型 ${model} 失敗 (${response.status}):`, err.error?.message);
                 
-                if (response.status === 429) {
-                    lastError = new Error(`模型 ${model} 額度已滿 (429)`);
-                    continue; // 試下一個模型
+                // 429 = 額度滿, 404 = 模型找不到, 503 = 忙線 -> 這些情況都應該試下一個模型
+                if ([429, 404, 503].includes(response.status)) {
+                    continue; 
                 }
-                lastError = new Error(`模型 ${model} 回傳 ${response.status}`);
+                
+                lastError = new Error(`模型 ${model} 回傳 ${response.status}: ${err.error?.message}`);
             }
         } catch (e: any) {
-            console.error(`❌ 模型 ${model} 連線錯誤:`, e);
+            console.error(`❌ 連線錯誤 (${model}):`, e);
             lastError = e;
         }
     }
 
-    throw lastError || new Error("所有可用模型測試失敗，請確認 API Key。");
+    throw lastError || new Error("系統忙碌中 (所有模型皆無回應)，請稍後再試。");
 }
 
 // --- 快取邏輯 ---
@@ -101,41 +100,47 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成
+// 1. 行程生成 (支援航班時間參數)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
     days: number, 
     userPrompt: string, 
-    currency: string 
+    currency: string,
+    // 新增參數：航班/交通資訊 (選填)
+    transportInfo?: { inbound?: string, outbound?: string }
 ): Promise<TripDay[]> => {
   
-  const cacheKey = `itinerary_${destination}_${days}_${currency}_${userPrompt.substring(0, 20)}`;
+  const cacheKey = `itinerary_${destination}_${days}_${currency}_${JSON.stringify(transportInfo)}_${userPrompt.substring(0, 20)}`;
   
   return fetchWithCache(cacheKey, async () => {
+      // 構建交通提示
+      let transportContext = "";
+      if (transportInfo?.inbound) {
+          transportContext += `\n- Day 1 Arrival Info: ${transportInfo.inbound} (Please arrange schedule starting after arrival + 1.5h for clearance).`;
+      }
+      if (transportInfo?.outbound) {
+          transportContext += `\n- Day ${days} Departure Info: ${transportInfo.outbound} (Please end sightseeing 3h before departure).`;
+      }
+
       const prompt = `
         Role: Professional Travel Planner.
         Task: Create a ${days}-day itinerary for ${destination}.
+        
         User Preferences: ${userPrompt}
+        ${transportContext}
         
         CRITICAL REQUIREMENTS:
-        1. **Currency**: Estimate costs in **${currency}**. 
-           - The "cost" field must contain ONLY the number (e.g., 2500). Do NOT add symbols.
+        1. **Currency**: Estimate costs in **${currency}**. Cost must be NUMBER ONLY (e.g. 2500).
+        2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "hotel", "relax", "bar", "culture", "activity", "other".
         
-        2. **Categories**: You MUST classify each activity into exactly ONE of these types (lowercase):
-           - "sightseeing" (landmarks, parks, museums)
-           - "food" (restaurants, street food)
-           - "cafe" (coffee shops)
-           - "shopping" (malls, markets)
-           - "transport" (bus, train, flight)
-           - "hotel" (accommodation)
-           - "relax" (spa, onsen)
-           - "bar" (nightlife)
-           - "culture" (temples, art)
-           - "activity" (theme parks, workshops)
-           - "other" (if nothing else fits)
+        3. **Flow**: 
+           - Start each day with a "Morning" activity.
+           - End each day with an "Evening" activity.
+           - **Transport**: Insert a SEPARATE item with category **"transport"** between locations if travel > 15 mins. Title: "Travel to [Location]", Desc: "Time & Method".
+           - **Day 1 & Day ${days}**: Strictly follow the arrival/departure times if provided above.
 
-        3. **Format**: Output valid JSON only.
+        4. **Format**: Output valid JSON only.
 
         JSON Structure:
         [
@@ -143,10 +148,18 @@ export const generateItinerary = async (
             "day": 1,
             "activities": [
               {
-                "time": "09:00",
+                "time": "14:00",
+                "title": "Arrive at City Center",
+                "description": "Check-in at hotel",
+                "category": "transport",
+                "location": "Hotel",
+                "cost": "0"
+              },
+              {
+                "time": "15:00",
                 "title": "Activity Name",
-                "description": "Short description",
-                "category": "food", 
+                "description": "Description",
+                "category": "sightseeing", 
                 "location": "Address",
                 "cost": "1500" 
               }
@@ -169,31 +182,24 @@ export const generateItinerary = async (
 };
 
 // ==========================================================
-// 2. 匯率查詢 (優先使用即時 API)
+// 2. 匯率查詢
 // ==========================================================
-
-// 輔助函式：從公開 API 抓取匯率
 const fetchRealTimeRate = async (from: string, to: string): Promise<number | null> => {
     try {
         const res = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
         const data = await res.json();
         return data.rates[to] || null;
     } catch (e) {
-        console.warn("Real-time rate fetch failed, falling back to Gemini.");
         return null;
     }
 };
 
 export const getCurrencyRate = async (from: string, to: string, amount: number): Promise<string> => {
-   // 1. 先嘗試抓即時匯率
    const realRate = await fetchRealTimeRate(from, to);
-   
    if (realRate !== null) {
        const total = (amount * realRate).toLocaleString(undefined, { maximumFractionDigits: 0 });
        return `≈ ${total} ${to}`; 
    }
-
-   // 2. Fallback: 使用 Gemini
    return fetchWithCache(`rate_${from}_${to}_${amount}`, async () => {
        try {
         const prompt = `Exchange rate: ${amount} ${from} to ${to}. Output format: "≈ X ${to}" (number only).`;
@@ -204,7 +210,7 @@ export const getCurrencyRate = async (from: string, to: string, amount: number):
 }
 
 // ==========================================================
-// 3. 其他工具 (翻譯、緊急資訊、電壓、天氣)
+// 3. 其他工具
 // ==========================================================
 export const translateText = async (text: string, targetLang: string): Promise<string> => {
   const cacheKey = `trans_${text.substring(0, 30)}_${targetLang}`; 
