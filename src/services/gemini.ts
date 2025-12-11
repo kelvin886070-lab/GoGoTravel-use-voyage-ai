@@ -13,7 +13,8 @@ const CACHE_TTL = {
     TIMEZONE: 10080,
     CURRENCY: 60,
     STATIC_INFO: 1440,
-    ITINERARY: 60
+    ITINERARY: 60,
+    FLIGHT: 1440 
 };
 
 // ==========================================================
@@ -21,7 +22,9 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash",       // 首選
+        "gemini-2.5-flash",       
+        "gemini-2.0-flash-exp",   
+        "gemini-1.5-flash"        
     ];
 
     let lastError = null;
@@ -53,6 +56,7 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
                 lastError = new Error(`模型 ${model} 回傳 ${response.status}: ${err.error?.message}`);
             }
         } catch (e: any) {
+            console.error(`❌ 連線錯誤 (${model}):`, e);
             lastError = e;
         }
     }
@@ -92,7 +96,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成
+// 1. 行程生成 (大腦升級：支援更精確的交通上下文)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -106,11 +110,16 @@ export const generateItinerary = async (
   
   return fetchWithCache(cacheKey, async () => {
       let transportContext = "";
+      // 根據是否為「航班」或「火車」調整 Prompt
       if (transportInfo?.inbound) {
-          transportContext += `\n- Day 1 Arrival Info: ${transportInfo.inbound} (Please arrange schedule starting after arrival + 2h for clearance).`;
+          const isFlight = transportInfo.inbound.toLowerCase().includes('flight');
+          const bufferTime = isFlight ? "2h (customs)" : "30m";
+          transportContext += `\n- Day 1 Arrival: ${transportInfo.inbound}. \n  **CRITICAL**: The FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card. Title: [Flight/Train Code], Desc: [Origin] -> [Dest]. Start next activity ${bufferTime} after arrival.`;
       }
       if (transportInfo?.outbound) {
-          transportContext += `\n- Day ${days} Departure Info: ${transportInfo.outbound} (Please end sightseeing 3.5h before departure).`;
+          const isFlight = transportInfo.outbound.toLowerCase().includes('flight');
+          const bufferTime = isFlight ? "3h" : "1h";
+          transportContext += `\n- Day ${days} Departure: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card. End sightseeing ${bufferTime} before departure.`;
       }
 
       const prompt = `
@@ -122,13 +131,13 @@ export const generateItinerary = async (
         
         CRITICAL REQUIREMENTS:
         1. **Currency**: Estimate costs in **${currency}**. Cost must be NUMBER ONLY (e.g. 2500).
-        2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "hotel", "relax", "bar", "culture", "activity", "other".
+        2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity", "other".
+           - Use **"flight"** for airplane cards.
+           - Use **"transport"** for trains/bus/subway moving between cities or spots.
         
         3. **Flow**: 
-           - Start each day with a "Morning" activity.
-           - End each day with an "Evening" activity.
-           - **Transport**: Insert a SEPARATE item with category **"transport"** between locations if travel > 15 mins. Title: "Travel to [Location]", Desc: "Time & Method".
-           - **Day 1 & Day ${days}**: Strictly follow the arrival/departure times if provided above.
+           - Start/End days with "Morning"/"Evening" activities (unless overridden by transport info).
+           - Insert "transport" items between locations if travel > 15 mins.
 
         4. **Format**: Output valid JSON only.
 
@@ -138,19 +147,19 @@ export const generateItinerary = async (
             "day": 1,
             "activities": [
               {
-                "time": "14:00",
-                "title": "Arrive at City Center",
-                "description": "Check-in at hotel",
-                "category": "transport",
-                "location": "Hotel",
+                "time": "08:25",
+                "title": "JX800",
+                "description": "TPE -> NRT (Arrive 12:35)",
+                "category": "flight",
+                "location": "Airport",
                 "cost": "0"
               },
               {
-                "time": "15:00",
-                "title": "Activity Name",
-                "description": "Description",
-                "category": "sightseeing", 
-                "location": "Address",
+                "time": "14:30",
+                "title": "Arrival Lunch",
+                "description": "First meal",
+                "category": "food", 
+                "location": "City Center",
                 "cost": "1500" 
               }
             ]
@@ -171,9 +180,51 @@ export const generateItinerary = async (
   }, CACHE_TTL.ITINERARY);
 };
 
+// ==========================================================
+// 2. 航班查詢
+// ==========================================================
+interface FlightInfo {
+    code: string;
+    depTime: string;
+    arrTime: string;
+    origin: string;
+    dest: string;
+    originTerm?: string;
+    destTerm?: string;
+}
+
+export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo | null> => {
+    if (!/^[A-Z0-9]{2,3}\d{3,4}$/.test(flightCode)) return null;
+
+    return fetchWithCache(`flight_${flightCode}`, async () => {
+        const prompt = `
+            Identify flight "${flightCode}".
+            Return valid JSON with typical scheduled times (24h format HH:mm) and terminals.
+            If unknown or invalid, return null.
+            
+            JSON Format:
+            {
+                "code": "${flightCode}",
+                "depTime": "08:25",
+                "arrTime": "12:35",
+                "origin": "TPE",
+                "dest": "NRT",
+                "originTerm": "1",
+                "destTerm": "2"
+            }
+        `;
+        try {
+            const text = await callGeminiDirectly(prompt);
+            return parseJSON<FlightInfo>(text);
+        } catch (e) {
+            return null;
+        }
+    }, CACHE_TTL.FLIGHT);
+};
+
 // ... (以下 匯率、翻譯、緊急資訊 等函式保持不變，請保留原有的內容) ...
 // ==========================================================
-// 2. 匯率查詢
+// 3. 匯率查詢
 // ==========================================================
 const fetchRealTimeRate = async (from: string, to: string): Promise<number | null> => {
     try {
