@@ -203,22 +203,84 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     );
 };
 
+// 修正 Google Maps 路徑連結格式
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
-    const stops = day.activities.filter(a => a.title || a.location).map(a => a.location || a.title);
+    const stops = day.activities
+        .filter(a => a.title || a.location)
+        .map(a => a.location || a.title);
+
     let mapUrl = '';
-    if (stops.length === 0) mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(destination)}`;
-    else if (stops.length === 1) mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(stops[0])}`;
-    else {
+
+    if (stops.length === 0) {
+        // 沒有景點，導向目的地城市
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+    } else if (stops.length === 1) {
+        // 只有一個景點，導向該景點
+        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
+    } else {
+        // 多個景點：規劃完整路線
+        // 起點 (origin) 為第一個點，終點 (destination) 為最後一個點
+        const origin = encodeURIComponent(stops[0]);
         const dest = encodeURIComponent(stops[stops.length - 1]);
-        const waypoints = stops.slice(0, -1).map(s => encodeURIComponent(s)).join('|');
-        mapUrl = `http://googleusercontent.com/maps.google.com/?daddr=${dest}&waypoints=${waypoints}&travelmode=transit`;
+        
+        // 中途點 (waypoints) 為中間的所有點
+        const waypoints = stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|');
+        
+        // 組合網址 (使用 Google Maps Dir API)
+        mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
     }
+
     return (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mt-2">
-            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center"><div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div><Map className="w-8 h-8 text-ios-blue opacity-50" />{stops.length > 1 && (<div className="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[10px] text-ios-blue font-bold uppercase tracking-widest z-10"><span className="bg-white/80 backdrop-blur px-1.5 rounded">START</span><div className="h-[2px] flex-1 bg-ios-blue/20 mx-2 relative flex items-center"><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-1"></div><div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-2"></div><div className="absolute right-0 -top-[3px] w-2 h-2 rounded-full bg-ios-blue"></div></div><span className="bg-white/80 backdrop-blur px-1.5 rounded">END</span></div>)}</div>
+            <div className="h-24 bg-blue-50 relative overflow-hidden flex items-center justify-center">
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                <Map className="w-8 h-8 text-ios-blue opacity-50" />
+                {stops.length > 1 && (
+                    <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[10px] text-ios-blue font-bold uppercase tracking-widest z-10">
+                        <span className="bg-white/80 backdrop-blur px-1.5 rounded">START</span>
+                        <div className="h-[2px] flex-1 bg-ios-blue/20 mx-2 relative flex items-center">
+                            <div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-1"></div>
+                            <div className="w-1 h-1 rounded-full bg-ios-blue/40 ml-2"></div>
+                            <div className="absolute right-0 -top-[3px] w-2 h-2 rounded-full bg-ios-blue"></div>
+                        </div>
+                        <span className="bg-white/80 backdrop-blur px-1.5 rounded">END</span>
+                    </div>
+                )}
+            </div>
+            
             <div className="p-5">
-                {stops.length === 0 ? <div className="text-center text-gray-400 text-sm py-4">今天還沒有安排行程地點<br/>點擊上方「+」開始規劃</div> : (
-                    <><div className="space-y-0 mb-6 pl-2">{stops.map((stop, index) => (<div key={index} className="flex gap-4 relative"><div className="flex flex-col items-center w-4"><div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>{index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}</div><div className="pb-5 -mt-1 flex-1"><p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p>{index === 0 && <span className="inline-block mt-1 text-[10px] text-ios-blue bg-blue-50 px-1.5 py-0.5 rounded font-medium">起點</span>}{index === stops.length - 1 && <span className="inline-block mt-1 text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded font-medium">終點</span>}</div></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"><Map className="w-5 h-5" />開啟 Google Maps 導航</a><p className="text-center text-[10px] text-gray-400 mt-3">將自動帶入所有途經點規劃最佳路線</p></>
+                {stops.length === 0 ? (
+                    <div className="text-center text-gray-400 text-sm py-4">
+                        今天還沒有安排行程地點<br/>點擊上方「+」開始規劃
+                    </div>
+                ) : (
+                    <>
+                        <div className="space-y-0 mb-6 pl-2">
+                            {stops.map((stop, index) => (
+                                <div key={index} className="flex gap-4 relative">
+                                    <div className="flex flex-col items-center w-4">
+                                        <div className={`w-3 h-3 rounded-full border-2 z-10 box-content ${index === 0 ? 'bg-ios-blue border-white shadow-sm' : index === stops.length - 1 ? 'bg-red-500 border-white shadow-sm' : 'bg-gray-200 border-white'}`}></div>
+                                        {index !== stops.length - 1 && <div className="w-[2px] flex-1 bg-gray-100 my-0.5"></div>}
+                                    </div>
+                                    <div className="pb-5 -mt-1 flex-1">
+                                        <p className={`text-sm ${index === 0 || index === stops.length - 1 ? 'font-bold text-gray-800' : 'font-medium text-gray-600'}`}>{stop}</p>
+                                        {index === 0 && <span className="inline-block mt-1 text-[10px] text-ios-blue bg-blue-50 px-1.5 py-0.5 rounded font-medium">起點</span>}
+                                        {index === stops.length - 1 && <span className="inline-block mt-1 text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded font-medium">終點</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <a 
+                            href={mapUrl} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="flex items-center justify-center gap-2 w-full bg-ios-blue text-white font-bold py-3.5 rounded-2xl active:scale-[0.98] transition-transform shadow-lg shadow-blue-200 hover:bg-blue-600"
+                        >
+                            <Map className="w-5 h-5" /> 開啟 Google Maps 導航
+                        </a>
+                        <p className="text-center text-[10px] text-gray-400 mt-3">將自動帶入所有途經點規劃最佳路線</p>
+                    </>
                 )}
             </div>
         </div>

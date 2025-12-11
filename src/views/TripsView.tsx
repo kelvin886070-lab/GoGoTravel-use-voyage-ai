@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect } from 'react';
-// 1. 補齊所有圖示：加入 Search, Scale
 import { 
     Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, 
     PenTool, Image as ImageIcon, Clock, History, Loader2, CloudRain, 
@@ -7,7 +6,7 @@ import {
     ChevronLeft, ChevronRight, Sparkles,
     User as UserIcon, Heart, Baby, Users, Armchair, Coffee, Footprints, Zap,
     Utensils, ShoppingBag, Landmark, Trees, Palette, FerrisWheel, Shrub,
-    Coins, Plane, Train, Search, Scale 
+    Coins, Plane, Train, Scale, Search, ArrowRight, Ticket, Map
 } from 'lucide-react';
 
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
@@ -17,7 +16,7 @@ import { generateItinerary, getWeatherForecast, getTimezone } from '../services/
 import { supabase } from '../services/supabase';
 
 // ============================================================================
-// 1. 介面定義
+// 1. 關鍵修正：將 Interface 定義在最上方
 // ============================================================================
 
 interface TripsViewProps {
@@ -142,7 +141,7 @@ const TimeWidget: React.FC = () => {
 const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 mb-2"><WeatherWidget /><TimeWidget /></div>;
 
 // ============================================================================
-// 3. 輔助元件：TripCard, FlightCard, Modals
+// 3. 輔助元件：TripCard, FlightCard, TrainCard
 // ============================================================================
 
 const TripCard: React.FC<{ 
@@ -207,35 +206,110 @@ const TripCard: React.FC<{
     );
 };
 
-const FlightCard = ({ type, code, setCode, destination }: any) => (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm relative overflow-hidden group hover:border-gray-300 transition-colors">
-        <div className="absolute -left-2 top-1/2 w-4 h-4 bg-gray-50 rounded-full border border-gray-200" />
-        <div className="absolute -right-2 top-1/2 w-4 h-4 bg-gray-50 rounded-full border border-gray-200" />
-        
-        <div className="flex justify-between items-center mb-3">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{type === 'in' ? 'DEPARTURE' : 'RETURN'}</span>
-            <Plane className="w-4 h-4 text-gray-400 rotate-45" />
-        </div>
-        
-        <div className="flex items-end justify-between">
-            <div className="flex-1">
-                <input 
-                    type="text" 
-                    placeholder="輸入航班 (如 JX800)" 
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    className="text-2xl font-black text-gray-900 bg-transparent outline-none w-full placeholder-gray-200 uppercase font-mono tracking-tight" 
-                />
-                <div className="text-[10px] text-gray-400 font-medium mt-1 pl-1">
-                    {code ? (
-                        <span className="text-green-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> 已輸入</span>
-                    ) : '航班編號'}
+// ✅ 新版擬真機票 (Passbook Style) - 支援去程/回程顯示
+const FlightCard = ({ type, code, setCode, destination, origin = 'TPE' }: any) => {
+    const isDeparture = type === 'in';
+    const label = isDeparture ? 'DEPARTURE (去程)' : 'RETURN (回程)';
+    const bgColor = isDeparture ? 'bg-sky-600' : 'bg-slate-800'; // 調整顏色更像 Apple Wallet
+    
+    return (
+        <div className={`rounded-2xl p-4 shadow-md relative overflow-hidden text-white transition-all hover:scale-[1.02] ${bgColor}`}>
+            {/* 裝飾切角 */}
+            <div className="absolute -left-3 top-1/2 w-6 h-6 bg-white rounded-full" />
+            <div className="absolute -right-3 top-1/2 w-6 h-6 bg-white rounded-full" />
+            <div className="absolute left-4 right-4 top-1/2 border-t-2 border-dashed border-white/30" />
+
+            <div className="flex justify-between items-start mb-6">
+                <div>
+                    <span className="text-[10px] font-bold opacity-60 tracking-widest block mb-1">{label}</span>
+                    <div className="flex items-center gap-2">
+                        <Plane className={`w-5 h-5 ${isDeparture ? 'rotate-45' : '-rotate-135'}`} />
+                        <span className="text-xl font-bold tracking-wider font-mono uppercase">{isDeparture ? `${origin} → ${destination || 'DEST'}` : `${destination || 'DEST'} → ${origin}`}</span>
+                    </div>
+                </div>
+                <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
+                    <span className="text-[10px] font-bold">BOARDING PASS</span>
                 </div>
             </div>
-            <div className="text-right pl-4 border-l border-dashed border-gray-200">
-               <div className="text-xs font-bold text-gray-400">TPE</div>
-               <div className="text-xs font-bold text-gray-900">{destination || 'DEST'}</div>
+
+            <div className="flex justify-between items-end">
+                <div className="flex-1">
+                    <label className="text-[10px] font-bold opacity-60 uppercase block mb-1">FLIGHT NO.</label>
+                    <input 
+                        type="text" 
+                        placeholder="例如 JX800" 
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.toUpperCase())}
+                        className="text-3xl font-black bg-transparent outline-none w-full placeholder-white/30 uppercase font-mono tracking-tight" 
+                    />
+                </div>
+                <div className="text-right">
+                   {code ? <CheckCircle className="w-6 h-6 text-green-400" /> : <div className="w-6 h-6 rounded-full border-2 border-white/30" />}
+                </div>
             </div>
+        </div>
+    );
+};
+
+// ✅ 新版擬真車票 (JR/高鐵風格) - 支援完整資訊
+interface TrainInfo {
+    country: string;
+    city: string;
+    type: string;
+    number: string;
+}
+
+const TrainCard = ({ label, info, setInfo }: { label: string, info: TrainInfo, setInfo: (i: TrainInfo) => void }) => (
+    <div className="bg-white border-l-[6px] border-l-orange-500 border-y border-r border-gray-200 rounded-r-xl rounded-l-md p-4 shadow-sm relative group hover:shadow-md transition-all">
+        <div className="flex justify-between items-center mb-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                <Train className="w-3 h-3" /> {label}
+            </span>
+            <span className="bg-orange-100 text-orange-600 text-[10px] font-bold px-2 py-0.5 rounded">RAIL PASS</span>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-3 mb-3">
+             <div>
+                 <label className="text-[10px] font-bold text-gray-400 block mb-1">國家/地區</label>
+                 <input 
+                    type="text" 
+                    placeholder="如：日本" 
+                    value={info.country}
+                    onChange={(e) => setInfo({...info, country: e.target.value})}
+                    className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-900 outline-none focus:ring-1 focus:ring-orange-200"
+                 />
+             </div>
+             <div>
+                 <label className="text-[10px] font-bold text-gray-400 block mb-1">城市/站點</label>
+                 <input 
+                    type="text" 
+                    placeholder="如：東京" 
+                    value={info.city}
+                    onChange={(e) => setInfo({...info, city: e.target.value})}
+                    className="w-full bg-gray-50 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-900 outline-none focus:ring-1 focus:ring-orange-200"
+                 />
+             </div>
+        </div>
+
+        <div className="flex gap-2">
+             <div className="flex-[2]">
+                 <input 
+                    type="text" 
+                    placeholder="車種 (新幹線/高鐵)" 
+                    value={info.type}
+                    onChange={(e) => setInfo({...info, type: e.target.value})}
+                    className="w-full bg-gray-50 rounded-lg px-2 py-2 text-xs font-bold text-gray-700 outline-none focus:ring-1 focus:ring-orange-200"
+                 />
+             </div>
+             <div className="flex-[1]">
+                 <input 
+                    type="text" 
+                    placeholder="車次" 
+                    value={info.number}
+                    onChange={(e) => setInfo({...info, number: e.target.value})}
+                    className="w-full bg-gray-50 rounded-lg px-2 py-2 text-xs font-bold text-gray-700 outline-none text-center focus:ring-1 focus:ring-orange-200 font-mono"
+                 />
+             </div>
         </div>
     </div>
 );
@@ -314,6 +388,10 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     const [transportMode, setTransportMode] = useState<'flight' | 'train' | 'time'>('flight');
     const [flightIn, setFlightIn] = useState(''); 
     const [flightOut, setFlightOut] = useState(''); 
+    
+    // 鐵路詳細資訊 State
+    const [trainIn, setTrainIn] = useState({ country: '', city: '', type: '', number: '' });
+    const [trainOut, setTrainOut] = useState({ country: '', city: '', type: '', number: '' });
 
     // --- Step 3: 風格 ---
     const [companion, setCompanion] = useState('couple');
@@ -342,7 +420,6 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         const transportMap: any = { public: '大眾運輸', car: '自駕/包車', taxi: '計程車/Uber' };
         const vibeMap: any = { popular: '經典熱門必去', balanced: '熱門與冷門均衡', hidden: '在地私房冷門' };
         const budgetMap: any = { cheap: '經濟實惠', standard: '標準預算', luxury: '豪華享受' };
-        
         return `[旅遊條件詳情] - 旅伴：${companionMap[companion]} - 步調：${paceMap[pace]} - 交通：${transportMap[transport]} - 風格：${vibeMap[vibe]} - 預算：${budgetMap[budgetLevel]} ${customBudget ? `(${customBudget})` : ''} - 興趣：${selectedInterests.join(', ') || '無特別指定'} - 特殊需求/許願：${specificRequests || '無'}`;
     };
 
@@ -352,10 +429,20 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         setLoading(true);
         try {
             const fullPrompt = buildPrompt();
-            const transportInfo = {
-                inbound: flightIn ? `Flight ${flightIn}` : undefined,
-                outbound: flightOut ? `Flight ${flightOut}` : undefined
-            };
+            
+            // 組合交通資訊
+            let transportInfo = undefined;
+            if (transportMode === 'flight') {
+                transportInfo = {
+                    inbound: flightIn ? `Flight ${flightIn}` : undefined,
+                    outbound: flightOut ? `Flight ${flightOut}` : undefined
+                };
+            } else if (transportMode === 'train') {
+                transportInfo = {
+                    inbound: trainIn.number ? `${trainIn.country} ${trainIn.type} ${trainIn.number} to ${trainIn.city}` : undefined,
+                    outbound: trainOut.number ? `${trainOut.country} ${trainOut.type} ${trainOut.number}` : undefined
+                };
+            }
 
             const generatedDays = await generateItinerary(destination, tripDays, fullPrompt, currency, transportInfo);
             
@@ -476,7 +563,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="bg-gray-100 p-1 rounded-xl flex mb-6">
                                 <button onClick={() => setTransportMode('flight')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${transportMode === 'flight' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}><Plane className="w-4 h-4"/> 航班</button>
-                                <button onClick={() => setTransportMode('train')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${transportMode === 'train' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}><Train className="w-4 h-4"/> 鐵路</button>
+                                <button onClick={() => setTransportMode('train')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${transportMode === 'train' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}><Train className="w-4 h-4"/> 列車</button>
                                 <button onClick={() => setTransportMode('time')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${transportMode === 'time' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}><Clock className="w-4 h-4"/> 手動</button>
                             </div>
 
@@ -490,11 +577,9 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
 
                             {transportMode === 'train' && (
                                 <div className="space-y-4">
-                                    <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center space-y-4">
-                                        <Train className="w-8 h-8 text-gray-300 mx-auto" />
-                                        <p className="text-sm text-gray-500">鐵路班次查詢功能開發中...<br/>目前請使用手動時間設定。</p>
-                                        <button onClick={() => setTransportMode('time')} className="text-ios-blue text-xs font-bold">切換至手動模式</button>
-                                    </div>
+                                    <TrainCard label="去程資訊" info={trainIn} setInfo={setTrainIn} />
+                                    <TrainCard label="回程資訊" info={trainOut} setInfo={setTrainOut} />
+                                    <p className="text-xs text-center text-gray-400 mt-4">AI 將依據車種與車次估算時間</p>
                                 </div>
                             )}
 
@@ -632,7 +717,7 @@ const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => voi
 };
 
 // ============================================================================
-// 5. Main View Component (TripsView) - 放在檔案最後，確保所有依賴都已宣告
+// 6. 主視圖 (TripsView)
 // ============================================================================
 
 export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, onDeleteTrip, onReorderTrips, onUpdateTrip }) => {

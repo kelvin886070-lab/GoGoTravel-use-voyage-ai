@@ -20,12 +20,11 @@ const CACHE_TTL = {
 // 核心：純 HTTP 請求函式
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
-    // 修正模型清單與順序：
+    // 依據您的要求，優先使用 gemini-2.5-flash
     const candidateModels = [
-        "gemini-2.5-flash",       // 首選：您指定的模型
-        "gemini-2.0-flash-exp",   // 備用 1：最新實驗版
-        "gemini-1.5-flash-001",   // 備用 2：修正名稱 (加 -001 避免 404)
-        "gemini-1.5-flash"        // 備用 3：通用名稱
+        "gemini-2.5-flash",       // 首選：您確認可用的最新模型
+        "gemini-2.0-flash-exp",   // 備用 1
+        "gemini-1.5-flash"        // 備用 2 (最穩定)
     ];
 
     let lastError = null;
@@ -52,8 +51,8 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
                 const err = await response.json().catch(() => ({}));
                 console.warn(`⚠️ 模型 ${model} 失敗 (${response.status}):`, err.error?.message);
                 
-                // 429 = 額度滿, 404 = 模型找不到, 503 = 忙線 -> 這些情況都應該試下一個模型
-                if ([429, 404, 503].includes(response.status)) {
+                // 遇到 404 (模型不存在) 或 429 (額度滿) 就嘗試下一個
+                if (response.status === 404 || response.status === 429 || response.status === 503) {
                     continue; 
                 }
                 
@@ -65,7 +64,7 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
         }
     }
 
-    throw lastError || new Error("系統忙碌中 (所有模型皆無回應)，請稍後再試。");
+    throw lastError || new Error("系統忙碌中，請稍後再試。");
 }
 
 // --- 快取邏輯 ---
@@ -100,7 +99,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成 (支援航班時間參數)
+// 1. 行程生成 (大腦升級：支援航班參數與交通節點)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -111,16 +110,17 @@ export const generateItinerary = async (
     transportInfo?: { inbound?: string, outbound?: string }
 ): Promise<TripDay[]> => {
   
+  // Cache Key 加入 transportInfo，確保不同航班會生成不同行程
   const cacheKey = `itinerary_${destination}_${days}_${currency}_${JSON.stringify(transportInfo)}_${userPrompt.substring(0, 20)}`;
   
   return fetchWithCache(cacheKey, async () => {
-      // 構建交通提示
+      // 構建交通提示 Prompt
       let transportContext = "";
       if (transportInfo?.inbound) {
-          transportContext += `\n- Day 1 Arrival Info: ${transportInfo.inbound} (Please arrange schedule starting after arrival + 1.5h for clearance).`;
+          transportContext += `\n- Day 1 Arrival Info: ${transportInfo.inbound} (Please arrange schedule starting after arrival + 2h for clearance and travel to city).`;
       }
       if (transportInfo?.outbound) {
-          transportContext += `\n- Day ${days} Departure Info: ${transportInfo.outbound} (Please end sightseeing 3h before departure).`;
+          transportContext += `\n- Day ${days} Departure Info: ${transportInfo.outbound} (Please end sightseeing 3.5h before departure time).`;
       }
 
       const prompt = `
@@ -134,15 +134,18 @@ export const generateItinerary = async (
         1. **Currency**: Estimate costs in **${currency}**. Cost must be NUMBER ONLY (e.g. 2500).
         2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "hotel", "relax", "bar", "culture", "activity", "other".
         
-        3. **Flow**: 
-           - Start each day with a "Morning" activity.
-           - End each day with an "Evening" activity.
-           - **Transport**: Insert a SEPARATE item with category **"transport"** between locations if travel > 15 mins. Title: "Travel to [Location]", Desc: "Time & Method".
+        3. **Flow & Structure (IMPORTANT)**: 
+           - **Start**: Each day MUST start with a "Morning" activity (e.g., "Leave hotel", "Breakfast").
+           - **End**: Each day MUST end with an "Evening" activity (e.g., "Return to hotel", "Rest").
+           - **Transport**: You MUST insert a SEPARATE activity item with category **"transport"** between two locations if they are not in the same area. 
+             - Title: "Travel to [Next Location]" or "Subway to [Station]"
+             - Description: Estimated time (e.g., "Approx. 20 mins")
+             - Cost: Estimated fare
            - **Day 1 & Day ${days}**: Strictly follow the arrival/departure times if provided above.
 
         4. **Format**: Output valid JSON only.
 
-        JSON Structure:
+        JSON Structure Example:
         [
           {
             "day": 1,
@@ -157,11 +160,19 @@ export const generateItinerary = async (
               },
               {
                 "time": "15:00",
-                "title": "Activity Name",
-                "description": "Description",
+                "title": "Senso-ji Temple",
+                "description": "Ancient temple sightseeing",
                 "category": "sightseeing", 
-                "location": "Address",
-                "cost": "1500" 
+                "location": "Asakusa",
+                "cost": "0" 
+              },
+              {
+                "time": "17:00",
+                "title": "Travel to Skytree",
+                "description": "Subway: Asakusa Line (15 mins)",
+                "category": "transport",
+                "location": "Subway",
+                "cost": "180"
               }
             ]
           }
@@ -190,6 +201,7 @@ const fetchRealTimeRate = async (from: string, to: string): Promise<number | nul
         const data = await res.json();
         return data.rates[to] || null;
     } catch (e) {
+        console.warn("Real-time rate fetch failed, falling back to Gemini.");
         return null;
     }
 };
