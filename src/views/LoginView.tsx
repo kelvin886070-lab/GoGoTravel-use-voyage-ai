@@ -74,7 +74,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             }
         } else if (mode === 'reset') {
              // --- 重置密碼模式 ---
-             setError('由於使用虛擬帳號，請聯繫管理員 (Kelvin) 幫您重置密碼。');
+             setError('請聯繫管理員 (Kelvin) 幫您重置密碼。');
              setLoading(false);
              return;
         }
