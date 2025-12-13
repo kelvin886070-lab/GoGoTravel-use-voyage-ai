@@ -4,7 +4,11 @@
 
 /* iOS Base Styles */
 body {
-  background-color: #F2F2F7;
+  /* 修改這裡：將背景色改為我們設定的米灰色，文字預設為柔黑 */
+  background-color: #E4E2DD;
+  color: #1D1D1B;
+  
+  -webkit-tap-highlight-color: transparent;
   -webkit-tap-highlight-color: transparent;
   
   /* 修正 1: 暫時註解掉這行。
