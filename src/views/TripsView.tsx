@@ -3,10 +3,10 @@ import {
     Plus, MapPin, Calendar, Download, GripVertical, X, 
     Image as ImageIcon, Clock, History, Loader2, CloudRain, 
     Cloud, Sun, CloudSun, Lock, CheckCircle, Camera, LogOut, 
-    ChevronLeft, ChevronRight, Sparkles,
+    ChevronLeft, ChevronRight, ChevronDown, Sparkles,
     User as UserIcon, Heart, Baby, Users, Armchair, Coffee, Footprints, Zap,
     Utensils, ShoppingBag, Landmark,
-    Coins, Plane, Train, Scale,
+    Coins, Plane, Train, Scale, Car, Bus,
     GraduationCap, Briefcase, Dog, Mountain, Book, PenTool, Trash2
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
@@ -128,36 +128,15 @@ const TripCard: React.FC<{ trip: Trip, onSelect: () => void, dragHandleProps?: D
 
 // ... (TrainCard, OptionCard 保持不變) ...
 const FlightCard = ({ type, code, setCode, destination, origin = 'TPE', flightInfo, loading }: any) => {
-    // 修正：依據 'in' (去程) 或 'out' (回程) 決定地點顯示邏輯
-    const isDeparture = type === 'in'; // in = flightIn (去程)
-    
+    const isDeparture = type === 'in';
     const label = isDeparture ? 'DEPARTURE (去程)' : 'RETURN (回程)';
     const bgColor = isDeparture ? 'bg-[#45846D]' : 'bg-[#1D1D1B]';
     
-    // -------------------------------------------------------------
-    // 核心修正：
-    // 1. 若有 API 航班資料 (flightInfo)，直接使用，因為它最準確 (AI 查過的)。
-    // 2. 若無 API 資料，則使用使用者設定的 Origin (出發地) 和 Destination (目的地) 進行自動對調。
-    // -------------------------------------------------------------
-    let displayOrigin = 'ORIGIN';
-    let displayDest = 'DEST';
+    const finalOrigin = isDeparture ? origin : (destination || 'DEST');
+    const finalDest = isDeparture ? (destination || 'DEST') : origin;
 
-    if (flightInfo) {
-        // AI 查到的資料，已經是正確的 "該航班出發地" 和 "該航班抵達地"
-        // 例如 CI167 (KIX -> KHH)，API 會回傳 origin: KIX, dest: KHH
-        displayOrigin = flightInfo.origin;
-        displayDest = flightInfo.dest;
-    } else {
-        // Fallback: 使用使用者輸入的資料
-        // 去程：Origin -> Dest
-        // 回程：Dest -> Origin
-        const userOrigin = origin || 'TPE';
-        const userDest = destination || 'DEST';
-
-        displayOrigin = isDeparture ? userOrigin : userDest;
-        displayDest = isDeparture ? userDest : userOrigin;
-    }
-
+    const displayOrigin = flightInfo?.origin || finalOrigin;
+    const displayDest = flightInfo?.dest || finalDest;
     const displayTime = flightInfo?.depTime;
     const terminal = flightInfo?.originTerm;
 
@@ -254,6 +233,8 @@ const INTEREST_DATA: Record<string, { label: string, icon: any, tags: string[] }
     culture: { label: '文化', icon: Landmark, tags: ['神社/寺廟', '傳統體驗', '祭典活動', '在地市集', '博物館'] },
 };
 
+// --- Modal Components (Moved UP to avoid hoisting issues) ---
+
 const EditTripModal: React.FC<{ trip: Trip, onClose: () => void, onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
     const [dest, setDest] = useState(trip.destination);
     const [start, setStart] = useState(trip.startDate);
@@ -270,12 +251,17 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     const [loading, setLoading] = useState(false);
     const [destination, setDestination] = useState('');
     
-    // 修正：新增 origin (出發地) 狀態，預設為 TPE，但允許修改
+    // 新增：出發地與指定區域
     const [origin, setOrigin] = useState('TPE');
+    const [focusArea, setFocusArea] = useState('');
 
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [days, setDays] = useState<number | string>('');
     const [transportMode, setTransportMode] = useState<'flight' | 'train' | 'time'>('flight');
+    
+    // 新增：當地交通模式
+    const [localTransportMode, setLocalTransportMode] = useState<'public' | 'car' | 'taxi'>('public');
+
     const [flightIn, setFlightIn] = useState('');
     const [flightOut, setFlightOut] = useState(''); 
     const [flightInLoading, setFlightInLoading] = useState(false);
@@ -330,6 +316,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0];
     if (file) { const reader = new FileReader(); reader.onloadend = () => { setCoverImage(reader.result as string); }; reader.readAsDataURL(file); } };
+    
     const buildPrompt = () => {
         const companionMap: any = { solo: '獨旅', couple: '情侶/夫妻', family: '親子家庭', friends: '一群朋友', elderly: '帶長輩', pet: '帶寵物', colleague: '同事', classmate: '同學' };
         const paceMap: any = { relaxed: '悠閒慢活', standard: '標準觀光', packed: '特種兵打卡', deep: '深度慢遊' };
@@ -370,34 +357,34 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                 `${trainIn.type} ${trainIn.number} from ${trainIn.origin} to ${trainIn.dest}` : undefined, outbound: trainOut.number ? `${trainOut.type} ${trainOut.number}` : undefined };
             }
 
-            const generatedDays = await generateItinerary(destination, tripDays, fullPrompt, currency, transportInfo);
+            // 更新：傳遞 focusArea 和 localTransportMode 到後端
+            const generatedDays = await generateItinerary(
+                destination, 
+                tripDays, 
+                fullPrompt, 
+                currency, 
+                transportInfo,
+                focusArea,
+                localTransportMode
+            );
+
             const processGeneratedItinerary = (days: TripDay[]): TripDay[] => {
                 return days.map(day => {
                     let nextStartTime = "09:00";
                     const activities = day.activities.map(act => {
-                        if (!act.time 
-                        || !/^\d{2}:\d{2}$/.test(act.time)) act.time = nextStartTime;
+                        if (!act.time || !/^\d{2}:\d{2}$/.test(act.time)) act.time = nextStartTime;
                         else nextStartTime = act.time;
-                        const rawCategory = (act.category || 'other').toLowerCase();
-                        let mappedType = 'other';
-                        if (rawCategory === 'flight') mappedType = 'flight'; // 保留 flight
-                        else if (rawCategory === 'transport') mappedType = 'transport';
-                        else if (['sightseeing', 'landmark'].some(k => rawCategory.includes(k))) mappedType = 'sightseeing';
-                        else if (['food', 'restaurant', 'snack'].some(k => rawCategory.includes(k))) mappedType = 'food';
-                        else if (['cafe', 'coffee'].some(k => rawCategory.includes(k))) mappedType = 'cafe';
-                        else if (['shopping', 'mall', 'market'].some(k => rawCategory.includes(k))) mappedType = 'shopping';
-                        else if (['hotel', 'accommodation'].some(k => rawCategory.includes(k))) mappedType = 'hotel';
-                        else if (['relax', 'spa', 'onsen'].some(k => rawCategory.includes(k))) mappedType = 'relax';
-                        else if (['bar', 'club'].some(k => rawCategory.includes(k))) mappedType = 'bar';
-                        else if (['culture', 'temple'].some(k => rawCategory.includes(k))) mappedType = 'culture';
-                        else if (['activity', 'theme park'].some(k => rawCategory.includes(k))) mappedType = 'activity';
+                        
+                        // 確保 type 與 category 相容
+                        if (!act.type && act.category) act.type = act.category;
+
                         try {
                             const [h, m] = nextStartTime.split(':').map(Number);
                             const d = new Date(); d.setHours(h || 9, m || 0, 0, 0); d.setMinutes(d.getMinutes() + 120);
                             nextStartTime = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                         } catch (e) {}
-                        return { ...act, type: mappedType };
-                        });
+                        return act;
+                    });
                     return { ...day, activities };
                 });
             };
@@ -406,13 +393,15 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
             const startDateObj = new Date(startDate);
             const endDateObj = new Date(startDateObj);
             endDateObj.setDate(startDateObj.getDate() + (tripDays - 1));
+            
             const newTrip: Trip = {
                 id: Date.now().toString(),
                 destination,
+                focusArea, // 儲存區域設定
+                localTransportMode, // 儲存交通設定
                 startDate: startDate,
                 endDate: endDateObj.toISOString().split('T')[0],
-                coverImage: coverImage ||
-                `https://picsum.photos/800/600?random=${Date.now()}`,
+                coverImage: coverImage || `https://picsum.photos/800/600?random=${Date.now()}`,
                 days: daysWithTime,
                 isDeleted: false,
                 currency: currency
@@ -422,6 +411,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
 
         } catch (e) { alert("無法生成行程，請檢查網路或稍後再試。"); } finally { setLoading(false); }
     };
+    
     const handleManualCreate = () => {
         const tripDays = Number(days);
         if (!tripDays || tripDays <= 0) { alert("請輸入有效的天數"); return; }
@@ -433,17 +423,16 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
         `https://picsum.photos/800/600?random=${Date.now()}`, days: emptyDays, isDeleted: false, currency: currency };
         onAddTrip(newTrip); onClose();
     };
+    
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-md" onClick={onClose} />
             <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh]">
                 {/* Header */}
-                <div className="pt-6 px-6 pb-2 border-b border-gray-100 bg-white sticky top-0 
-                z-20">
+                <div className="pt-6 px-6 pb-2 border-b border-gray-100 bg-white sticky top-0 z-20">
                     <div className="flex justify-between items-center mb-4">
                         <button onClick={step === 1 ? onClose : () => setStep(s => s - 1)} className="text-gray-400 hover:text-gray-600">
-                            {step === 1 ? <X className="w-6 h-6" /> : 
-                            <ChevronLeft className="w-6 h-6" />}
+                            {step === 1 ? <X className="w-6 h-6" /> : <ChevronLeft className="w-6 h-6" />}
                         </button>
                         <h2 className="font-bold text-lg text-[#1D1D1B]">
                             {step === 1 && '行程設定'}
@@ -454,34 +443,31 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                         <div className="w-6"></div>
                     </div>
                     <div className="flex gap-2 mb-2">
-                        {[1, 2, 
-                        3, 4].map(i => (<div key={i} className={`h-1 rounded-full flex-1 transition-all duration-500 ${i <= step ?
-                        'bg-[#45846D]' : 'bg-gray-100'}`} />))}
+                        {[1, 2, 3, 4].map(i => (<div key={i} className={`h-1 rounded-full flex-1 transition-all duration-500 ${i <= step ? 'bg-[#45846D]' : 'bg-gray-100'}`} />))}
                     </div>
                 </div>
 
                 {/* Content */}
                 <div className="p-6 overflow-y-auto min-h-0 flex-1 scroll-smooth">
-                    {step === 
-                    1 && (
+                    {step === 1 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-[#F5F5F4] group">
-                                {coverImage 
-                                ? (<img src={coverImage} alt="Cover" className="w-full h-full object-cover" />) : (<div className="w-full h-full flex flex-col items-center justify-center text-gray-400"><ImageIcon className="w-8 h-8 mb-2 opacity-50" /><span className="text-xs font-medium">設定封面 (選填)</span></div>)}
+                                {coverImage ? (<img src={coverImage} alt="Cover" className="w-full h-full object-cover" />) : (<div className="w-full h-full flex flex-col items-center justify-center text-gray-400"><ImageIcon className="w-8 h-8 mb-2 opacity-50" /><span className="text-xs font-medium">設定封面 (選填)</span></div>)}
                                 <label className="absolute inset-0 flex items-center justify-center cursor-pointer hover:bg-black/5 transition-colors"><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
                             </div>
                             <div className="space-y-4">
-                                {/* 修正：新增出發地輸入欄位 */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">出發地</label><IOSInput placeholder="TPE" value={origin} onChange={(e) => setOrigin(e.target.value.toUpperCase())} /></div>
                                     <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">目的地</label><IOSInput autoFocus placeholder="例如：京都" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
                                 </div>
-                            
+                                {/* 新增：Focus Area */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">指定區域/商圈 (選填)</label>
+                                    <IOSInput placeholder="例：中西區、安平、國華街..." value={focusArea} onChange={(e) => setFocusArea(e.target.value)} />
+                                </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">出發日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl outline-none text-sm font-medium" /></div>
-                                    <div><label 
-                                    className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">天數</label><IOSInput type="number" min={1} max={14} value={days} placeholder="輸入天數" onChange={(e) => { const val = e.target.value;
-                                    setDays(val === '' ? '' : parseInt(val, 10)); }} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">天數</label><IOSInput type="number" min={1} max={14} value={days} placeholder="輸入天數" onChange={(e) => { const val = e.target.value; setDays(val === '' ? '' : parseInt(val, 10)); }} /></div>
                                 </div>
                             </div>
                         </div>
@@ -490,19 +476,26 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="bg-[#F5F5F4] p-1.5 rounded-2xl flex mb-6">
                                 <button onClick={() => setTransportMode('flight')} className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl transition-all ${transportMode === 'flight' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-400 hover:text-gray-600'}`}><Plane className="w-4 h-4"/> 航班</button>
-                                <button onClick={() => setTransportMode('train')} className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold 
-                                rounded-xl transition-all ${transportMode === 'train' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-400 hover:text-gray-600'}`}><Train className="w-4 h-4"/> 列車</button>
-                                <button onClick={() => setTransportMode('time')} className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl transition-all ${transportMode === 'time' ?
-                                'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-400 hover:text-gray-600'}`}><Clock className="w-4 h-4"/> 手動</button>
+                                <button onClick={() => setTransportMode('train')} className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl transition-all ${transportMode === 'train' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-400 hover:text-gray-600'}`}><Train className="w-4 h-4"/> 列車</button>
+                                <button onClick={() => setTransportMode('time')} className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold rounded-xl transition-all ${transportMode === 'time' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-400 hover:text-gray-600'}`}><Clock className="w-4 h-4"/> 手動</button>
                             </div>
+                            
+                            {/* 新增：當地移動方式選擇 */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-gray-400 mb-2 uppercase">當地移動方式 (AI 將依此安排路線)</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button onClick={() => setLocalTransportMode('public')} className={`py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${localTransportMode === 'public' ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-100'}`}><Bus className="w-3 h-3" /> 大眾運輸</button>
+                                    <button onClick={() => setLocalTransportMode('car')} className={`py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${localTransportMode === 'car' ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-100'}`}><Car className="w-3 h-3" /> 自駕/包車</button>
+                                    <button onClick={() => setLocalTransportMode('taxi')} className={`py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${localTransportMode === 'taxi' ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-100'}`}><Car className="w-3 h-3" /> 計程車</button>
+                                </div>
+                            </div>
+
                             {transportMode === 'flight' && (
                                 <div className="space-y-4">
                                     <div onBlur={() => checkFlight(flightIn, 'in')}>
-                                        {/* 修正：傳入使用者設定的 origin */}
                                         <FlightCard type="in" code={flightIn} setCode={setFlightIn} destination={destination} origin={origin} flightInfo={flightInInfo} loading={flightInLoading} />
                                     </div>
                                     <div onBlur={() => checkFlight(flightOut, 'out')}>
-                                        {/* 修正：傳入使用者設定的 origin */}
                                         <FlightCard type="out" code={flightOut} setCode={setFlightOut} destination={destination} origin={origin} flightInfo={flightOutInfo} loading={flightOutLoading} />
                                     </div>
                                     <p className="text-xs text-center text-gray-400 mt-4">AI 將自動查詢航班時間並安排接送機行程</p>
@@ -517,8 +510,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             )}
                             {transportMode === 'time' && (
                                 <div className="space-y-6">
-                                    <div><label className="block text-xs font-bold text-gray-400 
-                                    mb-2 uppercase">去程抵達時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none text-center" defaultValue="10:00" /></div>
+                                    <div><label className="block text-xs font-bold text-gray-400 mb-2 uppercase">去程抵達時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none text-center" defaultValue="10:00" /></div>
                                     <div><label className="block text-xs font-bold text-gray-400 mb-2 uppercase">回程出發時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none text-center" defaultValue="16:00" /></div>
                                 </div>
                             )}
@@ -532,8 +524,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                     <OptionCard selected={companion === 'solo'} onClick={() => setCompanion('solo')} icon={<UserIcon />} label="獨旅" />
                                     <OptionCard selected={companion === 'couple'} onClick={() => setCompanion('couple')} icon={<Heart />} label="情侶" />
                                     <OptionCard selected={companion === 'family'} onClick={() => setCompanion('family')} icon={<Baby />} label="親子" />
-                                    <OptionCard selected={companion === 
-                                    'friends'} onClick={() => setCompanion('friends')} icon={<Users />} label="朋友" />
+                                    <OptionCard selected={companion === 'friends'} onClick={() => setCompanion('friends')} icon={<Users />} label="朋友" />
                                     <OptionCard selected={companion === 'elderly'} onClick={() => setCompanion('elderly')} icon={<Armchair />} label="長輩" />
                                     <OptionCard selected={companion === 'pet'} onClick={() => setCompanion('pet')} icon={<Dog />} label="寵物" />
                                     <OptionCard selected={companion === 'colleague'} onClick={() => setCompanion('colleague')} icon={<Briefcase />} label="同事" />
@@ -543,36 +534,35 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             <div className="h-px bg-gray-100 my-2" />
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">步調與風格</label>
-                                {/* 修正: 改為 4 欄，視覺統一 */}
                                 <div className="grid grid-cols-4 gap-2">
                                     <OptionCard selected={pace === 'relaxed'} onClick={() => setPace('relaxed')} icon={<Coffee />} label="悠閒" />
                                     <OptionCard selected={pace === 'standard'} onClick={() => setPace('standard')} icon={<Footprints />} label="標準" />
                                     <OptionCard selected={pace === 'packed'} onClick={() => setPace('packed')} icon={<Zap />} label="緊湊" />
-                                    {/* 新增: 深度 */}
                                     <OptionCard selected={pace === 'deep'} onClick={() => setPace('deep')} icon={<Book />} label="深度" />
                                 </div>
                                 <div className="grid grid-cols-4 gap-2 mt-2">
                                     <OptionCard selected={vibe === 'popular'} onClick={() => setVibe('popular')} icon={<MapPin />} label="經典" sub="地標" />
                                     <OptionCard selected={vibe === 'balanced'} onClick={() => setVibe('balanced')} icon={<Scale />} label="均衡" sub="在地" />
-                                    {/* 新增: 人文 */}
                                     <OptionCard selected={vibe === 'cultural'} onClick={() => setVibe('cultural')} icon={<Landmark />} label="人文" sub="歷史" />
                                     <OptionCard selected={vibe === 'hidden'} onClick={() => setVibe('hidden')} icon={<Mountain />} label="秘境" sub="自然" />
                                 </div>
                             </div>
                             <div className="h-px bg-gray-100 my-2" />
                             <div>
-                                <label className="block text-xs font-bold 
-                                text-gray-400 mb-2 ml-1 uppercase">預算等級</label>
+                                <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">預算等級</label>
                                 <div className="flex gap-2 mb-3">
                                     {[{id:'cheap',l:'經濟 $'}, {id:'standard',l:'標準 $$'}, {id:'luxury',l:'豪華 $$$'}].map(opt => (
-                                     <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-2xl font-bold text-sm border transition-all ${budgetLevel === opt.id ?
-                                    'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}>{opt.l}</button>
+                                     <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-2xl font-bold text-sm border transition-all ${budgetLevel === opt.id ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}>{opt.l}</button>
                                     ))}
                                 </div>
                                 <div className="flex gap-2">
                                     <div className="relative min-w-fit">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Coins className="h-4 w-4 text-gray-400" /></div>
-                                        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-[#F5F5F4] border-none rounded-xl py-3 pl-9 pr-8 text-sm outline-none focus:ring-2 focus:ring-[#45846D]/50 appearance-none font-bold">{CURRENCIES.map(c => (<option key={c.code} value={c.code}>{c.code} {c.label}</option>))}</select>
+                                        <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full bg-[#F5F5F4] border-none rounded-xl py-3 pl-9 pr-8 text-sm outline-none focus:ring-2 focus:ring-[#45846D]/50 appearance-none font-bold">
+                                            {CURRENCIES.map(c => (<option key={c.code} value={c.code}>{c.code} {c.label}</option>))}
+                                        </select>
+                                        {/* 修正：加入下拉箭頭指示 */}
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                     </div>
                                     <input type="text" placeholder="或輸入具體預算..." className="w-full bg-[#F5F5F4] rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#45846D]/50 transition-colors bg-transparent font-medium" value={customBudget} onChange={e => setCustomBudget(e.target.value)} />
                                 </div>
@@ -585,8 +575,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                 <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">您想怎麼玩？(深度興趣)</label>
                                 <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                                     {Object.entries(INTEREST_DATA).map(([key, data]) => (
-                                        <button key={key} onClick={() => setActiveInterestTab(key)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 
-                                        rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
+                                        <button key={key} onClick={() => setActiveInterestTab(key)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
                                     ))}
                                 </div>
                                 <div className="bg-[#F5F5F4] rounded-2xl p-4 min-h-[120px] transition-all border border-gray-100 mt-2">
@@ -604,8 +593,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                                     <input 
                                                         type="text" 
                                                         placeholder={`想去的 ${tag} 品牌或地點...`}
-                                                        value={interestDetails[tag] ||
-                                                        ''}
+                                                        value={interestDetails[tag] || ''}
                                                         onChange={(e) => handleInterestDetailChange(tag, e.target.value)}
                                                         className="flex-1 text-xs bg-transparent outline-none placeholder-gray-300"
                                                     />
@@ -624,8 +612,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                 </div>
 
                 <div className="p-6 border-t border-gray-100 bg-white sticky bottom-0 z-30">
-                    {step < 4 ?
-                    (
+                    {step < 4 ? (
                         <div className="flex flex-col gap-3">
                             <IOSButton fullWidth onClick={() => { 
                                 if (step===1 && !destination) return alert('請輸入目的地');
@@ -634,8 +621,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             }}>
                                 下一步
                             </IOSButton>
-                            {step === 1 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium 
-                            py-2 hover:text-gray-600 transition-colors">跳過 AI，手動建立空白行程</button>}
+                            {step === 1 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過 AI，手動建立空白行程</button>}
                         </div>
                     ) : (
                         <div className="flex gap-3">
@@ -649,7 +635,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     );
 };
 
-// Import Trip Modal
+// Import Trip Modal (MOVED UP)
 const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) => void }> = ({ onClose, onImportTrip }) => {
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
@@ -659,7 +645,7 @@ const ImportTripModal: React.FC<{ onClose: () => void, onImportTrip: (t: Trip) =
     return (<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white rounded-[32px] w-full max-w-sm p-6 relative z-10 shadow-xl animate-in zoom-in-95"><button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button><h3 className="text-xl font-bold mb-1 text-[#1D1D1B]">匯入行程</h3><p className="text-sm text-gray-500 mb-4">貼上家人分享的行程連結</p><textarea className="w-full h-32 bg-[#F5F5F4] rounded-2xl p-4 text-sm border-none outline-none focus:ring-2 focus:ring-[#45846D]/50 mb-4 resize-none" placeholder="在此貼上連結..." value={code} onChange={e => { setCode(e.target.value); setError(''); }} />{error && <p className="text-red-500 text-xs font-medium mb-3">{error}</p>}<IOSButton fullWidth onClick={handleImport}>匯入</IOSButton></div></div>);
 };
 
-// Profile Modal
+// Profile Modal (MOVED UP)
 const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
     const [isChanging, setIsChanging] = useState(false);
@@ -845,7 +831,6 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                                         <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Rail Pass Trip</span>
                                                                         <div className="flex items-center gap-3">
                                                                             <Train className="w-8 h-8 text-white/90" />
-                                                                            {/* 動態顯示目的地 */}
                                                                             <span className="text-3xl font-black font-serif tracking-tight truncate max-w-[180px] uppercase">{trip.destination}</span>
                                                                         </div>
                                                                     </div>

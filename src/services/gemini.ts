@@ -22,9 +22,9 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash",       
-        "gemini-2.0-flash-exp",   
-        "gemini-1.5-flash"        
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     ];
     let lastError = null;
 
@@ -101,29 +101,53 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成 (大腦升級：支援更精確的交通上下文)
+// 1. 行程生成 (大腦升級：支援 區域限制 & 詳細交通資訊)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
     days: number, 
     userPrompt: string, 
     currency: string,
-    transportInfo?: { inbound?: string, outbound?: string }
+    transportInfo?: { inbound?: string, outbound?: string },
+    focusArea?: string, // 新增：指定區域
+    localTransportMode?: 'public' | 'car' | 'taxi' // 新增：當地交通模式
 ): Promise<TripDay[]> => {
   
-  const cacheKey = `itinerary_${destination}_${days}_${currency}_${JSON.stringify(transportInfo)}_${userPrompt.substring(0, 20)}`;
+  const cacheKey = `itinerary_v3_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
+  
   return fetchWithCache(cacheKey, async () => {
-      let transportContext = "";
-      // 根據是否為「航班」或「火車」調整 Prompt
+      let context = "";
+      
+      // 1. 交通進出上下文
       if (transportInfo?.inbound) {
           const isFlight = transportInfo.inbound.toLowerCase().includes('flight');
           const bufferTime = isFlight ? "2h (customs)" : "30m";
-          transportContext += `\n- Day 1 Arrival: ${transportInfo.inbound}. \n  **CRITICAL**: The FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card. Title: [Flight/Train Code], Desc: [Origin] -> [Dest]. Start next activity ${bufferTime} after arrival.`;
+          context += `\n- Day 1 Arrival: ${transportInfo.inbound}. \n  **CRITICAL**: The FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card. Title: [Flight/Train Code], Desc: [Origin] -> [Dest]. Start next activity ${bufferTime} after arrival.`;
       }
       if (transportInfo?.outbound) {
           const isFlight = transportInfo.outbound.toLowerCase().includes('flight');
           const bufferTime = isFlight ? "3h" : "1h";
-          transportContext += `\n- Day ${days} Departure: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card. End sightseeing ${bufferTime} before departure.`;
+          context += `\n- Day ${days} Departure: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card. End sightseeing ${bufferTime} before departure.`;
+      }
+
+      // 2. 指定區域限制 (Focus Area)
+      if (focusArea) {
+          context += `\n- **STRICT CONSTRAINT**: The user ONLY wants to visit: "${focusArea}". Do NOT suggest spots far outside these areas unless absolutely famous and necessary. Keep travel time minimal.`;
+      }
+
+      // 3. 當地交通模式 (Local Transport Logic)
+      let transportInstruction = "";
+      if (localTransportMode === 'public') {
+          transportInstruction = `
+            - **Local Transport (Public)**: When moving between locations > 15 mins apart, INSERT a separate activity with type "transport".
+            - **CRITICAL**: For "transport" items, you MUST provide a "transportDetail" JSON object.
+            - "transportDetail" structure: { "mode": "bus"|"subway"|"train"|"walk", "duration": "xx min", "fromStation": "Station A", "toStation": "Station B", "instruction": "Take Bus 205" }.
+          `;
+      } else if (localTransportMode === 'car') {
+          transportInstruction = `
+            - **Local Transport (Driving)**: Assume rental car. Group locations logically to minimize driving.
+            - Insert "transport" items for drives > 30 mins. Set "transportDetail" mode to "car".
+          `;
       }
 
       const prompt = `
@@ -131,38 +155,55 @@ export const generateItinerary = async (
         Task: Create a ${days}-day itinerary for ${destination}.
         
         User Preferences: ${userPrompt}
-        ${transportContext}
+        ${context}
+        ${transportInstruction}
         
         CRITICAL REQUIREMENTS:
         1. **Currency**: Estimate costs in **${currency}**. Cost must be NUMBER ONLY (e.g. 2500).
         2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity", "other".
-           - Use **"flight"** for airplane cards.
-           - Use **"transport"** for trains/bus/subway moving between cities or spots.
+           - Use **"flight"** for airport arrivals/departures.
+           - Use **"transport"** for moving between cities or major districts.
         3. **Flow**: 
-           - Start/End days with "Morning"/"Evening" activities (unless overridden by transport info).
-           - Insert "transport" items between locations if travel > 15 mins.
+           - Start/End days with "Morning"/"Evening" activities.
+           - Ensure logical route order (no zigzagging).
 
         4. **Format**: Output valid JSON only.
-        JSON Structure Example:
+        
+        JSON Structure Example (With Transport Detail):
         [
           {
             "day": 1,
             "activities": [
               {
-                "time": "08:25",
-                "title": "JX800",
-                "description": "TPE -> NRT (Arrive 12:35)",
-                "category": "flight",
-                "location": "Airport",
-                "cost": "0"
+                "time": "10:00",
+                "title": "Kiyomizu-dera",
+                "description": "Historic temple",
+                "type": "sightseeing",
+                "location": "Kyoto",
+                "cost": "400"
               },
               {
-                "time": "14:30",
-                "title": "Arrival Lunch",
-                "description": "First meal",
-                "category": "food", 
-                "location": "City Center",
-                "cost": "1500" 
+                "time": "11:30",
+                "title": "Move to Gion",
+                "description": "Bus transit",
+                "type": "transport",
+                "location": "Kyoto",
+                "cost": "230",
+                "transportDetail": {
+                    "mode": "bus",
+                    "duration": "20 min",
+                    "fromStation": "Kiyomizu-michi",
+                    "toStation": "Gion",
+                    "instruction": "Take City Bus 206"
+                }
+              },
+              {
+                "time": "12:00",
+                "title": "Gion Lunch",
+                "description": "Udon noodles",
+                "type": "food",
+                "location": "Gion",
+                "cost": "1500"
               }
             ]
           }
@@ -196,10 +237,8 @@ interface FlightInfo {
 }
 
 export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo | null> => {
-    // 基本格式檢查
     if (!/^[A-Z0-9]{2,3}\d{3,4}$/.test(flightCode)) return null;
 
-    // 使用 v2 版本的 Cache Key，確保不讀取舊的錯誤快取
     return fetchWithCache(`flight_v2_${flightCode}`, async () => {
         const prompt = `
             Act as an aviation data specialist.

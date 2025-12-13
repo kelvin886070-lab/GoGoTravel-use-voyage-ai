@@ -1,6 +1,6 @@
 // src/types.ts
 
-// 1. App 視圖切換 (改回 const object 寫法，解決 enum 紅底)
+// 1. App 視圖切換
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
@@ -10,7 +10,7 @@ export const AppView = {
 } as const;
 export type AppView = typeof AppView[keyof typeof AppView];
 
-// 2. 小工具類型 (改回 const object 寫法)
+// 2. 小工具類型
 export const ToolType = {
   TRANSLATE: 'translate',
   CURRENCY: 'currency',
@@ -29,18 +29,32 @@ export interface User {
   name: string;
   joinedDate: string;
   avatar: string;
+  email?: string; // 補上 email 欄位以防萬一
 }
 
-// 4. 行程細節相關
+// 4. 新增：交通詳細資訊 (用於副卡顯示)
+export interface TransportDetail {
+  mode: 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight'; // 交通方式
+  duration: string;      // 預估時間 (例如: "15 min")
+  fromStation?: string;  // 上車站/出發點
+  toStation?: string;    // 下車站/抵達點
+  instruction?: string;  // 簡短指引 (例如: "搭乘 206 號公車")
+}
+
+// 5. 行程細節相關
 export interface Activity {
   id?: string;
   time: string;
   title: string;
   description: string;
-  type: string;      
+  // 擴充 type 定義，加入 'transport'
+  type: 'sightseeing' | 'food' | 'transport' | 'flight' | 'hotel' | 'cafe' | 'shopping' | 'relax' | 'bar' | 'culture' | 'activity' | 'other' | string;
   category?: string; 
-  location?: string; // 可選
-  cost?: string | number; // 允許字串或數字
+  location?: string; 
+  cost?: string | number;
+  
+  // 新增：交通詳細資訊 (若 type === 'transport' 則此欄位會有值)
+  transportDetail?: TransportDetail; 
 }
 
 export interface TripDay {
@@ -51,6 +65,13 @@ export interface TripDay {
 export interface Trip {
   id: string;
   destination: string;
+  
+  // 新增：指定遊玩區域 (例如: "中西區, 安平")
+  focusArea?: string; 
+  
+  // 新增：當地交通偏好 (public=大眾運輸, car=自駕, taxi=計程車)
+  localTransportMode?: 'public' | 'car' | 'taxi'; 
+
   startDate: string;
   endDate: string;
   coverImage: string;
@@ -59,7 +80,7 @@ export interface Trip {
   currency?: string; 
 }
 
-// 5. 檢查表相關
+// 6. 檢查表相關
 export type ChecklistCategory = 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
 
 export interface ChecklistItem {
@@ -69,7 +90,7 @@ export interface ChecklistItem {
   category: ChecklistCategory;
 }
 
-// 6. 保管箱相關
+// 7. 保管箱相關
 export interface VaultFolder {
   id: string;
   name: string;
@@ -86,12 +107,12 @@ export interface VaultFile {
   date: string;
   parentId: string | null;
   data?: string;
-  file_path?: string; // 增加 Supabase 路徑
+  file_path?: string;
   isDeleted: boolean;
   isPinned: boolean;
 }
 
-// 7. 小工具 API 資料相關
+// 8. 小工具 API 資料相關
 export interface WeatherInfo {
   location: string;
   temperature: string;

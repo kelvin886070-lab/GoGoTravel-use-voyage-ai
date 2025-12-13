@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, 
     ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
-    RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle 
+    RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
+    Car, Footprints, TramFront 
 } from 'lucide-react';
 import type { Trip, TripDay, Activity } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -25,6 +26,7 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
     'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
 };
 
+// 補回遺漏的 CURRENCY_LABELS 定義
 const CURRENCY_LABELS: Record<string, string> = {
     'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元', 'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
 };
@@ -102,6 +104,73 @@ const EditableText: React.FC<{ value: string, onSave: (val: string) => void, cla
     }} className={`bg-transparent outline-none min-w-0 ${className}`} />;
 };
 
+// --- New Component: Transport Connector Item ---
+const TransportConnectorItem: React.FC<{ act: Activity, onDelete: () => void, provided: any, snapshot: any }> = ({ act, onDelete, provided, snapshot }) => {
+    const detail = act.transportDetail;
+    const getIcon = () => {
+        const m = detail?.mode || 'bus';
+        if (m.includes('train') || m.includes('subway')) return <Train className="w-4 h-4" />;
+        if (m.includes('walk')) return <Footprints className="w-4 h-4" />;
+        if (m.includes('car') || m.includes('taxi')) return <Car className="w-4 h-4" />;
+        if (m.includes('tram')) return <TramFront className="w-4 h-4" />;
+        if (m.includes('flight')) return <Plane className="w-4 h-4" />;
+        return <Bus className="w-4 h-4" />;
+    };
+
+    return (
+        <div 
+            ref={provided.innerRef} 
+            {...provided.draggableProps} 
+            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
+            className={`relative flex items-center gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
+        >
+            {/* 左側時間軸視覺 */}
+            <div className="flex flex-col items-center w-[55px] self-stretch relative">
+                {/* 垂直虛線連接 */}
+                <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div>
+                {/* 圓形圖示 */}
+                <div className="relative z-10 bg-gray-100 border-2 border-white text-gray-500 rounded-full p-1.5 shadow-sm mt-2">
+                    {getIcon()}
+                </div>
+            </div>
+
+            {/* 右側資訊卡 (較小、半透明背景) */}
+            <div className="flex-1 bg-gray-50/80 rounded-xl p-3 border border-gray-200/50 flex items-center justify-between gap-3 backdrop-blur-sm">
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] font-bold text-white bg-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                            {detail?.mode || 'Transport'}
+                        </span>
+                        <span className="text-xs font-bold text-gray-600">
+                            {detail?.duration || '15 min'}
+                        </span>
+                    </div>
+                    <div className="text-xs text-gray-800 font-medium truncate">
+                        {detail?.instruction || act.description || '移動至下個地點'}
+                    </div>
+                    {(detail?.fromStation || detail?.toStation) && (
+                        <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1 truncate">
+                            {detail.fromStation && <span>{detail.fromStation}</span>}
+                            <ArrowLeftRight className="w-3 h-3 opacity-50" />
+                            {detail.toStation && <span>{detail.toStation}</span>}
+                        </div>
+                    )}
+                </div>
+                
+                {/* 操作按鈕 (刪除/拖曳) */}
+                <div className="flex items-center gap-2">
+                    <button onClick={onDelete} className="text-gray-300 hover:text-red-400 transition-colors p-1">
+                        <X className="w-4 h-4" />
+                    </button>
+                    <div {...provided.dragHandleProps} className="text-gray-300 cursor-grab active:cursor-grabbing p-1">
+                        <GripVertical className="w-4 h-4" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- ExpenseDashboard ---
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
@@ -110,7 +179,6 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
     const [isConverting, setIsConverting] = useState(false);
     
-    // 使用 useMemo 優化統計計算
     const stats = useMemo(() => {
         return trip.days.reduce((acc, day) => {
             day.activities.forEach(act => {
@@ -213,11 +281,11 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     );
 };
 
-// Route Visualization (Optimized)
+// Route Visualization
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
-    // 效能優化：使用 useMemo 避免每次 render 都重新計算 stops 和 mapUrl
     const { stops, mapUrl } = useMemo(() => {
         const _stops = day.activities
+            .filter(a => a.type !== 'transport') // 過濾掉純交通點，只顯示景點/餐廳
             .filter(a => a.title || a.location)
             .map(a => a.location || a.title);
         
@@ -230,7 +298,6 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
         } else {
             const origin = encodeURIComponent(_stops[0]);
             const dest = encodeURIComponent(_stops[_stops.length - 1]);
-            // 限制途經點數量，避免 URL 過長導致錯誤 (Google Maps 限制約 10-15 個點)
             const waypoints = _stops.slice(1, -1).slice(0, 9).map(s => encodeURIComponent(s)).join('|');
             _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
         }
@@ -675,35 +742,46 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                         {day.activities.map((act, index) => (
                                                             <Draggable key={`${day.day}-${index}`} draggableId={`${day.day}-${index}`} index={index}>
                                                                 {(provided, snapshot) => (
-                                                                    <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`bg-white rounded-2xl p-4 shadow-sm border border-white flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50 scale-[1.02]' : ''}`}>
-                                                                        <div className="flex gap-3">
-                                                                            <div className="flex flex-col items-center pt-1 min-w-[55px]">
-                                                                                <input type="time" value={act.time} onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)} className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-[#45846D] focus:text-[#45846D] outline-none w-full text-center cursor-pointer transition-colors" />
-                                                                                <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
-                                                                            </div>
-                                                                            <div className="flex-1 min-w-0 border-l border-gray-100 pl-4">
-                                                                                <EditableText value={act.title} onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)} className="font-bold text-[#1D1D1B] truncate w-full hover:bg-gray-50 rounded px-1 -ml-1 text-base transition-colors" />
-                                                                                <div className="flex items-center justify-between mt-2">
-                                                                                    <EditableTag type={act.type} onChange={(val) => handleActivityUpdate(dayIndex, index, 'type', val)} />
-                                                                                    <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-[#F5F5F4] px-2 py-1 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
-                                                                                        <span className="text-gray-400">{currencySymbol}</span>
-                                                                                        <AutoWidthInput value={parseCost(act.cost)} onChange={(val) => handleActivityUpdate(dayIndex, index, 'cost', val)} className="text-gray-600 font-bold text-right" />
+                                                                    // 核心修改：判斷是否為交通項目
+                                                                    act.type === 'transport' ? (
+                                                                        <TransportConnectorItem 
+                                                                            act={act} 
+                                                                            onDelete={() => handleDeleteActivity(dayIndex, index)} 
+                                                                            provided={provided} 
+                                                                            snapshot={snapshot} 
+                                                                        />
+                                                                    ) : (
+                                                                        // 原本的標準卡片
+                                                                        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`bg-white rounded-2xl p-4 shadow-sm border border-white flex flex-col gap-2 group relative ${snapshot.isDragging ? 'shadow-lg z-50 scale-[1.02]' : ''}`}>
+                                                                            <div className="flex gap-3">
+                                                                                <div className="flex flex-col items-center pt-1 min-w-[55px]">
+                                                                                    <input type="time" value={act.time} onChange={(e) => handleActivityUpdate(dayIndex, index, 'time', e.target.value)} className="text-xs font-bold text-gray-500 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-[#45846D] focus:text-[#45846D] outline-none w-full text-center cursor-pointer transition-colors" />
+                                                                                    <button onClick={() => handleDeleteActivity(dayIndex, index)} className="mt-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0 border-l border-gray-100 pl-4">
+                                                                                    <EditableText value={act.title} onSave={(val) => handleActivityUpdate(dayIndex, index, 'title', val)} className="font-bold text-[#1D1D1B] truncate w-full hover:bg-gray-50 rounded px-1 -ml-1 text-base transition-colors" />
+                                                                                    <div className="flex items-center justify-between mt-2">
+                                                                                        <EditableTag type={act.type} onChange={(val) => handleActivityUpdate(dayIndex, index, 'type', val)} />
+                                                                                        <div className="flex items-center gap-0.5 text-xs text-gray-400 bg-[#F5F5F4] px-2 py-1 rounded-md hover:bg-gray-100 transition-colors cursor-text min-h-[24px]">
+                                                                                            <span className="text-gray-400">{currencySymbol}</span>
+                                                                                            <AutoWidthInput value={parseCost(act.cost)} onChange={(val) => handleActivityUpdate(dayIndex, index, 'cost', val)} className="text-gray-600 font-bold text-right" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="relative mt-2">
+                                                                                        <input 
+                                                                                            className="text-xs text-gray-500 w-full bg-transparent outline-none placeholder-gray-300 truncate font-medium hover:bg-gray-50 rounded px-1 -ml-1 transition-colors"
+                                                                                            value={act.description || ''}
+                                                                                            placeholder="新增備註..."
+                                                                                            onChange={(e) => handleActivityUpdate(dayIndex, index, 'description', e.target.value)}
+                                                                                        />
                                                                                     </div>
                                                                                 </div>
-                                                                                <div className="relative mt-2">
-                                                                                    <input 
-                                                                                        className="text-xs text-gray-500 w-full bg-transparent outline-none placeholder-gray-300 truncate font-medium hover:bg-gray-50 rounded px-1 -ml-1 transition-colors"
-                                                                                        value={act.description || ''}
-                                                                                        placeholder="新增備註..."
-                                                                                        onChange={(e) => handleActivityUpdate(dayIndex, index, 'description', e.target.value)}
-                                                                                    />
+                                                                                <div {...provided.dragHandleProps} style={{ touchAction: 'none' }} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors">
+                                                                                    <GripVertical className="w-5 h-5" />
                                                                                 </div>
                                                                             </div>
-                                                                            <div {...provided.dragHandleProps} style={{ touchAction: 'none' }} className="flex items-center text-gray-300 px-1 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-colors">
-                                                                                <GripVertical className="w-5 h-5" />
-                                                                            </div>
                                                                         </div>
-                                                                    </div>
+                                                                    )
                                                                 )}
                                                             </Draggable>
                                                         ))}
