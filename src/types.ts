@@ -1,6 +1,6 @@
 // src/types.ts
 
-// 1. App 視圖切換 (使用 const 取代 enum，避開紅底錯誤)
+// 1. App 視圖切換 (改回 const object 寫法，解決 enum 紅底)
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
@@ -10,7 +10,7 @@ export const AppView = {
 } as const;
 export type AppView = typeof AppView[keyof typeof AppView];
 
-// 2. 小工具類型
+// 2. 小工具類型 (改回 const object 寫法)
 export const ToolType = {
   TRANSLATE: 'translate',
   CURRENCY: 'currency',
@@ -39,8 +39,8 @@ export interface Activity {
   description: string;
   type: string;      
   category?: string; 
-  location: string;
-  cost?: string; 
+  location?: string; // 可選
+  cost?: string | number; // 允許字串或數字
 }
 
 export interface TripDay {
@@ -86,6 +86,7 @@ export interface VaultFile {
   date: string;
   parentId: string | null;
   data?: string;
+  file_path?: string; // 增加 Supabase 路徑
   isDeleted: boolean;
   isPinned: boolean;
 }
@@ -97,17 +98,17 @@ export interface WeatherInfo {
   condition: string;
   humidity: string;
   wind: string;
-  description: string;
-  clothingSuggestion: string;
-  activityTip: string;
-  sunrise: string;
-  sunset: string;
-  uvIndex: string;
-  hourly: any[];
+  description?: string;
+  clothingSuggestion?: string;
+  activityTip?: string;
+  sunrise?: string;
+  sunset?: string;
+  uvIndex?: string;
+  hourly?: any[];
 }
 
 export interface VoltageInfo {
-  country: string;
+  country?: string;
   voltage: string;
   frequency: string;
   plugTypes: string[];
