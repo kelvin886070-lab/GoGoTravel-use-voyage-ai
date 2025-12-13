@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, 
     ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
@@ -109,17 +109,21 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     
     const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
     const [isConverting, setIsConverting] = useState(false);
-    const stats = trip.days.reduce((acc, day) => {
-        day.activities.forEach(act => {
-            const cost = parseCost(act.cost);
-            if (cost > 0) {
-                acc.total += cost;
-                const type = act.type || 'other'; 
-                acc.byCategory[type] = (acc.byCategory[type] || 0) + cost;
-            }
-        });
-        return acc;
-    }, { total: 0, byCategory: {} as Record<string, number> });
+    
+    // 使用 useMemo 優化統計計算
+    const stats = useMemo(() => {
+        return trip.days.reduce((acc, day) => {
+            day.activities.forEach(act => {
+                const cost = parseCost(act.cost);
+                if (cost > 0) {
+                    acc.total += cost;
+                    const type = act.type || 'other'; 
+                    acc.byCategory[type] = (acc.byCategory[type] || 0) + cost;
+                }
+            });
+            return acc;
+        }, { total: 0, byCategory: {} as Record<string, number> });
+    }, [trip.days]);
     
     const categories = [
         { type: 'flight', label: '機票', color: 'bg-purple-500' },
@@ -209,24 +213,30 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     );
 };
 
-// Route Visualization
+// Route Visualization (Optimized)
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
-    const stops = day.activities
-        .filter(a => a.title || a.location)
-        .map(a => a.location || a.title);
-    let mapUrl = '';
+    // 效能優化：使用 useMemo 避免每次 render 都重新計算 stops 和 mapUrl
+    const { stops, mapUrl } = useMemo(() => {
+        const _stops = day.activities
+            .filter(a => a.title || a.location)
+            .map(a => a.location || a.title);
+        
+        let _mapUrl = '';
 
-    // 修正：使用 Google Maps 官方 Universal URL Scheme
-    if (stops.length === 0) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
-    } else if (stops.length === 1) {
-        mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stops[0])}`;
-    } else {
-        const origin = encodeURIComponent(stops[0]);
-        const dest = encodeURIComponent(stops[stops.length - 1]);
-        const waypoints = stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|');
-        mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
-    }
+        if (_stops.length === 0) {
+            _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+        } else if (_stops.length === 1) {
+            _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(_stops[0])}`;
+        } else {
+            const origin = encodeURIComponent(_stops[0]);
+            const dest = encodeURIComponent(_stops[_stops.length - 1]);
+            // 限制途經點數量，避免 URL 過長導致錯誤 (Google Maps 限制約 10-15 個點)
+            const waypoints = _stops.slice(1, -1).slice(0, 9).map(s => encodeURIComponent(s)).join('|');
+            _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`;
+        }
+
+        return { stops: _stops, mapUrl: _mapUrl };
+    }, [day.activities, destination]);
 
     return (
         <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-2">
