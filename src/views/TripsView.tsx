@@ -1,22 +1,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-    Plus, MapPin, Calendar, Download, Share, GripVertical, X, Trash2, 
-    PenTool, Image as ImageIcon, Clock, History, Loader2, CloudRain, 
+    Plus, MapPin, Calendar, Download, GripVertical, X, 
+    Image as ImageIcon, Clock, History, Loader2, CloudRain, 
     Cloud, Sun, CloudSun, Lock, CheckCircle, Camera, LogOut, 
     ChevronLeft, ChevronRight, Sparkles,
     User as UserIcon, Heart, Baby, Users, Armchair, Coffee, Footprints, Zap,
     Utensils, ShoppingBag, Landmark,
     Coins, Plane, Train, Scale,
-    GraduationCap, Briefcase, Dog, Mountain, Book, Search
+    GraduationCap, Briefcase, Dog, Mountain, Book, PenTool, Trash2
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import type { Trip, TripDay, User, WeatherInfo } from '../types';
-import { IOSButton, IOSInput, IOSShareSheet, MadeByFooter } from '../components/UI';
+import { IOSButton, IOSInput, MadeByFooter } from '../components/UI';
 import { generateItinerary, getWeatherForecast, getTimezone, lookupFlightInfo } from '../services/gemini';
 import { supabase } from '../services/supabase';
-
-// ... (前段的 Widget 和 Helper 元件保持不變，為了簡潔省略重複部分，重點在下面的 TripCard 與 List 渲染) ...
-// 為了確保完整性，這裡提供的是完整的檔案內容
 
 // ============================================================================
 // 1. 介面定義
@@ -35,7 +32,7 @@ interface TripsViewProps {
 }
 
 // ============================================================================
-// 2. 小工具元件 (WeatherWidget, TimeWidget) - 保持不變
+// 2. 小工具元件 (WeatherWidget, TimeWidget)
 // ============================================================================
 
 const WeatherWidget: React.FC = () => {
@@ -96,25 +93,74 @@ const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 
 // 3. 輔助元件
 // ============================================================================
 
-const TripCard: React.FC<{ trip: Trip, onSelect: () => void, onDelete: () => void, onEdit: () => void, dragHandleProps?: DraggableProvidedDragHandleProps |
-null, isPast?: boolean }> = ({ trip, onSelect, onDelete, onEdit, dragHandleProps, isPast }) => { const [shareOpen, setShareOpen] = useState(false);
-const [shareUrl, setShareUrl] = useState(''); const prepareShare = (e: React.MouseEvent) => { e.stopPropagation();
-const liteTrip = { ...trip, coverImage: '' }; const jsonString = JSON.stringify(liteTrip); const encoded = btoa(unescape(encodeURIComponent(jsonString)));
-const baseUrl = window.location.origin + window.location.pathname; setShareUrl(`${baseUrl}?import=${encoded}`); setShareOpen(true); }; return (<><div className={`relative w-full h-48 rounded-[32px] overflow-hidden shadow-sm group select-none transition-all hover:shadow-lg bg-white border border-white ${isPast ? 'grayscale-[0.5] opacity-90' : ''}`} onClick={onSelect}><div className="h-full w-full relative"><img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" /><div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" /><div className="absolute bottom-5 left-6 text-white pr-4"><h2 className="text-3xl font-bold shadow-sm drop-shadow-md font-serif tracking-tight">{trip.destination}</h2><div className="flex items-center gap-2 text-sm font-bold opacity-90 shadow-sm mt-1"><Calendar className="w-4 h-4" /><span>{trip.startDate}  {trip.days.length} 天</span>{isPast && <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">已完成</span>}</div></div>{!isPast && (<div {...dragHandleProps} style={{ touchAction: 'none' }} className="absolute top-1/2 left-3 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/70 hover:text-white bg-black/20 backdrop-blur-sm rounded-full transition-colors" onClick={(e) => e.stopPropagation()}><GripVertical className="w-5 
-h-5 drop-shadow-md" /></div>)}<div className="absolute top-4 right-4 flex gap-2 z-20"><button onClick={(e) => { e.stopPropagation(); onEdit();
-}} className="p-2.5 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all shadow-sm border border-white/20"><PenTool className="w-4 h-4" /></button><button onClick={prepareShare} className="p-2.5 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/30 active:scale-90 transition-all shadow-sm border border-white/20"><Share className="w-4 h-4" /></button><button onClick={(e) => { e.stopPropagation();
-onDelete(); }} className="p-2.5 bg-red-500/80 backdrop-blur-md rounded-full text-white hover:bg-red-600 active:scale-90 transition-all shadow-sm border border-white/10"><Trash2 className="w-4 h-4" /></button></div></div></div><IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} /></>);
+const TripCard: React.FC<{ trip: Trip, onSelect: () => void, dragHandleProps?: DraggableProvidedDragHandleProps | null, isPast?: boolean }> = ({ trip, onSelect, dragHandleProps, isPast }) => { 
+    return (
+        <div className={`relative w-full h-48 rounded-[32px] overflow-hidden shadow-sm group select-none transition-all hover:shadow-lg bg-white border border-white ${isPast ? 'grayscale-[0.5] opacity-90' : ''}`} onClick={onSelect}>
+            <div className="h-full w-full relative">
+                <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                
+                <div className="absolute bottom-5 left-6 text-white pr-12">
+                    <h2 className="text-3xl font-bold shadow-sm drop-shadow-md font-serif tracking-tight">{trip.destination}</h2>
+                    <div className="flex items-center gap-2 text-sm font-bold opacity-90 shadow-sm mt-1 font-mono">
+                        <Calendar className="w-4 h-4" />
+                        <span>{trip.startDate}</span>
+                        <span className="opacity-50">|</span>
+                        <span>{trip.days.length} 天</span>
+                    </div>
+                </div>
+
+                {/* 右側拖曳手把 */}
+                {!isPast && (
+                    <div 
+                        {...dragHandleProps} 
+                        style={{ touchAction: 'none' }} 
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/50 hover:text-white transition-colors bg-black/10 backdrop-blur-[2px] rounded-full" 
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <GripVertical className="w-6 h-6 drop-shadow-md" />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
+// ... (TrainCard, OptionCard 保持不變) ...
 const FlightCard = ({ type, code, setCode, destination, origin = 'TPE', flightInfo, loading }: any) => {
-    const isDeparture = type === 'in';
+    // 修正：依據 'in' (去程) 或 'out' (回程) 決定地點顯示邏輯
+    const isDeparture = type === 'in'; // in = flightIn (去程)
+    
     const label = isDeparture ? 'DEPARTURE (去程)' : 'RETURN (回程)';
     const bgColor = isDeparture ? 'bg-[#45846D]' : 'bg-[#1D1D1B]';
-    const displayOrigin = isDeparture ? origin : (flightInfo?.origin || destination || 'DEST');
-    const displayDest = isDeparture ?
-    (flightInfo?.dest || destination || 'DEST') : origin;
+    
+    // -------------------------------------------------------------
+    // 核心修正：
+    // 1. 若有 API 航班資料 (flightInfo)，直接使用，因為它最準確 (AI 查過的)。
+    // 2. 若無 API 資料，則使用使用者設定的 Origin (出發地) 和 Destination (目的地) 進行自動對調。
+    // -------------------------------------------------------------
+    let displayOrigin = 'ORIGIN';
+    let displayDest = 'DEST';
+
+    if (flightInfo) {
+        // AI 查到的資料，已經是正確的 "該航班出發地" 和 "該航班抵達地"
+        // 例如 CI167 (KIX -> KHH)，API 會回傳 origin: KIX, dest: KHH
+        displayOrigin = flightInfo.origin;
+        displayDest = flightInfo.dest;
+    } else {
+        // Fallback: 使用使用者輸入的資料
+        // 去程：Origin -> Dest
+        // 回程：Dest -> Origin
+        const userOrigin = origin || 'TPE';
+        const userDest = destination || 'DEST';
+
+        displayOrigin = isDeparture ? userOrigin : userDest;
+        displayDest = isDeparture ? userDest : userOrigin;
+    }
+
     const displayTime = flightInfo?.depTime;
     const terminal = flightInfo?.originTerm;
+
     return (
         <div className={`${bgColor} rounded-3xl p-6 shadow-lg relative overflow-hidden text-white group transition-transform active:scale-[0.98]`}>
             <div className="absolute -left-3 top-1/2 w-6 h-6 bg-[#F5F5F4] rounded-full z-10" />
@@ -125,9 +171,9 @@ const FlightCard = ({ type, code, setCode, destination, origin = 'TPE', flightIn
                  <div>
                     <span className="text-[10px] font-bold text-white/60 tracking-widest block mb-1">{label}</span>
                     <div className="flex items-center gap-3">
-                        <span className="text-3xl font-black tracking-wider font-mono">{displayOrigin}</span>
+                        <span className="text-3xl font-black tracking-wider font-mono uppercase">{displayOrigin}</span>
                          <Plane className={`w-5 h-5 text-white/80 ${isDeparture ? 'rotate-45' : '-rotate-135'}`} />
-                        <span className="text-3xl font-black tracking-wider font-mono">{displayDest}</span>
+                        <span className="text-3xl font-black tracking-wider font-mono uppercase">{displayDest}</span>
                     </div>
                 </div>
                 <div className="bg-white/10 p-2 rounded-xl backdrop-blur-md border border-white/10 text-center min-w-[70px]">
@@ -146,14 +192,13 @@ const FlightCard = ({ type, code, setCode, destination, origin = 'TPE', flightIn
                     <label className="text-[10px] font-bold text-white/50 uppercase block mb-1">FLIGHT NO.</label>
                     <input 
                         type="text" 
-                        placeholder="JX800" 
+                        placeholder={isDeparture ? "JX800" : "JX801"} 
                         value={code}
                         onChange={(e) => setCode(e.target.value.toUpperCase())}
                         className="text-4xl font-black bg-transparent outline-none w-full placeholder-white/20 uppercase font-mono tracking-tight text-white" 
                     />
                 </div>
-                <div 
-className="flex flex-col items-end">
+                <div className="flex flex-col items-end">
                      {loading ?
                      <Loader2 className="w-6 h-6 animate-spin text-white mb-1" /> : (code ? <CheckCircle className="w-6 h-6 text-green-400 mb-1" /> : <div className="w-6 h-6 rounded-full border-2 border-white/30" />)}
                      <span className="text-[10px] text-white/50">
@@ -175,8 +220,7 @@ const TrainCard = ({ label, info, setInfo }: { label: string, info: any, setInfo
                  <input type="text" placeholder="如：東京" value={info.origin} onChange={(e) => setInfo({...info, origin: e.target.value})} className="w-full bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-200/50 transition-all"/>
              </div>
              <div>
-                 <label className="text-[10px] 
-                 font-bold text-gray-400 block mb-1">下車站 (Dest)</label>
+                 <label className="text-[10px] font-bold text-gray-400 block mb-1">下車站 (Dest)</label>
                  <input type="text" placeholder="如：京都" value={info.dest} onChange={(e) => setInfo({...info, dest: e.target.value})} className="w-full bg-gray-50 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-200/50 transition-all"/>
              </div>
         </div>
@@ -225,6 +269,10 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [destination, setDestination] = useState('');
+    
+    // 修正：新增 origin (出發地) 狀態，預設為 TPE，但允許修改
+    const [origin, setOrigin] = useState('TPE');
+
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [days, setDays] = useState<number | string>('');
     const [transportMode, setTransportMode] = useState<'flight' | 'train' | 'time'>('flight');
@@ -423,7 +471,11 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                 <label className="absolute inset-0 flex items-center justify-center cursor-pointer hover:bg-black/5 transition-colors"><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
                             </div>
                             <div className="space-y-4">
-                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">目的地</label><IOSInput autoFocus placeholder="例如：京都、紐約" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
+                                {/* 修正：新增出發地輸入欄位 */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">出發地</label><IOSInput placeholder="TPE" value={origin} onChange={(e) => setOrigin(e.target.value.toUpperCase())} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">目的地</label><IOSInput autoFocus placeholder="例如：京都" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
+                                </div>
                             
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">出發日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl outline-none text-sm font-medium" /></div>
@@ -446,10 +498,12 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             {transportMode === 'flight' && (
                                 <div className="space-y-4">
                                     <div onBlur={() => checkFlight(flightIn, 'in')}>
-                                        <FlightCard type="in" code={flightIn} setCode={setFlightIn} destination={destination} flightInfo={flightInInfo} loading={flightInLoading} />
+                                        {/* 修正：傳入使用者設定的 origin */}
+                                        <FlightCard type="in" code={flightIn} setCode={setFlightIn} destination={destination} origin={origin} flightInfo={flightInInfo} loading={flightInLoading} />
                                     </div>
                                     <div onBlur={() => checkFlight(flightOut, 'out')}>
-                                        <FlightCard type="out" code={flightOut} setCode={setFlightOut} destination={destination} flightInfo={flightOutInfo} loading={flightOutLoading} />
+                                        {/* 修正：傳入使用者設定的 origin */}
+                                        <FlightCard type="out" code={flightOut} setCode={setFlightOut} destination={destination} origin={origin} flightInfo={flightOutInfo} loading={flightOutLoading} />
                                     </div>
                                     <p className="text-xs text-center text-gray-400 mt-4">AI 將自動查詢航班時間並安排接送機行程</p>
                                 </div>
@@ -463,11 +517,9 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                             )}
                             {transportMode === 'time' && (
                                 <div className="space-y-6">
-                                    <div><label className="block text-xs font-bold 
-                                    text-gray-400 
+                                    <div><label className="block text-xs font-bold text-gray-400 
                                     mb-2 uppercase">去程抵達時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none text-center" defaultValue="10:00" /></div>
-                                    <div><label className="block text-xs font-bold text-gray-400 mb-2 uppercase">回程出發時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none 
-                                    text-center" defaultValue="16:00" /></div>
+                                    <div><label className="block text-xs font-bold text-gray-400 mb-2 uppercase">回程出發時間</label><input type="time" className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-lg font-bold outline-none text-center" defaultValue="16:00" /></div>
                                 </div>
                             )}
                         </div>
@@ -534,8 +586,7 @@ const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => v
                                 <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                                     {Object.entries(INTEREST_DATA).map(([key, data]) => (
                                         <button key={key} onClick={() => setActiveInterestTab(key)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 
-                                        rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ?
-                                        'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
+                                        rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ? 'bg-[#1D1D1B] text-white border-[#1D1D1B]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
                                     ))}
                                 </div>
                                 <div className="bg-[#F5F5F4] rounded-2xl p-4 min-h-[120px] transition-all border border-gray-100 mt-2">
@@ -660,13 +711,12 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
       
-      {/* Header - 修正背景透明度與顏色 */}
+      {/* Header */}
       <div className="flex-shrink-0 pt-20 pb-2 px-5 bg-[#E4E2DD]/95 backdrop-blur-xl z-40 border-b border-gray-200/30 w-full transition-all sticky top-0">
         <div className="flex justify-between items-center mb-1">
             <h1 className="text-3xl font-bold tracking-tight text-[#1D1D1B] font-serif">行程</h1>
             <div className="flex gap-3">
                 <button onClick={() => setIsImporting(true)} className="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform hover:bg-gray-50 border border-gray-100"><Download className="text-[#1D1D1B] w-5 h-5" /></button>
-                {/* 修正: 新增行程按鈕改為綠色 */}
                 <button onClick={() => setIsCreating(true)} className="w-9 h-9 bg-[#45846D] rounded-full flex items-center justify-center shadow-lg shadow-[#45846D]/30 active:scale-90 transition-transform hover:bg-[#3A705C]"><Plus className="text-white w-6 h-6" /></button>
                 <button onClick={() => setShowProfile(true)} className="w-9 h-9 rounded-full overflow-hidden border-2 border-white shadow-md active:scale-90 transition-transform"><img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /></button>
             </div>
@@ -677,7 +727,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
         
         {activeTab === 'upcoming' && <DashboardWidgets />}
 
-        {/* 修正: Tab Switcher 配色 */}
+        {/* Tab Switcher */}
         <div className="bg-white/50 p-1 rounded-2xl flex relative mb-2 shadow-inner">
             <button 
                 onClick={() => setActiveTab('upcoming')}
@@ -712,88 +762,129 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                         {(provided) => (
                             <div className="space-y-4 pb-4" ref={provided.innerRef} 
                             {...provided.droppableProps}>
-                                {displayTrips.map((trip, index) => (
-                                    <Draggable key={trip.id} draggableId={trip.id} index={index} isDragDisabled={activeTab === 'past'}>
-                                    {(provided, snapshot) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.draggableProps}
-                                                style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-                                                className={`transition-all duration-200 ${snapshot.isDragging ?
-                                                'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
-                                            >
-                                                {trip.days[0]?.activities[0]?.category === 'flight' ?
-                                                (
-                                                    // 修正: 即將到來的航班卡片 (特殊樣式)
-                                                    <div className="bg-gradient-to-br from-[#1D1D1B] to-[#2C5E4B] rounded-[32px] overflow-hidden shadow-lg relative h-48 p-6 text-white group border border-white/10" onClick={() => onSelectTrip(trip)}>
-                                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-10 -mt-10" />
-                                                        <div className="flex justify-between items-start mb-4">
-                                                            <div>
-                                                                <span className="text-xs font-bold text-white/50 tracking-widest block mb-1">UPCOMING FLIGHT</span>
-                                                                <div className="flex items-center gap-3">
-                                                                     <span className="text-3xl font-black font-mono">TPE</span>
-                                                                     <Plane className="w-6 h-6 rotate-45 text-white/80" />
-                                                                     <span className="text-3xl font-black font-mono">NRT</span>
+                                {displayTrips.map((trip, index) => {
+                                    // 判斷行程類型：Flight, Train, Normal
+                                    const firstAct = trip.days[0]?.activities[0];
+                                    let cardType = 'normal';
+                                    const trainKeywords = ['新幹線', '列車', '火車', '高鐵', '自強', '莒光', '普悠瑪', '太魯閣', '台鐵'];
+                                    
+                                    if (firstAct?.type === 'flight' || firstAct?.category === 'flight') {
+                                        cardType = 'flight';
+                                    } else if (
+                                        firstAct?.type === 'train' || 
+                                        (firstAct?.type === 'transport' && trainKeywords.some(kw => firstAct.title.includes(kw)))
+                                    ) {
+                                        cardType = 'train';
+                                    }
+
+                                    return (
+                                        <Draggable key={trip.id} draggableId={trip.id} index={index} isDragDisabled={activeTab === 'past'}>
+                                        {(provided, snapshot) => (
+                                                <div
+                                                    ref={provided.innerRef}
+                                                    {...provided.draggableProps}
+                                                    style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
+                                                    className={`transition-all duration-200 ${snapshot.isDragging ?
+                                                    'z-50 shadow-2xl scale-[1.02] opacity-90' : ''}`}
+                                                >
+                                                    {cardType === 'flight' ? (
+                                                        // ------------------------
+                                                        // ✈️ 機票行程卡片 (Flight)
+                                                        // ------------------------
+                                                        <div className="relative h-48 rounded-[32px] overflow-hidden shadow-lg group border border-white/10" onClick={() => onSelectTrip(trip)}>
+                                                            <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=2074&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover" alt="Flight View" />
+                                                            <div className="absolute inset-0 bg-gradient-to-br from-[#1D1D1B]/90 via-[#2C5E4B]/80 to-transparent" />
+                                                            
+                                                            {/* 內容區塊：使用 Flex Column 排版 */}
+                                                            <div className="relative z-10 p-6 h-full flex flex-col justify-between text-white">
+                                                                {/* 上半部：航班資訊 + 標籤 */}
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Upcoming Flight</span>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className="text-4xl font-black font-mono tracking-tighter">TPE</span>
+                                                                            <Plane className="w-6 h-6 rotate-45 text-white/80" />
+                                                                            <span className="text-4xl font-black font-mono tracking-tighter">NRT</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 中間 Spacer */}
+                                                                <div className="mt-auto"></div>
+
+                                                                {/* 下半部：目的地資訊 */}
+                                                                <div>
+                                                                    <div className="text-[10px] font-bold text-white/50 mb-0.5 uppercase tracking-wider">Destination</div>
+                                                                    <div className="text-3xl font-bold font-serif tracking-wide">{trip.destination}</div>
+                                                                    {/* 修正：移到底部，純文字樣式 */}
+                                                                    <div className="flex items-center gap-2 mt-2 text-sm opacity-80 font-medium font-mono">
+                                                                        <Calendar className="w-4 h-4" /> 
+                                                                        <span>{trip.startDate}</span>
+                                                                        <span className="opacity-50 mx-1">|</span>
+                                                                        <span>{trip.days.length} 天</span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                            <div className="bg-white/10 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md border border-white/10">
-                                                                  {trip.days.length} DAYS
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-auto">
-                                                            <div className="text-xs font-bold text-white/50 mb-1 uppercase">Destination</div>
-                                                            <div className="text-2xl font-bold font-serif tracking-wide">{trip.destination}</div>
-                                                            <div className="flex items-center gap-2 mt-2 text-sm opacity-80 font-medium">
-                                                                <Calendar className="w-4 h-4" /> {trip.startDate}
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        {/* 左下角拖曳手把 */}
-                                                        <div 
-                                                            {...provided.dragHandleProps} 
-                                                            className="absolute bottom-4 left-4 p-2 text-white/30 hover:text-white/80 cursor-grab active:cursor-grabbing z-20 touch-none"
-                                                            style={{ touchAction: 'none' }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <GripVertical className="w-5 h-5" />
-                                                        </div>
 
-                                                        {/* 右下角功能區 (編輯、分享、刪除) */}
-                                                        <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); setEditingTrip(trip); }} 
-                                                                className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/40 text-white transition-colors"
-                                                            >
-                                                                <PenTool className="w-4 h-4" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); /* prepareShare logic moved inline or separate handler needed */ }} 
-                                                                className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-white/40 text-white transition-colors"
-                                                            >
-                                                                <Share className="w-4 h-4" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); onDeleteTrip(trip.id); }} 
-                                                                className="p-2 bg-white/20 backdrop-blur-md rounded-full hover:bg-red-500/80 hover:text-white text-white transition-colors"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
+                                                            {/* 右側拖曳手把 (垂直置中) */}
+                                                            <div {...provided.dragHandleProps} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white cursor-grab active:cursor-grabbing z-20 touch-none bg-black/10 backdrop-blur-[2px] rounded-full" style={{ touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
+                                                                <GripVertical className="w-6 h-6 drop-shadow-md" />
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ) : (
-                                                    <TripCard 
-                                                       trip={trip} 
-                                                       onSelect={() => onSelectTrip(trip)} 
-                                                       onDelete={() => onDeleteTrip(trip.id)}
-                                                       onEdit={() => setEditingTrip(trip)}
-                                                       dragHandleProps={provided.dragHandleProps} 
-                                                       isPast={activeTab === 'past'}
-                                                    />
-                                                )}
-                                            </div>
-                                        )}
-                                    </Draggable>
-                                ))}
+                                                    ) : cardType === 'train' ? (
+                                                        // ------------------------
+                                                        // 🚄 列車行程卡片 (Train)
+                                                        // ------------------------
+                                                        <div className="relative h-48 rounded-[32px] overflow-hidden shadow-lg group border border-white/10 bg-gradient-to-br from-[#ea580c] to-[#9a3412]" onClick={() => onSelectTrip(trip)}>
+                                                            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle,white_2px,transparent_0.5px)] [background-size:20px_20px]" />
+                                                            
+                                                            {/* 內容區塊 */}
+                                                            <div className="relative z-10 p-6 h-full flex flex-col justify-between text-white">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Rail Pass Trip</span>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <Train className="w-8 h-8 text-white/90" />
+                                                                            {/* 動態顯示目的地 */}
+                                                                            <span className="text-3xl font-black font-serif tracking-tight truncate max-w-[180px] uppercase">{trip.destination}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 下半部 */}
+                                                                <div>
+                                                                    <div className="text-[10px] font-bold text-white/50 mb-0.5 uppercase tracking-wider">Start From</div>
+                                                                    <div className="text-2xl font-bold tracking-wide">TPE / KHH</div> 
+                                                                    {/* 修正：移到底部，純文字樣式 */}
+                                                                    <div className="flex items-center gap-2 mt-2 text-sm opacity-80 font-medium font-mono">
+                                                                        <Calendar className="w-4 h-4" /> 
+                                                                        <span>{trip.startDate}</span>
+                                                                        <span className="opacity-50 mx-1">|</span>
+                                                                        <span>{trip.days.length} 天</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div {...provided.dragHandleProps} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white cursor-grab active:cursor-grabbing z-20 touch-none bg-black/10 backdrop-blur-[2px] rounded-full" style={{ touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
+                                                                <GripVertical className="w-6 h-6 drop-shadow-md" />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        // ------------------------
+                                                        // 📷 一般行程卡片 (Normal)
+                                                        // ------------------------
+                                                        <TripCard 
+                                                           trip={trip} 
+                                                           onSelect={() => onSelectTrip(trip)} 
+                                                           dragHandleProps={provided.dragHandleProps} 
+                                                           isPast={activeTab === 'past'}
+                                                        />
+                                                    )}
+                                                </div>
+                                            )}
+                                        </Draggable>
+                                    );
+                                })}
                                 {provided.placeholder}
                             </div>
                         )}

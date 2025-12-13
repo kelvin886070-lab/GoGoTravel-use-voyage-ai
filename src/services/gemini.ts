@@ -26,15 +26,12 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
         "gemini-2.0-flash-exp",   
         "gemini-1.5-flash"        
     ];
-
     let lastError = null;
 
     for (const model of candidateModels) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        
         try {
-            console.log(`🚀 [Kelvin Trip] 嘗試呼叫模型: ${model}`);
-            
+            console.log(` [Kelvin Trip] 嘗試呼叫模型: ${model}`);
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -45,18 +42,18 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log(`✅ 成功！模型 ${model} 正常運作。`);
+                console.log(` 成功！模型 ${model} 正常運作。`);
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
                 const err = await response.json().catch(() => ({}));
-                console.warn(`⚠️ 模型 ${model} 失敗 (${response.status}):`, err.error?.message);
+                console.warn(` 模型 ${model} 失敗 (${response.status}):`, err.error?.message);
                 if ([429, 404, 503].includes(response.status)) {
-                    continue; 
+                    continue;
                 }
                 lastError = new Error(`模型 ${model} 回傳 ${response.status}: ${err.error?.message}`);
             }
         } catch (e: any) {
-            console.error(`❌ 連線錯誤 (${model}):`, e);
+            console.error(` 連線錯誤 (${model}):`, e);
             lastError = e;
         }
     }
@@ -88,6 +85,14 @@ const parseJSON = <T>(text: string | undefined): T | null => {
         const firstChar = clean.indexOf('[');
         const lastChar = clean.lastIndexOf(']');
         if (firstChar !== -1 && lastChar !== -1) clean = clean.substring(firstChar, lastChar + 1);
+        
+        // 針對物件 {} 的處理
+        if (firstChar === -1) {
+            const firstBrace = clean.indexOf('{');
+            const lastBrace = clean.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1) clean = clean.substring(firstBrace, lastBrace + 1);
+        }
+
         return JSON.parse(clean) as T;
     } catch (e) {
         console.error("JSON Parse Error:", e);
@@ -107,7 +112,6 @@ export const generateItinerary = async (
 ): Promise<TripDay[]> => {
   
   const cacheKey = `itinerary_${destination}_${days}_${currency}_${JSON.stringify(transportInfo)}_${userPrompt.substring(0, 20)}`;
-  
   return fetchWithCache(cacheKey, async () => {
       let transportContext = "";
       // 根據是否為「航班」或「火車」調整 Prompt
@@ -134,13 +138,11 @@ export const generateItinerary = async (
         2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity", "other".
            - Use **"flight"** for airplane cards.
            - Use **"transport"** for trains/bus/subway moving between cities or spots.
-        
         3. **Flow**: 
            - Start/End days with "Morning"/"Evening" activities (unless overridden by transport info).
            - Insert "transport" items between locations if travel > 15 mins.
 
         4. **Format**: Output valid JSON only.
-
         JSON Structure Example:
         [
           {
@@ -181,7 +183,7 @@ export const generateItinerary = async (
 };
 
 // ==========================================================
-// 2. 航班查詢
+// 2. 航班查詢 (精準模式)
 // ==========================================================
 interface FlightInfo {
     code: string;
@@ -194,23 +196,33 @@ interface FlightInfo {
 }
 
 export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo | null> => {
+    // 基本格式檢查
     if (!/^[A-Z0-9]{2,3}\d{3,4}$/.test(flightCode)) return null;
 
-    return fetchWithCache(`flight_${flightCode}`, async () => {
+    // 使用 v2 版本的 Cache Key，確保不讀取舊的錯誤快取
+    return fetchWithCache(`flight_v2_${flightCode}`, async () => {
         const prompt = `
-            Identify flight "${flightCode}".
-            Return valid JSON with typical scheduled times (24h format HH:mm) and terminals.
-            If unknown or invalid, return null.
+            Act as an aviation data specialist.
+            Task: Provide the **STANDARD SCHEDULED ROUTE** for flight number "${flightCode}".
             
-            JSON Format:
+            **CRITICAL RULES**:
+            1. Return the accurate IATA Airport Codes for Origin and Destination.
+            2. Do NOT guess. Use historical flight data knowledge.
+            3. Specific known routes:
+               - CI166 is KHH (Kaohsiung) -> KIX (Osaka/Kansai).
+               - CI167 is KIX (Osaka/Kansai) -> KHH (Kaohsiung).
+               - JX800 is TPE -> NRT.
+               - JX801 is NRT -> TPE.
+            
+            Return valid JSON ONLY (No markdown):
             {
                 "code": "${flightCode}",
-                "depTime": "08:25",
-                "arrTime": "12:35",
-                "origin": "TPE",
-                "dest": "NRT",
-                "originTerm": "1",
-                "destTerm": "2"
+                "depTime": "HH:MM",
+                "arrTime": "HH:MM",
+                "origin": "IATA_CODE",
+                "dest": "IATA_CODE",
+                "originTerm": "Terminal Number (optional)",
+                "destTerm": "Terminal Number (optional)"
             }
         `;
         try {
@@ -222,7 +234,6 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
     }, CACHE_TTL.FLIGHT);
 };
 
-// ... (以下 匯率、翻譯、緊急資訊 等函式保持不變，請保留原有的內容) ...
 // ==========================================================
 // 3. 匯率查詢
 // ==========================================================
@@ -240,11 +251,11 @@ export const getCurrencyRate = async (from: string, to: string, amount: number):
    const realRate = await fetchRealTimeRate(from, to);
    if (realRate !== null) {
        const total = (amount * realRate).toLocaleString(undefined, { maximumFractionDigits: 0 });
-       return `≈ ${total} ${to}`; 
+       return ` ${total} ${to}`; 
    }
    return fetchWithCache(`rate_${from}_${to}_${amount}`, async () => {
        try {
-        const prompt = `Exchange rate: ${amount} ${from} to ${to}. Output format: "≈ X ${to}" (number only).`;
+        const prompt = `Exchange rate: ${amount} ${from} to ${to}. Output format: " X ${to}" (number only).`;
         const text = await callGeminiDirectly(prompt);
         return text.trim();
       } catch (error) { return "無法取得匯率"; }
@@ -252,7 +263,7 @@ export const getCurrencyRate = async (from: string, to: string, amount: number):
 }
 
 export const translateText = async (text: string, targetLang: string): Promise<string> => {
-  const cacheKey = `trans_${text.substring(0, 30)}_${targetLang}`; 
+  const cacheKey = `trans_${text.substring(0, 30)}_${targetLang}`;
   return fetchWithCache(cacheKey, async () => {
       try {
         const prompt = `Translate to ${targetLang}: "${text}". Only output the translated text.`;

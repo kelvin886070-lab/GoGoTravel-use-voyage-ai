@@ -12,7 +12,6 @@ export const IOSButton: React.FC<ButtonProps> = ({
 }) => {
   const baseStyles = "active:scale-95 transition-transform duration-200 font-bold text-[16px] py-3.5 px-6 rounded-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100 shadow-sm";
   
-  // 修正 1: 將原本的 blue 改為 #45846D (森林綠)
   const variants = {
     primary: "bg-[#45846D] text-white hover:bg-[#3A705C] shadow-md shadow-[#45846D]/20",
     secondary: "bg-white text-[#45846D] hover:bg-gray-50 border border-gray-100",
@@ -50,7 +49,6 @@ export const IOSCard: React.FC<{ children: React.ReactNode; className?: string; 
 
 export const IOSInput: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
   <input 
-    // 修正 2: Focus ring 改為綠色，背景改為淺灰米色
     className="w-full bg-[#F5F5F4] p-4 rounded-2xl text-[#1D1D1B] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#45846D]/50 transition-all text-base font-medium"
     {...props}
   />
@@ -101,7 +99,6 @@ export const IOSShareSheet: React.FC<IOSShareSheetProps> = ({ isOpen, onClose, u
                         <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" className="w-14 h-14 rounded-2xl shadow-sm group-active:scale-95 transition-transform" alt="LINE" />
                         <span className="text-xs font-medium text-gray-600">LINE</span>
                     </div>
-                     {/* Fake AirDrop */}
                      <div className="flex flex-col items-center gap-2 opacity-50 grayscale">
                         <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center">
                              <div className="w-8 h-8 rounded-full border-2 border-blue-500 flex items-center justify-center">
@@ -210,16 +207,16 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
     return (
         <>
-            <div className="fixed inset-0 bg-[#1D1D1B]/20 backdrop-blur-sm z-[60] transition-opacity" onClick={onClose} style={{ touchAction: 'none' }} />
+            <div className="fixed inset-0 bg-[#1D1D1B]/20 backdrop-blur-sm z-[100] transition-opacity" onClick={onClose} style={{ touchAction: 'none' }} />
             
-            <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[32px] z-[60] pb-safe animate-in slide-in-from-bottom duration-300 shadow-2xl overflow-hidden max-w-md mx-auto">
+            {/* 修正：加入 max-w-[90%] 與 mx-auto 防止在小手機溢出，並提高 z-index */}
+            <div className="fixed bottom-6 left-0 right-0 mx-auto w-[95%] max-w-sm bg-white rounded-[32px] z-[100] pb-safe animate-in slide-in-from-bottom duration-300 shadow-2xl overflow-hidden border border-gray-100">
                 {/* Header */}
                 <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50">
                     <button onClick={onClose} className="text-gray-400 p-2 rounded-full hover:bg-gray-100 font-medium text-sm">
                         取消
                     </button>
                     <span className="font-bold text-lg text-[#1D1D1B]">{title}</span>
-                    {/* 修正 3: 完成按鈕改為綠色 */}
                     <button onClick={() => { if(selectedDate) onSelect(selectedDate); onClose(); }} className="text-[#45846D] font-bold p-2 text-sm">
                         完成
                     </button>
@@ -259,7 +256,6 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                                 <div key={day} className="flex justify-center">
                                     <button
                                         onClick={() => handleDayClick(day)}
-                                        // 修正 4: 選中日期背景改為綠色
                                         className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200
                                             ${selected 
                                                 ? 'bg-[#45846D] text-white shadow-md scale-105' 
@@ -275,13 +271,10 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                         })}
                     </div>
                 </div>
-                <div className="h-8"></div>
             </div>
         </>
     );
 };
-
-// --- Made By Footer ---
 
 export const MadeByFooter: React.FC = () => (
   <div className="w-full py-8 flex flex-col items-center justify-center opacity-40 select-none">
