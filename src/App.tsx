@@ -18,26 +18,19 @@ const App: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // --- 核心邏輯：讀取使用者資料 ---
   const fetchUserData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
           const userName = session.user.user_metadata?.full_name || 'User';
-          // 關鍵：每次都重新讀取 avatar_url，確保是最新上傳的
           const userAvatar = session.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${userName}&backgroundColor=e5e7eb`;
-          
           setUser({
               id: session.user.id,
               name: userName,
               joinedDate: new Date(session.user.created_at).toLocaleDateString(),
               avatar: userAvatar
           });
-          
-          // 載入背景設定
           const savedBg = localStorage.getItem(`voyage_${session.user.id}_bg_image`);
           if (savedBg) setBgImage(savedBg);
-          
-          // 載入行程
           fetchTrips(session.user.id);
       } else {
           setUser(null);
@@ -45,17 +38,12 @@ const App: React.FC = () => {
       }
   };
 
-  // --- 核心修正：加入 Auth 監聽器 ---
-  // 這會自動處理「登入成功」、「登出」的所有狀態變化
   useEffect(() => {
-      // 1. 初始化檢查
       fetchUserData();
-
-      // 2. 監聽登入/登出事件 (解決登出後再登入頭貼消失的問題)
       const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN') {
               console.log("偵測到登入，正在更新使用者資料...");
-              fetchUserData(); // 登入後，立刻重抓最新資料 (包含新頭貼)
+              fetchUserData(); 
           } else if (event === 'SIGNED_OUT') {
               console.log("已登出");
               setUser(null);
@@ -63,7 +51,6 @@ const App: React.FC = () => {
               setSelectedTrip(null);
           }
       });
-
       return () => {
           authListener.subscription.unsubscribe();
       };
@@ -104,16 +91,13 @@ const App: React.FC = () => {
       if (error) console.error("刪除失敗", error);
   };
 
-  // handleLogin 改為空函式，因為我們現在靠 onAuthStateChange 自動處理
   const handleLogin = (newUser: User) => { 
-      // 觸發 fetchUserData 來確保資料是最新的
       fetchUserData();
   };
 
   const handleLogout = async () => {
       if(confirm("確定要登出嗎？")) {
           await supabase.auth.signOut();
-          // 狀態清除交給 onAuthStateChange 處理
       }
   };
 
@@ -123,7 +107,6 @@ const App: React.FC = () => {
   }
   
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
-  
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
   
   const handleUpdateTrip = (updatedTrip: Trip) => {
@@ -189,20 +172,19 @@ const App: React.FC = () => {
   }
 
   return (
-    // 修正: 使用 h-[100dvh] 解決手機網址列遮擋問題
-    <div className="h-[100dvh] w-full font-sans text-gray-900 bg-gray-50/80 overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+    // 修正: 預設背景改為米灰色 #E4E2DD
+    <div className="h-[100dvh] w-full font-sans text-[#1D1D1B] bg-[#E4E2DD] overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
       
-      <main className="max-w-md mx-auto h-full relative shadow-2xl overflow-hidden z-10 bg-gray-50/80 backdrop-blur-md flex flex-col">
+      <main className="max-w-md mx-auto h-full relative shadow-2xl overflow-hidden z-10 bg-[#E4E2DD]/80 backdrop-blur-md flex flex-col">
         
         {isSyncing && (
-            <div className="absolute top-4 right-4 z-50 bg-black/50 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 animate-pulse pointer-events-none">
+           <div className="absolute top-4 right-4 z-50 bg-[#1D1D1B]/80 backdrop-blur text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1 animate-pulse pointer-events-none shadow-sm">
                 <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                 同步中...
             </div>
         )}
 
-        {/* 修正: 確保 overflow 正常運作 */}
         <div className="flex-1 min-h-0 relative w-full flex flex-col">
             {currentView === AppView.TRIPS && (
                 <TripsView 
@@ -214,7 +196,7 @@ const App: React.FC = () => {
                   onSelectTrip={handleTripSelect}
                   onDeleteTrip={handleSoftDeleteTrip}
                   onReorderTrips={handleReorderTrips}
-                  onUpdateTrip={handleUpdateTrip} // <--- 新增這一行！
+                  onUpdateTrip={handleUpdateTrip}
                 />
             )}
             
@@ -239,7 +221,8 @@ const App: React.FC = () => {
             )}
         </div>
 
-        <div className="flex-shrink-0 z-50 relative w-full bg-white/85 backdrop-blur-xl border-t border-gray-200/50">
+        {/* 修正: Tab Bar 背景與選中顏色 */}
+        <div className="flex-shrink-0 z-50 relative w-full bg-white/90 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
             <div className="flex justify-between items-center pb-safe pt-4 px-8 h-[calc(70px+env(safe-area-inset-bottom))]">
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="行程" />
                 <TabButton active={currentView === AppView.EXPLORE} onClick={() => setCurrentView(AppView.EXPLORE)} icon={<Compass />} label="探索" />
@@ -253,9 +236,10 @@ const App: React.FC = () => {
 };
 
 const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-colors duration-200 ${active ? 'text-ios-blue' : 'text-gray-400 hover:text-gray-600'}`}>
+  // 修正: 點擊狀態顏色改為 #45846D
+  <button onClick={onClick} className={`flex flex-col items-center gap-1.5 transition-all duration-300 ${active ? 'text-[#45846D] scale-105' : 'text-gray-400 hover:text-gray-600'}`}>
     {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-6 h-6', strokeWidth: active ? 2.5 : 2 })}
-    <span className="text-[10px] font-medium">{label}</span>
+    <span className="text-[10px] font-bold">{label}</span>
   </button>
 );
 

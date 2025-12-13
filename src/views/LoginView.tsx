@@ -1,36 +1,31 @@
 import React, { useState } from 'react';
 import { ArrowRight, User as UserIcon, Sparkles, Lock, AlertCircle } from 'lucide-react';
-import { IOSButton, MadeByFooter } from '../components/UI';
 import type { User } from '../types';
 import { supabase } from '../services/supabase';
+// 確保引用正確的 Footer 元件
+import { MadeByFooter } from '../components/UI';
 
 interface LoginViewProps {
   onLogin: (user: User) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
-  // 模式切換：login (登入) | register (註冊) | reset (忘記密碼)
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
-
-  // 輸入欄位
   const [inputName, setInputName] = useState('');
   const [inputPassword, setInputPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // 註冊用：確認密碼
+  const [confirmPassword, setConfirmPassword] = useState('');
   
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 魔法轉換：把暱稱轉成 Email (符合 Supabase 格式)
   const getEmail = (name: string) => `${name.trim().toLowerCase().replace(/\s+/g, '')}@kelvintrip.com`;
 
-  // 處理送出
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
 
-    // 1. 基礎驗證
     if (!inputName.trim()) { setError('請輸入您的暱稱'); return; }
     if (!inputPassword.trim()) { setError('請輸入密碼'); return; }
     
@@ -44,41 +39,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
     try {
         if (mode === 'login') {
-            // --- 登入模式 ---
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email,
                 password: inputPassword,
             });
-
             if (error) throw error;
             if (data.user) {
-                // 讀取使用者原本設定的顯示名稱 (Metadata)
                 const displayName = data.user.user_metadata?.full_name || inputName;
                 completeLogin(data.user.id, displayName);
             }
-
         } else if (mode === 'register') {
-            // --- 註冊模式 ---
             const { data, error } = await supabase.auth.signUp({
                 email: email,
                 password: inputPassword,
-                options: {
-                    data: { full_name: inputName } // 儲存顯示名稱
-                }
+                options: { data: { full_name: inputName } }
             });
-
             if (error) throw error;
             if (data.user) {
-                // 註冊成功，直接登入
                 completeLogin(data.user.id, inputName);
             }
         } else if (mode === 'reset') {
-             // --- 重置密碼模式 ---
              setError('請聯繫管理員 (Kelvin) 幫您重置密碼。');
              setLoading(false);
              return;
         }
-
     } catch (err: any) {
         console.error(err);
         if (err.message.includes('Invalid login')) {
@@ -103,35 +87,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   };
 
   return (
-    // 修改 1: 背景色改為 brand-beige (米灰)
-    <div className="min-h-screen bg-brand-beige flex flex-col items-center justify-center relative overflow-hidden pt-safe-top pb-safe text-brand-black">
+    // 外層容器：使用 Flexbox 佈局，min-h-screen 確保佔滿畫面
+    <div className="min-h-screen bg-[#E4E2DD] flex flex-col relative overflow-hidden text-[#1D1D1B]">
         
-        {/* 背景裝飾 (Optional: 可以留著增加層次，但顏色改淡一點) */}
+        {/* 背景裝飾 */}
         <div className="absolute inset-0 z-0 pointer-events-none">
             <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-white/40 rounded-full blur-[120px]"></div>
-            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-brand-green/10 rounded-full blur-[120px]"></div>
+            <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-[#45846D]/5 rounded-full blur-[120px]"></div>
         </div>
 
-        <div className="w-full max-w-md px-6 z-10 flex-1 flex flex-col justify-center">
+        {/* 內容區塊 (Flex-1)：這會佔據中間所有剩餘空間，自然把 Footer 推到底部 */}
+        <div className="flex-1 flex flex-col justify-center items-center w-full max-w-md mx-auto px-6 z-10">
             
-            <div className="text-center mb-10">
-                {/* 修改 2: Logo 區域 - 改用 SVG 圖片 */}
-                <div className="w-24 h-24 mx-auto mb-6 relative">
-                    {/* 請確保 public 資料夾有 favicon.svg，如果沒有請暫時用文字代替 */}
+            <div className="text-center mb-10 w-full">
+                {/* Logo */}
+                <div className="w-24 h-24 mx-auto mb-6 relative flex items-center justify-center">
                     <img 
                         src="/favicon.svg" 
                         alt="Kelvin Trip Logo" 
                         className="w-full h-full object-contain drop-shadow-md"
                         onError={(e) => {
-                            // 如果圖片載入失敗，顯示預設圖示 (開發時的保險措施)
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.parentElement!.classList.add('bg-brand-green', 'rounded-3xl', 'flex', 'items-center', 'justify-center', 'text-white');
-                            e.currentTarget.parentElement!.innerHTML = '<span class="text-4xl font-bold">K</span>';
+                             e.currentTarget.style.display = 'none';
+                             const parent = e.currentTarget.parentElement!;
+                             parent.innerHTML = '<span class="text-6xl font-black text-[#45846D] font-serif">K</span>';
                         }} 
                     />
                 </div>
 
-                <h1 className="text-3xl font-bold text-brand-black tracking-tight font-serif">
+                <h1 className="text-3xl font-bold text-[#1D1D1B] tracking-tight font-serif">
                     Kelvin Trip.
                 </h1>
                 <p className="text-gray-500 text-sm mt-2 font-medium tracking-wide uppercase">
@@ -139,26 +122,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 </p>
             </div>
 
-            {/* 修改 3: 卡片樣式 - 純白背景 + 柔和陰影 */}
-            <div className="bg-white rounded-[32px] shadow-xl shadow-brand-black/5 overflow-hidden transition-all duration-300 border border-white">
+            {/* 卡片本體 */}
+            <div className="w-full bg-white rounded-[32px] shadow-xl shadow-black/5 overflow-hidden transition-all duration-300 border border-white">
                  
-                {/* 上方切換標籤 */}
-                <div className="flex p-1.5 m-4 bg-brand-input rounded-2xl">
+                {/* 模式切換 */}
+                <div className="flex p-1.5 m-4 bg-[#F5F5F4] rounded-2xl">
                     <button 
+                        type="button"
                         onClick={() => { setMode('login'); setError(''); }}
                         className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-300 ${
                             mode === 'login' 
-                            ? 'bg-white text-brand-green shadow-sm' // 選中：白底綠字
+                            ? 'bg-white text-[#1D1D1B] shadow-sm' 
                             : 'text-gray-400 hover:text-gray-600'
                         }`}
                     >
                         登入
                     </button>
                     <button 
+                        type="button"
                         onClick={() => { setMode('register'); setError(''); }}
                         className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-300 ${
                             mode === 'register' 
-                            ? 'bg-white text-brand-green shadow-sm' 
+                            ? 'bg-white text-[#1D1D1B] shadow-sm' 
                             : 'text-gray-400 hover:text-gray-600'
                         }`}
                     >
@@ -168,87 +153,85 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
                 <form onSubmit={handleSubmit} className="px-8 pb-10 pt-2 space-y-5">
                     
-                    {/* 帳號 (暱稱) */}
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">
+                    {/* 暱稱輸入框 */}
+                    <div className="space-y-1.5 group">
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1 group-focus-within:text-[#45846D] transition-colors">
                             {mode === 'register' ? '設定暱稱 (帳號)' : '您的暱稱'}
                         </label>
-                        {/* 修改 4: 輸入框 - 移除邊框，改用淺灰底 */}
-                        <div className="bg-brand-input rounded-2xl p-4 flex items-center gap-3 transition-all focus-within:ring-2 focus-within:ring-brand-green/20 focus-within:bg-white">
-                            <UserIcon className="w-5 h-5 text-gray-400" />
+                        <div className="bg-[#F5F5F4] rounded-2xl p-4 flex items-center gap-3 transition-all group-focus-within:ring-2 group-focus-within:ring-[#45846D]/20 group-focus-within:bg-white">
+                            <UserIcon className="w-5 h-5 text-gray-400 group-focus-within:text-[#45846D] transition-colors" />
                             <input 
                                 type="text" 
                                 value={inputName} 
                                 onChange={e => setInputName(e.target.value)} 
                                 placeholder="例：Kelvin" 
-                                className="flex-1 text-sm bg-transparent outline-none text-brand-black placeholder-gray-400 font-medium" 
+                                className="flex-1 text-sm bg-transparent outline-none text-[#1D1D1B] placeholder-gray-400 font-medium caret-[#45846D]" 
                             />
                         </div>
                     </div>
 
-                    {/* 密碼 */}
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">密碼</label>
-                        <div className="bg-brand-input rounded-2xl p-4 flex items-center gap-3 transition-all focus-within:ring-2 focus-within:ring-brand-green/20 focus-within:bg-white">
-                            <Lock className="w-5 h-5 text-gray-400" />
+                    {/* 密碼輸入框 */}
+                    <div className="space-y-1.5 group">
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1 group-focus-within:text-[#45846D] transition-colors">密碼</label>
+                        <div className="bg-[#F5F5F4] rounded-2xl p-4 flex items-center gap-3 transition-all group-focus-within:ring-2 group-focus-within:ring-[#45846D]/20 group-focus-within:bg-white">
+                            <Lock className="w-5 h-5 text-gray-400 group-focus-within:text-[#45846D] transition-colors" />
                             <input 
                                 type="password" 
                                 value={inputPassword} 
                                 onChange={e => setInputPassword(e.target.value)} 
                                 placeholder="••••••" 
-                                className="flex-1 text-sm bg-transparent outline-none text-brand-black tracking-widest font-medium" 
+                                className="flex-1 text-sm bg-transparent outline-none text-[#1D1D1B] tracking-widest font-medium caret-[#45846D]" 
                             />
                         </div>
                     </div>
 
-                    {/* 確認密碼 (只有註冊時顯示) */}
+                    {/* 確認密碼 */}
                     {mode === 'register' && (
-                        <div className="space-y-1.5 animate-in slide-in-from-top-2 fade-in">
-                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">確認密碼</label>
-                            <div className="bg-brand-input rounded-2xl p-4 flex items-center gap-3 transition-all focus-within:ring-2 focus-within:ring-brand-green/20 focus-within:bg-white">
-                                <Lock className="w-5 h-5 text-gray-400" />
+                        <div className="space-y-1.5 animate-in slide-in-from-top-2 fade-in group">
+                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1 group-focus-within:text-[#45846D] transition-colors">確認密碼</label>
+                            <div className="bg-[#F5F5F4] rounded-2xl p-4 flex items-center gap-3 transition-all group-focus-within:ring-2 group-focus-within:ring-[#45846D]/20 group-focus-within:bg-white">
+                                <Lock className="w-5 h-5 text-gray-400 group-focus-within:text-[#45846D] transition-colors" />
                                 <input 
                                     type="password" 
                                     value={confirmPassword} 
                                     onChange={e => setConfirmPassword(e.target.value)} 
                                     placeholder="再次輸入密碼" 
-                                    className="flex-1 text-sm bg-transparent outline-none text-brand-black tracking-widest font-medium" 
+                                    className="flex-1 text-sm bg-transparent outline-none text-[#1D1D1B] tracking-widest font-medium caret-[#45846D]" 
                                 />
                             </div>
                         </div>
                     )}
 
-                    {/* 錯誤/成功訊息 */}
+                    {/* 訊息顯示 */}
                     {error && (
-                        <div className="flex items-start gap-2 text-brand-red text-xs font-medium bg-red-50 p-3 rounded-xl animate-in fade-in">
+                        <div className="flex items-start gap-2 text-red-500 text-xs font-medium bg-red-50 p-3 rounded-xl animate-in fade-in">
                             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             <span>{error}</span>
                         </div>
                     )}
                     {successMsg && (
-                        <div className="text-brand-green text-xs font-medium text-center bg-green-50 p-3 rounded-xl animate-in fade-in">
+                        <div className="text-[#45846D] text-xs font-medium text-center bg-green-50 p-3 rounded-xl animate-in fade-in">
                             {successMsg}
                         </div>
                     )}
 
                     <div className="pt-2">
-                        {/* 修改 5: 按鈕 - 使用 brand-green */}
+                        {/* 🟢 關鍵修正：直接寫死 Hex 色碼 bg-[#45846D] 與 text-white */}
                         <button 
                             type="submit" 
                             disabled={loading}
-                            className="w-full h-14 bg-brand-green hover:bg-[#3A705C] text-white rounded-full font-bold text-base shadow-lg shadow-brand-green/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="w-full h-14 bg-[#45846D] text-white hover:bg-[#3A705C] rounded-full font-bold text-base shadow-lg shadow-[#45846D]/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {loading ? '處理中...' : (mode === 'login' ? '登入' : '註冊並開始')} 
                             {!loading && <ArrowRight className="w-5 h-5" />}
                         </button>
                     </div>
 
-                    {/* 忘記密碼連結 */}
                     {mode === 'login' && (
                         <button 
                             type="button" 
                             onClick={() => { setMode('reset'); setError(''); }}
-                            className="w-full text-center text-xs text-gray-400 hover:text-brand-green transition-colors mt-2"
+                            className="w-full text-center text-xs text-gray-400 hover:text-[#45846D] transition-colors mt-2"
                         >
                             忘記密碼？
                         </button>
@@ -262,7 +245,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                             <button 
                                 type="button" 
                                 onClick={() => setMode('login')}
-                                className="text-xs text-brand-green font-bold hover:underline"
+                                className="text-xs text-[#45846D] font-bold hover:underline"
                             >
                                 返回登入
                             </button>
@@ -275,11 +258,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             <div className="mt-10 flex justify-center gap-2 text-[10px] font-medium text-gray-400 opacity-60">
                 <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> Powered by AI & Supabase</span>
             </div>
+            
         </div>
         
-        <div className="w-full z-10">
-            {/* 這裡你可以選擇是否保留原本的 footer，或者為了簡潔隱藏它 */}
-            <MadeByFooter /> 
+        {/* Footer: 放在最外層容器的底部 */}
+        <div className="w-full z-10 pb-6 relative">
+             <MadeByFooter /> 
         </div>
     </div>
   );
