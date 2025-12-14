@@ -29,31 +29,31 @@ export interface User {
   name: string;
   joinedDate: string;
   avatar: string;
-  email?: string; // 補上 email 欄位以防萬一
+  email?: string;
 }
 
-// 4. 新增：交通詳細資訊 (用於副卡顯示)
+// 4. 交通詳細資訊
 export interface TransportDetail {
-  mode: 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight'; // 交通方式
-  duration: string;      // 預估時間 (例如: "15 min")
-  fromStation?: string;  // 上車站/出發點
-  toStation?: string;    // 下車站/抵達點
-  instruction?: string;  // 簡短指引 (例如: "搭乘 206 號公車")
+  mode: 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight';
+  duration: string;      
+  fromStation?: string;  
+  toStation?: string;    
+  instruction?: string;  
 }
 
-// 5. 行程細節相關
+// 5. 行程細節相關 (新增 process)
 export interface Activity {
   id?: string;
   time: string;
   title: string;
   description: string;
-  // 擴充 type 定義，加入 'transport'
-  type: 'sightseeing' | 'food' | 'transport' | 'flight' | 'hotel' | 'cafe' | 'shopping' | 'relax' | 'bar' | 'culture' | 'activity' | 'other' | string;
+  // 擴充 type 定義: 加入 'process' (用於入境審查等流程)
+  type: 'sightseeing' | 'food' | 'transport' | 'flight' | 'hotel' | 'cafe' | 'shopping' | 'relax' | 'bar' | 'culture' | 'activity' | 'note' | 'expense' | 'process' | 'other' | string;
   category?: string; 
   location?: string; 
   cost?: string | number;
   
-  // 新增：交通詳細資訊 (若 type === 'transport' 則此欄位會有值)
+  // 交通詳細資訊
   transportDetail?: TransportDetail; 
 }
 
@@ -65,11 +65,9 @@ export interface TripDay {
 export interface Trip {
   id: string;
   destination: string;
+  origin?: string; 
   
-  // 新增：指定遊玩區域 (例如: "中西區, 安平")
   focusArea?: string; 
-  
-  // 新增：當地交通偏好 (public=大眾運輸, car=自駕, taxi=計程車)
   localTransportMode?: 'public' | 'car' | 'taxi'; 
 
   startDate: string;

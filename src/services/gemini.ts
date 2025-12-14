@@ -1,4 +1,4 @@
-import type { TripDay, WeatherInfo, VoltageInfo } from "../types";
+import type { TripDay, WeatherInfo, VoltageInfo, Activity } from "../types";
 
 // 1. 讀取環境變數
 const apiKey = (import.meta.env.VITE_API_KEY || '').trim();
@@ -13,7 +13,7 @@ const CACHE_TTL = {
     TIMEZONE: 10080,
     CURRENCY: 60,
     STATIC_INFO: 1440,
-    ITINERARY: 60,
+    ITINERARY: 60, 
     FLIGHT: 1440 
 };
 
@@ -22,9 +22,8 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        "gemini-2.5-flash",
+        
     ];
     let lastError = null;
 
@@ -86,7 +85,6 @@ const parseJSON = <T>(text: string | undefined): T | null => {
         const lastChar = clean.lastIndexOf(']');
         if (firstChar !== -1 && lastChar !== -1) clean = clean.substring(firstChar, lastChar + 1);
         
-        // 針對物件 {} 的處理
         if (firstChar === -1) {
             const firstBrace = clean.indexOf('{');
             const lastBrace = clean.lastIndexOf('}');
@@ -101,7 +99,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成 (大腦升級：支援 區域限制 & 詳細交通資訊)
+// 1. 行程生成 (大腦升級)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -109,101 +107,103 @@ export const generateItinerary = async (
     userPrompt: string, 
     currency: string,
     transportInfo?: { inbound?: string, outbound?: string },
-    focusArea?: string, // 新增：指定區域
-    localTransportMode?: 'public' | 'car' | 'taxi' // 新增：當地交通模式
+    focusArea?: string,
+    localTransportMode?: 'public' | 'car' | 'taxi'
 ): Promise<TripDay[]> => {
   
-  const cacheKey = `itinerary_v3_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
+  const cacheKey = `itinerary_v4_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
   
   return fetchWithCache(cacheKey, async () => {
       let context = "";
       
-      // 1. 交通進出上下文
       if (transportInfo?.inbound) {
           const isFlight = transportInfo.inbound.toLowerCase().includes('flight');
-          const bufferTime = isFlight ? "2h (customs)" : "30m";
-          context += `\n- Day 1 Arrival: ${transportInfo.inbound}. \n  **CRITICAL**: The FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card. Title: [Flight/Train Code], Desc: [Origin] -> [Dest]. Start next activity ${bufferTime} after arrival.`;
+          context += `\n- **ARRIVAL INFO**: ${transportInfo.inbound}. \n  **CRITICAL**: The very FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card representing arrival.`;
       }
       if (transportInfo?.outbound) {
           const isFlight = transportInfo.outbound.toLowerCase().includes('flight');
-          const bufferTime = isFlight ? "3h" : "1h";
-          context += `\n- Day ${days} Departure: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card. End sightseeing ${bufferTime} before departure.`;
+          context += `\n- **DEPARTURE INFO**: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card representing departure.`;
       }
 
-      // 2. 指定區域限制 (Focus Area)
       if (focusArea) {
-          context += `\n- **STRICT CONSTRAINT**: The user ONLY wants to visit: "${focusArea}". Do NOT suggest spots far outside these areas unless absolutely famous and necessary. Keep travel time minimal.`;
+          context += `\n- **STRICT LOCATION CONSTRAINT**: The user ONLY wants to visit areas within: "${focusArea}". Do NOT suggest spots far outside these areas unless absolutely necessary.`;
       }
 
-      // 3. 當地交通模式 (Local Transport Logic)
       let transportInstruction = "";
       if (localTransportMode === 'public') {
           transportInstruction = `
-            - **Local Transport (Public)**: When moving between locations > 15 mins apart, INSERT a separate activity with type "transport".
-            - **CRITICAL**: For "transport" items, you MUST provide a "transportDetail" JSON object.
-            - "transportDetail" structure: { "mode": "bus"|"subway"|"train"|"walk", "duration": "xx min", "fromStation": "Station A", "toStation": "Station B", "instruction": "Take Bus 205" }.
+            - **Transport Mode**: Public Transport (Subway, Bus, Train).
+            - **CRITICAL RULE**: Whenever moving between two distinct locations (e.g. Airport to Hotel, Hotel to Spot A), you MUST INSERT a separate activity with type "transport".
+            - For these transport items, "transportDetail" is MANDATORY.
           `;
       } else if (localTransportMode === 'car') {
           transportInstruction = `
-            - **Local Transport (Driving)**: Assume rental car. Group locations logically to minimize driving.
+            - **Transport Mode**: Rental Car / Driving.
+            - Group locations logically to minimize driving time.
             - Insert "transport" items for drives > 30 mins. Set "transportDetail" mode to "car".
+          `;
+      } else {
+          transportInstruction = `
+            - **Transport Mode**: Taxi / Uber.
+            - Provide estimated taxi travel time in "transport" items.
           `;
       }
 
       const prompt = `
-        Role: Professional Travel Planner.
+        Role: Professional Travel Planner & Logistics Expert.
         Task: Create a ${days}-day itinerary for ${destination}.
         
         User Preferences: ${userPrompt}
         ${context}
         ${transportInstruction}
         
-        CRITICAL REQUIREMENTS:
-        1. **Currency**: Estimate costs in **${currency}**. Cost must be NUMBER ONLY (e.g. 2500).
-        2. **Categories**: Choose exactly ONE from: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity", "other".
-           - Use **"flight"** for airport arrivals/departures.
-           - Use **"transport"** for moving between cities or major districts.
-        3. **Flow**: 
-           - Start/End days with "Morning"/"Evening" activities.
-           - Ensure logical route order (no zigzagging).
+        **CRITICAL REQUIREMENTS (DO NOT IGNORE):**
 
+        1. **Arrival Logic (Day 1)**:
+           - The first activity MUST be the arrival (Flight/Train).
+           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**. 
+             (e.g., "Exit North Gate to Bus Stop 5", "Go to B1 for Express Train").
+           - The NEXT activity (e.g. moving to hotel) should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
+
+        2. **Gap Connectors (Transport)**:
+           - You MUST explicitly calculate travel time between spots.
+           - Use 'type': 'transport' for these movements.
+           - Fill 'transportDetail': { "mode": "bus"|"train"|"car"|"walk", "duration": "XX min" }.
+           - The 'duration' string will be used for timeline calculation.
+
+        3. **Data Integrity**:
+           - **Currency**: Estimate costs in **${currency}** (Number only).
+           - **Types**: Use strict types: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity".
+        
         4. **Format**: Output valid JSON only.
         
-        JSON Structure Example (With Transport Detail):
+        JSON Structure Example:
         [
           {
             "day": 1,
             "activities": [
               {
-                "time": "10:00",
-                "title": "Kiyomizu-dera",
-                "description": "Historic temple",
-                "type": "sightseeing",
-                "location": "Kyoto",
-                "cost": "400"
+                "time": "14:00",
+                "title": "JX800 Landing",
+                "description": "Terminal 1 Arrival.",
+                "type": "flight",
+                "location": "Narita Airport",
+                "cost": "0"
               },
               {
-                "time": "11:30",
-                "title": "Move to Gion",
-                "description": "Bus transit",
+                "time": "15:30", 
+                "title": "Move to Ueno",
+                "description": "Skyliner Express",
                 "type": "transport",
-                "location": "Kyoto",
-                "cost": "230",
+                "location": "Transit",
+                "cost": "2500",
                 "transportDetail": {
-                    "mode": "bus",
-                    "duration": "20 min",
-                    "fromStation": "Kiyomizu-michi",
-                    "toStation": "Gion",
-                    "instruction": "Take City Bus 206"
+                    "mode": "train",
+                    "duration": "45 min",
+                    "fromStation": "Narita T1",
+                    "toStation": "Keisei Ueno",
+                    "instruction": "Fastest route to city"
                 }
-              },
-              {
-                "time": "12:00",
-                "title": "Gion Lunch",
-                "description": "Udon noodles",
-                "type": "food",
-                "location": "Gion",
-                "cost": "1500"
               }
             ]
           }
@@ -247,11 +247,10 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
             **CRITICAL RULES**:
             1. Return the accurate IATA Airport Codes for Origin and Destination.
             2. Do NOT guess. Use historical flight data knowledge.
-            3. Specific known routes:
+            3. Specific known routes (Examples):
                - CI166 is KHH (Kaohsiung) -> KIX (Osaka/Kansai).
                - CI167 is KIX (Osaka/Kansai) -> KHH (Kaohsiung).
                - JX800 is TPE -> NRT.
-               - JX801 is NRT -> TPE.
             
             Return valid JSON ONLY (No markdown):
             {
@@ -260,8 +259,8 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
                 "arrTime": "HH:MM",
                 "origin": "IATA_CODE",
                 "dest": "IATA_CODE",
-                "originTerm": "Terminal Number (optional)",
-                "destTerm": "Terminal Number (optional)"
+                "originTerm": "Terminal (optional)",
+                "destTerm": "Terminal (optional)"
             }
         `;
         try {
@@ -274,16 +273,44 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
 };
 
 // ==========================================================
-// 3. 匯率查詢
+// 3. AI 推薦下一站 (新增功能)
+// ==========================================================
+export const suggestNextSpot = async (
+    currentLocation: string, 
+    currentTime: string, 
+    interests: string
+): Promise<Activity | null> => {
+    const prompt = `
+        User is at "${currentLocation}" at "${currentTime}".
+        Interests: ${interests}.
+        Recommend ONE best place to visit next within 20 mins walking or short transit.
+        
+        Return JSON ONLY:
+        {
+            "time": "${currentTime}",
+            "title": "Spot Name",
+            "description": "Why go there? (Short reason)",
+            "type": "sightseeing/food/cafe/shopping",
+            "location": "Spot Location",
+            "cost": "Estimated Cost (Number)"
+        }
+        Language: Traditional Chinese.
+    `;
+    try {
+        const text = await callGeminiDirectly(prompt);
+        return parseJSON<Activity>(text);
+    } catch (e) { return null; }
+};
+
+// ==========================================================
+// 4. 匯率查詢 & 其他工具
 // ==========================================================
 const fetchRealTimeRate = async (from: string, to: string): Promise<number | null> => {
     try {
         const res = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
         const data = await res.json();
         return data.rates[to] || null;
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 };
 
 export const getCurrencyRate = async (from: string, to: string, amount: number): Promise<string> => {
