@@ -9,7 +9,7 @@ import {
     Coins, Plane, Train, Scale, Car, Bus, 
     GraduationCap, Briefcase, Dog, Mountain, Book, PenTool, Trash2,
     PlaneTakeoff, PlaneLanding, ArrowLeftRight,
-    Check
+    Check, MoreVertical
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import type { Trip, TripDay, User, WeatherInfo } from '../types';
@@ -35,7 +35,7 @@ interface TripsViewProps {
 }
 
 // ============================================================================
-// 2. 小工具元件 (WeatherWidget, TimeWidget)
+// 2. 小工具元件
 // ============================================================================
 
 const WeatherWidget: React.FC = () => {
@@ -96,32 +96,39 @@ const DashboardWidgets: React.FC = () => <div className="grid grid-cols-2 gap-3 
 // 3. 輔助元件
 // ============================================================================
 
+// 1. 一般行程卡片 (General Trip - Fallback or User uploaded)
 const TripCard: React.FC<{ trip: Trip, onSelect: () => void, dragHandleProps?: DraggableProvidedDragHandleProps | null, isPast?: boolean }> = ({ trip, onSelect, dragHandleProps, isPast }) => { 
     return (
         <div className={`relative w-full h-48 rounded-[32px] overflow-hidden shadow-sm group select-none transition-all hover:shadow-lg bg-white border border-white ${isPast ? 'grayscale-[0.5] opacity-90' : ''}`} onClick={onSelect}>
             <div className="h-full w-full relative">
+                {/* 使用者封面圖 + 經典黑色漸層 (Obsidian) */}
                 <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                 
-                <div className="absolute bottom-5 left-6 text-white pr-12">
-                    <h2 className="text-3xl font-bold shadow-sm drop-shadow-md font-serif tracking-tight">{trip.destination}</h2>
-                    <div className="flex items-center gap-2 text-sm font-bold opacity-90 shadow-sm mt-1 font-mono">
+                <div className="absolute inset-0 p-6 flex flex-col justify-between">
+                    <div>
+                        <div className="text-[10px] font-bold text-white/50 tracking-widest uppercase mb-0">DESTINATION</div>
+                        <h2 className="text-5xl font-black font-sans tracking-tight leading-none mb-3 shadow-sm text-white">
+                            {trip.destination}
+                        </h2>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-sm font-bold text-white drop-shadow-md pl-1">
                         <Calendar className="w-4 h-4" />
                         <span>{trip.startDate}</span>
-                        <span className="opacity-50">|</span>
+                        <span className="opacity-60">|</span>
                         <span>{trip.days.length} 天</span>
                     </div>
                 </div>
 
-                {/* 右側拖曳手把 */}
                 {!isPast && (
                     <div 
                         {...dragHandleProps} 
                         style={{ touchAction: 'none' }} 
-                        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 touch-none cursor-grab active:cursor-grabbing z-30 text-white/50 hover:text-white transition-colors bg-black/10 backdrop-blur-[2px] rounded-full" 
+                        className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center cursor-grab active:cursor-grabbing z-30 text-white/50 hover:text-white transition-all bg-black/10 hover:bg-black/20 backdrop-blur-[2px] rounded-full" 
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <GripVertical className="w-6 h-6 drop-shadow-md" />
+                        <GripVertical className="w-5 h-5 drop-shadow-md" />
                     </div>
                 )}
             </div>
@@ -154,7 +161,8 @@ const FlightCard = ({ type, code, setCode, destination, origin = 'TPE', flightIn
                     <span className="text-[10px] font-bold text-white/60 tracking-widest block mb-1">{label}</span>
                     <div className="flex items-center gap-3">
                         <span className="text-3xl font-black tracking-wider font-mono uppercase">{displayOrigin}</span>
-                         <Plane className={`w-5 h-5 text-white/80 ${isDeparture ? 'rotate-45' : '-rotate-135'}`} />
+                         {/* 平飛圖示 */}
+                         <Plane className={`w-5 h-5 text-white/80`} />
                         <span className="text-3xl font-black tracking-wider font-mono uppercase">{displayDest}</span>
                     </div>
                 </div>
@@ -237,7 +245,7 @@ const INTEREST_DATA: Record<string, { label: string, icon: any, tags: string[] }
 };
 
 // ============================================================================
-// Modal Components (Moved UP to avoid hoisting issues)
+// Modal Components
 // ============================================================================
 
 // Import Trip Modal
@@ -860,7 +868,7 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                         cardType = 'flight';
                                         // 嘗試從標題解析 "KHH -> KIX" (如果 origin 沒存到)
                                         if (!trip.origin && firstAct.title && firstAct.title.includes('->')) {
-                                            const parts = firstAct.title.split('->').map(s => s.trim());
+                                            const parts = firstAct.title.split('->').map((s: string) => s.trim());
                                             if (parts.length >= 2) {
                                                 flightDisplayOrigin = parts[0]; 
                                                 flightDisplayDest = parts[1];   
@@ -885,34 +893,30 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                 >
                                                     {cardType === 'flight' ? (
                                                         // ------------------------
-                                                        // ✈️ 機票行程卡片 (Flight)
+                                                        // ✈️ 機票行程卡片 (Flight) - Modern Ticket Style (圖二樣式)
                                                         // ------------------------
                                                         <div className="relative h-48 rounded-[32px] overflow-hidden shadow-lg group border border-white/10" onClick={() => onSelectTrip(trip)}>
                                                             <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=2074&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover" alt="Flight View" />
                                                             <div className="absolute inset-0 bg-gradient-to-br from-[#1D1D1B]/90 via-[#2C5E4B]/80 to-transparent" />
                                                             
-                                                            {/* 內容區塊：使用 Flex Column 排版 */}
+                                                            {/* 內容區塊：使用 Flex Column 排版，確保對齊與空間 */}
                                                             <div className="relative z-10 p-6 h-full flex flex-col justify-between text-white">
-                                                                {/* 上半部：航班資訊 + 標籤 */}
-                                                                <div className="flex justify-between items-start">
-                                                                    <div>
-                                                                        <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Upcoming Flight</span>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className="text-4xl font-black font-mono tracking-tighter uppercase">{flightDisplayOrigin}</span>
-                                                                            <Plane className="w-6 h-6 rotate-45 text-white/80" />
-                                                                            <span className="text-4xl font-black font-mono tracking-tighter uppercase">{flightDisplayDest}</span>
-                                                                        </div>
+                                                                {/* 上半部：航班資訊 + 標籤 (中等大小，粗黑體) */}
+                                                                <div>
+                                                                    <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Upcoming Flight</span>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-3xl font-bold font-sans tracking-tight uppercase">{flightDisplayOrigin}</span>
+                                                                        <Plane className="w-6 h-6 rotate-45 text-white/80" />
+                                                                        <span className="text-3xl font-bold font-sans tracking-tight uppercase">{flightDisplayDest}</span>
                                                                     </div>
                                                                 </div>
 
-                                                                {/* 中間 Spacer */}
-                                                                <div className="mt-auto"></div>
-
-                                                                {/* 下半部：目的地資訊 */}
+                                                                {/* 下半部：目的地主角 (巨大襯線體) */}
                                                                 <div>
                                                                     <div className="text-[10px] font-bold text-white/50 mb-0.5 uppercase tracking-wider">Destination</div>
-                                                                    <div className="text-3xl font-bold font-serif tracking-wide">{trip.destination}</div>
-                                                                    {/* 修正：移到底部，純文字樣式 */}
+                                                                    {/* 這裡使用巨大的襯線體，與圖二一致 */}
+                                                                    <div className="text-5xl font-bold font-serif tracking-wide leading-none shadow-sm">{trip.destination}</div>
+                                                                    
                                                                     <div className="flex items-center gap-2 mt-2 text-sm opacity-80 font-medium font-mono">
                                                                         <Calendar className="w-4 h-4" /> 
                                                                         <span>{trip.startDate}</span>
@@ -923,26 +927,29 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                             </div>
 
                                                             {/* 右側拖曳手把 (垂直置中) */}
-                                                            <div {...provided.dragHandleProps} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white cursor-grab active:cursor-grabbing z-20 touch-none bg-black/10 backdrop-blur-[2px] rounded-full" style={{ touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
-                                                                <GripVertical className="w-6 h-6 drop-shadow-md" />
+                                                            <div 
+                                                                {...provided.dragHandleProps} 
+                                                                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center cursor-grab active:cursor-grabbing z-30 text-white/50 hover:text-white transition-all bg-black/10 hover:bg-black/20 backdrop-blur-[2px] rounded-full" 
+                                                                style={{ touchAction: 'none' }} 
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <GripVertical className="w-5 h-5 drop-shadow-md" />
                                                             </div>
                                                         </div>
                                                     ) : cardType === 'train' ? (
                                                         // ------------------------
-                                                        // 🚄 列車行程卡片 (Train)
+                                                        // 🚄 列車行程卡片 (Train) - Orange Ticket Style
                                                         // ------------------------
                                                         <div className="relative h-48 rounded-[32px] overflow-hidden shadow-lg group border border-white/10 bg-gradient-to-br from-[#ea580c] to-[#9a3412]" onClick={() => onSelectTrip(trip)}>
                                                             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle,white_2px,transparent_0.5px)] [background-size:20px_20px]" />
                                                             
                                                             {/* 內容區塊 */}
                                                             <div className="relative z-10 p-6 h-full flex flex-col justify-between text-white">
-                                                                <div className="flex justify-between items-start">
-                                                                    <div>
-                                                                        <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Rail Pass Trip</span>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <Train className="w-8 h-8 text-white/90" />
-                                                                            <span className="text-3xl font-black font-serif tracking-tight truncate max-w-[180px] uppercase">{trip.destination}</span>
-                                                                        </div>
+                                                                <div>
+                                                                    <span className="text-[10px] font-bold text-white/50 tracking-widest block mb-1 uppercase">Rail Pass Trip</span>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <Train className="w-8 h-8 text-white/90" />
+                                                                        <span className="text-3xl font-black font-serif tracking-tight truncate max-w-[180px] uppercase">{trip.destination}</span>
                                                                     </div>
                                                                 </div>
 
@@ -950,7 +957,6 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                                 <div>
                                                                     <div className="text-[10px] font-bold text-white/50 mb-0.5 uppercase tracking-wider">Start From</div>
                                                                     <div className="text-2xl font-bold tracking-wide">TPE / KHH</div> 
-                                                                    {/* 修正：移到底部，純文字樣式 */}
                                                                     <div className="flex items-center gap-2 mt-2 text-sm opacity-80 font-medium font-mono">
                                                                         <Calendar className="w-4 h-4" /> 
                                                                         <span>{trip.startDate}</span>
@@ -960,8 +966,8 @@ export const TripsView: React.FC<TripsViewProps> = ({ trips, user, onLogout, onA
                                                                 </div>
                                                             </div>
 
-                                                            <div {...provided.dragHandleProps} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white cursor-grab active:cursor-grabbing z-20 touch-none bg-black/10 backdrop-blur-[2px] rounded-full" style={{ touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
-                                                                <GripVertical className="w-6 h-6 drop-shadow-md" />
+                                                            <div {...provided.dragHandleProps} className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center cursor-grab active:cursor-grabbing z-30 text-white/50 hover:text-white transition-all bg-black/10 hover:bg-black/20 backdrop-blur-[2px] rounded-full" style={{ touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
+                                                                <GripVertical className="w-5 h-5 drop-shadow-md" />
                                                             </div>
                                                         </div>
                                                     ) : (

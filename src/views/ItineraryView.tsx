@@ -4,7 +4,7 @@ import {
     ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
     RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
     Car, Footprints, TramFront, Clock, MapPin, ChevronRight, Edit3, Save, ExternalLink,
-    StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding, PlusCircle
+    StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding
 } from 'lucide-react';
 import type { Trip, TripDay, Activity } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -22,7 +22,7 @@ const CURRENCY_LABELS: Record<string, string> = {
 };
 
 const parseCost = (costStr?: string | number): number => {
-    if (!costStr) return 0;
+    if (costStr === undefined || costStr === null || costStr === '') return 0;
     if (typeof costStr === 'number') return costStr;
     const cleanStr = costStr.toString().replace(/,/g, '');
     const match = cleanStr.match(/(\d+(\.\d+)?)/);
@@ -61,11 +61,8 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
 // --- Ghost Button (Insert Helper) ---
 const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     <div className="h-6 -my-3 relative group z-10 flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-        {/* 感應區 */}
         <div className="absolute inset-0 bg-transparent" />
-        {/* 視覺線條 (hover時顯示) */}
         <div className="w-[2px] h-full bg-[#45846D] opacity-0 group-hover:opacity-100 transition-opacity absolute left-[26px]" />
-        {/* 按鈕本體 */}
         <div className="w-6 h-6 rounded-full bg-[#45846D] text-white flex items-center justify-center shadow-md transform scale-0 group-hover:scale-100 transition-all absolute left-[15px]">
             <Plus className="w-4 h-4" />
         </div>
@@ -83,12 +80,9 @@ const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
             className={`relative flex items-center py-2 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
             onClick={onClick}
         >
-            {/* 左側連接線 */}
             <div className="flex flex-col items-center w-[55px] self-stretch relative">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div>
             </div>
-
-            {/* 中間膠囊 */}
             <div className="flex-1 flex items-center">
                 <div className="bg-slate-100 border border-slate-200 rounded-full px-4 py-2 flex items-center gap-3 shadow-sm active:scale-95 transition-transform cursor-pointer hover:bg-slate-200">
                     <UserCheck className="w-4 h-4 text-slate-500" />
@@ -96,7 +90,6 @@ const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
                     <div className="w-px h-3 bg-slate-300 mx-1"></div>
                     <span className="text-xs font-mono text-slate-500">{detail?.duration || '60 min'}</span>
                 </div>
-                {/* 拖曳手把 (隱藏式) */}
                 <div {...provided.dragHandleProps} className="text-transparent group-hover:text-gray-300 p-2 ml-auto" onClick={(e) => e.stopPropagation()}>
                     <GripVertical className="w-4 h-4" />
                 </div>
@@ -132,7 +125,7 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
                     {getIcon()}
                 </div>
             </div>
-            <div className="flex-1 bg-gray-50/80 rounded-xl p-3 border border-gray-200/50 flex items-center justify-between gap-3 backdrop-blur-sm active:scale-[0.98] transition-transform cursor-pointer hover:bg-gray-100/80">
+            <div className="flex-1 bg-gray-50/80 rounded-xl p-3 border border-gray-200/50 flex items-center justify-between gap-3 backdrop-blur-sm active:scale-[0.98] transition-transform cursor-pointer hover:bg-gray-100/80 overflow-hidden">
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-bold text-white bg-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
@@ -144,10 +137,10 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
                         </span>
                     </div>
                     {(detail?.fromStation || detail?.toStation) ? (
-                        <div className="text-xs text-gray-800 font-bold flex items-center gap-1 truncate">
-                            <span>{detail.fromStation || '起點'}</span>
-                            <ArrowLeftRight className="w-3 h-3 text-gray-400" />
-                            <span>{detail.toStation || '終點'}</span>
+                        <div className="text-xs text-gray-800 font-bold flex flex-wrap items-center gap-1 min-w-0">
+                            <span className="truncate max-w-[40%]">{detail.fromStation || '起點'}</span>
+                            <ArrowLeftRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                            <span className="truncate max-w-[40%]">{detail.toStation || '終點'}</span>
                         </div>
                     ) : (
                         <div className="text-xs text-gray-800 font-medium truncate">
@@ -155,7 +148,7 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
                         </div>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                     <ChevronRight className="w-4 h-4 text-gray-300" />
                     <div {...provided.dragHandleProps} className="text-gray-300 p-1" onClick={(e) => e.stopPropagation()}>
                         <GripVertical className="w-4 h-4" />
@@ -194,7 +187,7 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
 
 // --- Expense Item ---
 const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
-    const displayCost = act.cost !== undefined ? Number(act.cost).toLocaleString() : '0';
+    const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     return (
         <div 
             ref={provided.innerRef} 
@@ -221,10 +214,9 @@ const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
     );
 };
 
-// --- Activity Item (Read-Only) ---
+// --- Activity Item ---
 const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
-    // 修正：0元顯示邏輯
-    const displayCost = act.cost !== undefined ? Number(act.cost).toLocaleString() : null;
+    const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : null;
 
     return (
         <div 
@@ -334,7 +326,6 @@ const ActivityDetailModal: React.FC<{
                 </div>
 
                 <div className="space-y-5 pb-6">
-                    {/* Time & Title */}
                     {!isNote && (
                         <div className="flex gap-3">
                             <div className="w-1/3">
@@ -431,7 +422,7 @@ const ActivityDetailModal: React.FC<{
                                     {isEditing ? (
                                         <div className="relative"><MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-[#F5F5F4] rounded-xl py-3 pl-9 pr-3 text-sm outline-none" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
                                     ) : (
-                                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-[#F5F5F4] p-3 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D]">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
+                                        <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-[#F5F5F4] p-3 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D]">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
                                     )}
                                 </div>
                             )}
@@ -442,14 +433,12 @@ const ActivityDetailModal: React.FC<{
                         </>
                     )}
 
-                    {/* Footer Actions: Save Button */}
                     {isEditing ? (
                         <div className="pt-4 mt-2">
                             <button onClick={() => { onSave(edited); setIsEditing(false); }} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-lg shadow-[#45846D]/20 active:scale-95 transition-transform flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 儲存變更</button>
                         </div>
                     ) : (
                         <div className="pt-2">
-                             {/* Non-editing mode close/confirm button (requested feature) */}
                              <button onClick={onClose} className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform">確認</button>
                         </div>
                     )}
@@ -459,37 +448,98 @@ const ActivityDetailModal: React.FC<{
     );
 };
 
-// --- ExpenseDashboard ---
+// --- ExpenseDashboard (Enhanced to show all present categories) ---
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
     const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
     const [isConverting, setIsConverting] = useState(false);
+    
+    // Memoized stats calculation: Now tracks existence separate from cost
     const stats = useMemo(() => {
         return trip.days.reduce((acc, day) => {
             day.activities.forEach(act => {
                 const cost = parseCost(act.cost);
+                const type = act.type || 'other';
+                
+                // Mark category as present even if cost is 0
+                acc.presentCategories.add(type);
+                
                 if (cost > 0) {
                     acc.total += cost;
-                    const type = act.type || 'other'; 
                     acc.byCategory[type] = (acc.byCategory[type] || 0) + cost;
                 }
             });
             return acc;
-        }, { total: 0, byCategory: {} as Record<string, number> });
+        }, { total: 0, byCategory: {} as Record<string, number>, presentCategories: new Set<string>() });
     }, [trip.days]);
-    const categories = [{ type: 'flight', label: '機票', color: 'bg-purple-500' }, { type: 'hotel', label: '住宿', color: 'bg-indigo-500' }, { type: 'transport', label: '交通', color: 'bg-gray-500' }, { type: 'food', label: '美食', color: 'bg-orange-500' }, { type: 'cafe', label: '咖啡', color: 'bg-amber-500' }, { type: 'sightseeing', label: '景點', color: 'bg-blue-500' }, { type: 'shopping', label: '購物', color: 'bg-pink-500' }, { type: 'relax', label: '放鬆', color: 'bg-emerald-500' }, { type: 'expense', label: '其他', color: 'bg-green-500' }];
+
+    const categories = [
+        { type: 'flight', label: '機票', color: 'bg-purple-500' },
+        { type: 'hotel', label: '住宿', color: 'bg-indigo-500' },
+        { type: 'transport', label: '交通', color: 'bg-gray-500' },
+        { type: 'food', label: '美食', color: 'bg-orange-500' },
+        { type: 'cafe', label: '咖啡', color: 'bg-amber-500' },
+        { type: 'sightseeing', label: '景點', color: 'bg-blue-500' },
+        { type: 'shopping', label: '購物', color: 'bg-pink-500' },
+        { type: 'relax', label: '放鬆', color: 'bg-emerald-500' },
+        { type: 'bar', label: '酒吧', color: 'bg-violet-500' },
+        { type: 'culture', label: '文化', color: 'bg-rose-500' },
+        { type: 'activity', label: '體驗', color: 'bg-cyan-500' },
+        { type: 'expense', label: '其他', color: 'bg-green-500' },
+        { type: 'other', label: '雜項', color: 'bg-gray-400' }
+    ];
+    
     const handleConvert = async () => { if (convertedTotal || stats.total === 0) { setConvertedTotal(null); return; } setIsConverting(true); const target = currencyCode === 'TWD' ? 'USD' : 'TWD'; const res = await getCurrencyRate(currencyCode, target, stats.total); setConvertedTotal(res); setIsConverting(false); };
-    return (<div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 mb-6"><div className="flex justify-between mb-4"><div><p className="text-xs text-gray-500 font-bold uppercase">總花費 ({currencyCode})</p><h3 className="text-3xl font-black text-[#1D1D1B] mt-1"><span className="text-lg font-bold text-gray-400 mr-1">{currencySymbol}</span>{stats.total.toLocaleString()}</h3><div className="h-5 mt-1">{isConverting ? <span className="text-xs text-gray-400 animate-pulse">計算中...</span> : convertedTotal && <span className="text-sm font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-0.5 rounded-lg">{convertedTotal}</span>}</div></div><button onClick={handleConvert} className="p-3 rounded-full bg-gray-100 text-gray-400"><RefreshCw className="w-5 h-5" /></button></div><div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{categories.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.type] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.type} style={{width:`${p}%`}} className={c.color} /> : null; })}</div></div>);
+    
+    return (
+        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 mb-6">
+            <div className="flex justify-between mb-4">
+                <div>
+                    <p className="text-xs text-gray-600 font-bold uppercase">總花費 ({currencyCode})</p>
+                    <h3 className="text-3xl font-black text-[#1D1D1B] mt-1"><span className="text-lg font-bold text-gray-400 mr-1">{currencySymbol}</span>{stats.total.toLocaleString()}</h3>
+                    <div className="h-5 mt-1">{isConverting ? <span className="text-xs text-gray-400 animate-pulse">計算中...</span> : convertedTotal && <span className="text-sm font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-0.5 rounded-lg">{convertedTotal}</span>}</div>
+                </div>
+                <button onClick={handleConvert} className="p-3 rounded-full bg-gray-100 text-gray-400"><RefreshCw className="w-5 h-5" /></button>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{categories.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.type] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.type} style={{width:`${p}%`}} className={c.color} /> : null; })}</div>
+            
+            {/* Detailed Grid - Shows ALL used categories even if cost is 0 */}
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-4">
+                {categories.map(cat => {
+                    // Check existence instead of amount
+                    if (!stats.presentCategories.has(cat.type)) return null;
+                    const amount = stats.byCategory[cat.type] || 0;
+                    return (
+                        <div key={cat.type} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5">
+                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
+                                <span className="text-gray-600 font-medium">{cat.label}</span>
+                            </div>
+                            <span className="font-bold text-[#1D1D1B]">{currencySymbol}{amount.toLocaleString()}</span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
 };
 
+// Route Visualization (Google Maps Fix)
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
     const { stops, mapUrl } = useMemo(() => {
         const _stops = day.activities.filter(a => a.type !== 'transport' && a.type !== 'note' && a.type !== 'expense' && a.type !== 'process').filter(a => a.title || a.location).map(a => a.location || a.title);
         let _mapUrl = '';
         if (_stops.length === 0) _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
         else if (_stops.length === 1) _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(_stops[0])}`;
-        else { const origin = encodeURIComponent(_stops[0]); const dest = encodeURIComponent(_stops[_stops.length - 1]); const waypoints = _stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|'); _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`; }
+        else { 
+            const origin = encodeURIComponent(_stops[0]); 
+            const dest = encodeURIComponent(_stops[_stops.length - 1]); 
+            const waypoints = _stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|'); 
+            _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`; 
+        }
         return { stops: _stops, mapUrl: _mapUrl };
     }, [day.activities, destination]);
     return (<div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-2"><div className="h-24 bg-[#45846D]/5 flex items-center justify-center relative"><Map className="w-8 h-8 text-[#45846D] opacity-50" /></div><div className="p-5">{stops.length===0?<div className="text-center text-gray-400 text-sm">暫無地點</div>:<><div className="space-y-0 mb-6 pl-2">{stops.map((s, i) => (<div key={i} className="flex gap-4"><div className="flex flex-col items-center w-4"><div className="w-3 h-3 rounded-full bg-[#45846D]"></div>{i!==stops.length-1&&<div className="w-[2px] flex-1 bg-gray-100"></div>}</div><p className="text-sm pb-5">{s}</p></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-[#45846D] text-white font-bold py-3.5 rounded-2xl">開啟導航</a></>}</div></div>);
@@ -498,7 +548,7 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<string>('sightseeing');
     const handleSubmit = () => { if (!title) return; onAdd({ time, title, description: '', type, location: '' }); };
-    return (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><h3 className="text-xl font-bold mb-6">新增第 {day} 天</h3><div className="space-y-4"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold text-center" /><select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold"><option value="sightseeing">景點</option><option value="food">美食</option><option value="shopping">購物</option></select></div><button className="w-full py-4 rounded-2xl bg-[#45846D] text-white font-bold" onClick={handleSubmit}>確認</button></div></div></div>);
+    return (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><h3 className="text-xl font-bold mb-6">新增第 {day} 天</h3><div className="space-y-5"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold text-center" /><select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold"><option value="sightseeing">景點</option><option value="food">美食</option><option value="shopping">購物</option></select></div><button className="w-full py-4 rounded-2xl bg-[#45846D] text-white font-bold" onClick={handleSubmit}>確認</button></div></div></div>);
 };
 
 // --- EditTripSettingsModal ---
@@ -572,13 +622,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         setIsAddModalOpen(false);
     };
 
-    // 5-Button Menu Logic (INSERT AT SPECIFIC INDEX)
+    // 5-Button Menu Logic
     const handleQuickAdd = async (type: 'activity' | 'transport' | 'note' | 'expense' | 'ai') => {
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
         const { dayIdx, actIdx } = menuTargetIndex;
         
-        // 如果是 'activity'，開啟舊的 Modal (暫時解法，理想應可插入指定位置)
         if (type === 'activity') {
             setActiveDayForAdd(dayIdx + 1);
             setIsAddModalOpen(true);
@@ -586,9 +635,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         }
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        const insertIdx = actIdx + 1; // 插入在點擊的按鈕之後
+        const insertIdx = actIdx + 1; 
         
-        // Get previous activity time to set default
         const prevAct = newTrip.days[dayIdx].activities[actIdx];
         const nextTime = prevAct ? prevAct.time : '09:00';
 
@@ -613,7 +661,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             newTrip.days[dayIdx] = recalculateTimeline(newTrip.days[dayIdx]);
             onUpdateTrip(newTrip);
             
-            // Auto open modal for editing
             if (['note', 'expense', 'transport'].includes(type)) {
                 setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct });
             }
@@ -642,11 +689,17 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     // Dynamic Header Info
     const flightDisplayOrigin = trip.origin || 'ORIGIN';
     const flightDisplayDest = trip.destination || 'DEST';
+    const firstType = trip.days[0]?.activities[0]?.type || 'other';
+
+    // Header Background Logic
+    const headerBgClass = 
+        firstType === 'flight' ? 'bg-[#2C5E4B]' : 
+        firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
 
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full flex flex-col relative animate-in slide-in-from-right duration-300">
             {/* Header: Boarding Pass Style (Enhanced) */}
-            <div className="flex-shrink-0 h-72 relative group z-10 shadow-lg overflow-hidden bg-[#1D1D1B]">
+            <div className={`flex-shrink-0 h-72 relative group z-10 shadow-lg overflow-hidden ${headerBgClass}`}>
                 <button onClick={onBack} className="absolute top-6 left-5 w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white z-50 hover:bg-white/20"><ArrowLeft className="w-6 h-6" /></button>
                 <div className="absolute top-6 right-5 flex gap-3 z-50">
                     <button onClick={() => setIsEditSettingsOpen(true)} className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20"><PenTool className="w-5 h-5" /></button>
@@ -654,9 +707,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     <button onClick={onDelete} className="w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-600"><Trash2 className="w-5 h-5" /></button>
                 </div>
                 
-                {/* Background with Gradient Overlay */}
-                <img src={trip.coverImage} className="w-full h-full object-cover opacity-60" alt="Cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#1D1D1B] via-[#1D1D1B]/40 to-transparent" />
+                {/* Background Logic */}
+                {(firstType !== 'flight' && firstType !== 'train') && (
+                    <>
+                        <img src={trip.coverImage} className="w-full h-full object-cover opacity-60" alt="Cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#1D1D1B] via-[#1D1D1B]/40 to-transparent" />
+                    </>
+                )}
                 
                 {/* Boarding Pass Content */}
                 <div className="absolute inset-0 p-6 flex flex-col justify-end z-20 pt-20">
@@ -664,14 +721,14 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
                             <div>
                                 <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] block mb-1 uppercase">FROM</span>
-                                <span className="text-5xl font-black font-sans tracking-tight text-white">{flightDisplayOrigin}</span>
+                                <span className="text-5xl font-black font-sans tracking-tight text-white uppercase">{flightDisplayOrigin}</span>
                             </div>
                             <div className="mb-2 opacity-80 animate-pulse">
-                                <Plane className="w-8 h-8 text-white rotate-90" />
+                                {firstType === 'train' ? <Train className="w-8 h-8 text-white" /> : <Plane className="w-8 h-8 text-white" />}
                             </div>
                             <div className="text-right">
                                 <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] block mb-1 uppercase">TO</span>
-                                <span className="text-5xl font-black font-sans tracking-tight text-white">{flightDisplayDest}</span>
+                                <span className="text-5xl font-black font-sans tracking-tight text-white uppercase">{flightDisplayDest}</span>
                             </div>
                         </div>
                     </div>
@@ -687,6 +744,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                             </div>
                             <div className="text-sm font-bold bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-md">{trip.days.length} DAYS</div>
                             <button onClick={() => setShowExpenses(!showExpenses)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-[#45846D] text-white ml-auto hover:bg-[#3A705C] transition-colors"><Wallet className="w-4 h-4" /> {currencyCode}</button>
+                            <button onClick={() => setShowSettings(!showSettings)} className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white border border-white/10"><Settings className="w-3 h-3" /></button>
                         </div>
                     </div>
                 </div>

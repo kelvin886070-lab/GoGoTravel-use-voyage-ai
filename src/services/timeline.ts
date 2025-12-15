@@ -44,6 +44,53 @@ const parseDurationString = (durationStr?: string): number => {
 };
 
 /**
+ * 判斷是否為「定點活動」 (Stay Activity)
+ * 這些活動之間如果沒有交通，就需要插入移動卡片
+ */
+const isStayActivity = (type: string): boolean => {
+    const stayTypes = ['sightseeing', 'food', 'cafe', 'shopping', 'relax', 'bar', 'culture', 'activity', 'hotel', 'other'];
+    return stayTypes.includes(type);
+};
+
+/**
+ * 檢查並填補缺失的移動卡片 (Gap Filling)
+ * 如果 Act A 和 Act B 都是定點活動，中間自動插入 "移動 (預估 15 min)"
+ */
+const ensureGapConnectors = (activities: Activity[]): Activity[] => {
+    if (activities.length < 2) return activities;
+    
+    const result: Activity[] = [];
+    
+    for (let i = 0; i < activities.length; i++) {
+        const current = activities[i];
+        result.push(current);
+
+        // 如果還有下一個活動
+        if (i < activities.length - 1) {
+            const next = activities[i + 1];
+            
+            // 邏輯：當前是定點 && 下一個也是定點 -> 插入移動
+            if (isStayActivity(current.type) && isStayActivity(next.type)) {
+                result.push({
+                    time: current.time, // 暫時時間，稍後會被重算
+                    title: '移動 (預估)',
+                    description: '系統自動填補，點擊可修改',
+                    type: 'transport',
+                    location: '',
+                    cost: 0,
+                    transportDetail: {
+                        mode: 'walk',
+                        duration: '15 min',
+                        instruction: '前往下個地點'
+                    }
+                });
+            }
+        }
+    }
+    return result;
+};
+
+/**
  * 檢查並修復入境流程 (Arrival Process Injection)
  * 如果第一項是航班，且第二項不是 Process，則自動插入入境審查卡片
  */
@@ -51,13 +98,11 @@ const ensureArrivalProcess = (activities: Activity[]): Activity[] => {
     if (activities.length === 0) return activities;
 
     const firstAct = activities[0];
-    // 判斷是否為抵達航班 (通常是第一項且是 flight)
     if (firstAct.type === 'flight') {
         const nextAct = activities[1];
-        // 如果下一項還不是 process，就插入
         if (!nextAct || nextAct.type !== 'process') {
             const processCard: Activity = {
-                time: firstAct.time, // 暫時用一樣的時間，recalculateTimeline 會修復它
+                time: firstAct.time,
                 title: '入境審查 & 領取行李',
                 description: '請預留時間辦理入境手續與提領行李。',
                 type: 'process',
@@ -65,11 +110,10 @@ const ensureArrivalProcess = (activities: Activity[]): Activity[] => {
                 cost: 0,
                 transportDetail: {
                     mode: 'walk',
-                    duration: '60 min', // 預設 60 分鐘
+                    duration: '60 min',
                     instruction: '入境流程'
                 }
             };
-            // 插入在航班之後 (index 1)
             const newActivities = [...activities];
             newActivities.splice(1, 0, processCard);
             return newActivities;
@@ -80,18 +124,19 @@ const ensureArrivalProcess = (activities: Activity[]): Activity[] => {
 
 /**
  * 核心函式：重新計算當天的所有活動時間
- * 確保時間軸連續，並自動加入出關/交通緩衝
  */
 export const recalculateTimeline = (day: TripDay): TripDay => {
     let activities = JSON.parse(JSON.stringify(day.activities)) as Activity[];
     
     if (activities.length === 0) return day;
 
-    // 1. 自動檢查並插入「入境審查」卡片 (僅針對第一天或抵達日)
-    // 這裡我們假設如果第一筆是 flight，就需要 process
+    // 1. 自動檢查並插入「入境審查」
     activities = ensureArrivalProcess(activities);
 
-    // 2. 設定起始時間錨點 (Anchor)
+    // 2. 自動填補缺失的「移動卡片」 (新增邏輯)
+    activities = ensureGapConnectors(activities);
+
+    // 3. 設定起始時間錨點
     let currentClock = timeToMinutes(activities[0].time);
 
     for (let i = 0; i < activities.length; i++) {
@@ -104,35 +149,30 @@ export const recalculateTimeline = (day: TripDay): TripDay => {
             currentClock = timeToMinutes(act.time); 
         }
 
-        // 3. 計算此活動的持續時間 (Duration)
+        // 4. 計算此活動的持續時間
         let duration = 60; // 預設
 
         if (act.type === 'note' || act.type === 'expense') {
-            duration = 0; // 不佔用時間
+            duration = 0;
         } else if (act.type === 'flight') {
-            // 航班本身不佔用時間軸 (因為它標示的是抵達時間)
-            // 真正的耗時會由下一張 'process' 卡片來承擔
-            duration = 0; 
+            duration = 0; // 航班本身不佔用時間軸，耗時由 process 承擔
         } else if (act.type === 'process') {
-            // 入境審查 / 手續
             duration = parseDurationString(act.transportDetail?.duration || '60 min');
         } else if (act.type === 'transport' && act.transportDetail) {
             duration = parseDurationString(act.transportDetail.duration);
-            if (duration === 0) duration = 30;
+            if (duration === 0) duration = 15; // 預設移動至少 15 分鐘
         } else {
-            // 一般活動預設時間
             switch (act.type) {
                 case 'food': duration = 60; break;
                 case 'cafe': duration = 45; break;
                 case 'sightseeing': duration = 90; break;
                 case 'shopping': duration = 120; break;
                 case 'relax': duration = 60; break;
-                case 'hotel': duration = 30; break; // 辦理入住
+                case 'hotel': duration = 30; break;
                 default: duration = 60;
             }
         }
 
-        // 4. 將時間往後推
         currentClock += duration;
     }
 
