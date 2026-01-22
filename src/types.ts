@@ -23,13 +23,21 @@ export const ToolType = {
 } as const;
 export type ToolType = typeof ToolType[keyof typeof ToolType];
 
-// 3. 使用者定義
+// 3. 使用者定義 (登入者本人)
 export interface User {
   id: string;
   name: string;
   joinedDate: string;
   avatar: string;
   email?: string;
+}
+
+// [新增] 3.5 旅伴成員定義 (用於分帳)
+export interface Member {
+  id: string;
+  name: string;
+  avatar?: string; // 預留給未來大頭貼功能，目前可用預設圖
+  isHost?: boolean; // 是否為行程建立者(本人)
 }
 
 // 4. 交通詳細資訊
@@ -41,13 +49,12 @@ export interface TransportDetail {
   instruction?: string;  
 }
 
-// 5. 行程細節相關 (新增 process)
+// 5. 行程細節相關
 export interface Activity {
   id?: string;
   time: string;
   title: string;
   description: string;
-  // 擴充 type 定義: 加入 'process' (用於入境審查等流程)
   type: 'sightseeing' | 'food' | 'transport' | 'flight' | 'hotel' | 'cafe' | 'shopping' | 'relax' | 'bar' | 'culture' | 'activity' | 'note' | 'expense' | 'process' | 'other' | string;
   category?: string; 
   location?: string; 
@@ -55,6 +62,11 @@ export interface Activity {
   
   // 交通詳細資訊
   transportDetail?: TransportDetail; 
+
+  // [新增] 記帳相關欄位
+  payer?: string;        // 付款人的 Member ID (若無則預設為本人)
+  splitWith?: string[];  // 分攤者的 Member ID 列表 (空值代表不分攤或是全員分攤，視邏輯而定)
+  expenseImage?: string; // 拍立得照片/收據圖片 (Base64 或 URL)
 }
 
 export interface TripDay {
@@ -76,6 +88,9 @@ export interface Trip {
   days: TripDay[];
   isDeleted?: boolean;
   currency?: string; 
+
+  // [新增] 行程成員名單
+  members?: Member[]; 
 }
 
 // 6. 檢查表相關

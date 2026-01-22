@@ -18,19 +18,19 @@ const CACHE_TTL = {
 };
 
 // ==========================================================
-// 核心：純 HTTP 請求函式
+// 核心：純 HTTP 請求函式 (文字模式)
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash",
-        
+        "gemini-2.5-flash", // 嘗試使用最新模型
+        "gemini-1.5-flash", // 備援
     ];
     let lastError = null;
 
     for (const model of candidateModels) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
-            console.log(` [Kelvin Trip] 嘗試呼叫模型: ${model}`);
+            // console.log(` [Kelvin Trip] 嘗試呼叫模型: ${model}`);
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -41,7 +41,6 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log(` 成功！模型 ${model} 正常運作。`);
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
                 const err = await response.json().catch(() => ({}));
@@ -58,6 +57,45 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
     }
 
     throw lastError || new Error("系統忙碌中，請稍後再試。");
+}
+
+// ==========================================================
+// [新增] 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
+// ==========================================================
+async function callGeminiVision(prompt: string, base64Image: string): Promise<string> {
+    // 視覺任務建議使用 1.5-flash 或 1.5-pro
+    const model = "gemini-1.5-flash"; 
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    // 移除 base64 的前綴 (data:image/jpeg;base64,) 如果有的話
+    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        {
+                            inline_data: {
+                                mime_type: "image/jpeg", // 假設大多是 jpeg/png，API 通常能容錯
+                                data: cleanBase64
+                            }
+                        }
+                    ]
+                }]
+            })
+        });
+
+        if (!response.ok) throw new Error("Vision API failed");
+        const data = await response.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    } catch (e) {
+        console.error("Gemini Vision Error:", e);
+        throw e;
+    }
 }
 
 // --- 快取邏輯 ---
@@ -99,7 +137,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成 (大腦升級)
+// 1. 行程生成 (維持不變)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -112,7 +150,6 @@ export const generateItinerary = async (
 ): Promise<TripDay[]> => {
   
   const cacheKey = `itinerary_v4_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
-  
   return fetchWithCache(cacheKey, async () => {
       let context = "";
       
@@ -140,7 +177,8 @@ export const generateItinerary = async (
           transportInstruction = `
             - **Transport Mode**: Rental Car / Driving.
             - Group locations logically to minimize driving time.
-            - Insert "transport" items for drives > 30 mins. Set "transportDetail" mode to "car".
+            - Insert "transport" items for drives > 30 mins.
+            - Set "transportDetail" mode to "car".
           `;
       } else {
           transportInstruction = `
@@ -161,20 +199,17 @@ export const generateItinerary = async (
 
         1. **Arrival Logic (Day 1)**:
            - The first activity MUST be the arrival (Flight/Train).
-           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**. 
+           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**.
              (e.g., "Exit North Gate to Bus Stop 5", "Go to B1 for Express Train").
            - The NEXT activity (e.g. moving to hotel) should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
-
         2. **Gap Connectors (Transport)**:
            - You MUST explicitly calculate travel time between spots.
            - Use 'type': 'transport' for these movements.
            - Fill 'transportDetail': { "mode": "bus"|"train"|"car"|"walk", "duration": "XX min" }.
            - The 'duration' string will be used for timeline calculation.
-
         3. **Data Integrity**:
            - **Currency**: Estimate costs in **${currency}** (Number only).
            - **Types**: Use strict types: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity".
-        
         4. **Format**: Output valid JSON only.
         
         JSON Structure Example:
@@ -211,7 +246,6 @@ export const generateItinerary = async (
         
         Language: Traditional Chinese (繁體中文).
       `;
-
       try {
         const text = await callGeminiDirectly(prompt);
         const data = parseJSON<TripDay[]>(text);
@@ -238,7 +272,6 @@ interface FlightInfo {
 
 export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo | null> => {
     if (!/^[A-Z0-9]{2,3}\d{3,4}$/.test(flightCode)) return null;
-
     return fetchWithCache(`flight_v2_${flightCode}`, async () => {
         const prompt = `
             Act as an aviation data specialist.
@@ -284,7 +317,6 @@ export const suggestNextSpot = async (
         User is at "${currentLocation}" at "${currentTime}".
         Interests: ${interests}.
         Recommend ONE best place to visit next within 20 mins walking or short transit.
-        
         Return JSON ONLY:
         {
             "time": "${currentTime}",
@@ -303,7 +335,35 @@ export const suggestNextSpot = async (
 };
 
 // ==========================================================
-// 4. 匯率查詢 & 其他工具
+// [新增] 4. AI 辨識收據 (Vision API)
+// ==========================================================
+export const analyzeReceiptImage = async (base64Image: string): Promise<{ title: string; cost: number } | null> => {
+    const prompt = `
+        你是一個專業的會計助手。請分析這張圖片（收據、發票、或菜單）。
+        請幫我提取兩個資訊：
+        1. **主要品項名稱 (title)**：如果是餐廳，請給我餐廳名字；如果是購物，請給我商品類別或店名。請用精簡的中文。
+        2. **總金額 (cost)**：找出這張收據的「總計 (Total)」金額。請只回傳數字。
+
+        如果圖片模糊或不是收據，請回傳 null。
+
+        回傳 JSON 格式 (不要 Markdown):
+        {
+            "title": "星巴克咖啡",
+            "cost": 150
+        }
+    `;
+
+    try {
+        const text = await callGeminiVision(prompt, base64Image);
+        return parseJSON<{ title: string; cost: number }>(text);
+    } catch (e) {
+        console.error("AI Receipt Analysis Failed:", e);
+        return null;
+    }
+};
+
+// ==========================================================
+// 5. 匯率查詢 & 其他工具
 // ==========================================================
 const fetchRealTimeRate = async (from: string, to: string): Promise<number | null> => {
     try {
@@ -366,11 +426,11 @@ export const getWeatherForecast = async (location: string): Promise<WeatherInfo 
         const data = await response.json();
         return {
           location: data.location.name,
-          temperature: `${Math.round(data.current.temp_c)}°C`,
+          temperature: `${Math.round(data.current.temp_c)}°`,
           condition: data.current.condition.text,
           humidity: `${data.current.humidity}%`,
           wind: `${data.current.wind_kph} km/h`,
-          description: `體感 ${data.current.feelslike_c}°C`,
+          description: `體感 ${data.current.feelslike_c}°`,
           clothingSuggestion: "建議穿著舒適衣物",
           activityTip: "適合戶外走走",
           sunrise: data.forecast.forecastday[0].astro.sunrise,

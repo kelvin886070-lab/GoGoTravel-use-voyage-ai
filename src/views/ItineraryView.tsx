@@ -4,12 +4,13 @@ import {
     ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
     RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
     Car, Footprints, TramFront, Clock, MapPin, ChevronRight, Edit3, Save, ExternalLink,
-    StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding
+    StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding,
+    Users, UserPlus, Check, Image as ImageIcon, Loader2
 } from 'lucide-react';
-import type { Trip, TripDay, Activity } from '../types';
+import type { Trip, TripDay, Activity, Member } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { IOSInput, IOSShareSheet, IOSButton } from '../components/UI';
-import { getCurrencyRate, suggestNextSpot } from '../services/gemini';
+import { getCurrencyRate, suggestNextSpot, analyzeReceiptImage } from '../services/gemini';
 import { recalculateTimeline } from '../services/timeline';
 
 // --- Constants ---
@@ -28,6 +29,20 @@ const parseCost = (costStr?: string | number): number => {
     const match = cleanStr.match(/(\d+(\.\d+)?)/);
     if (match) return parseFloat(match[0]);
     return 0;
+};
+
+// --- Helper: Get Member Name by ID ---
+const getMemberName = (members: Member[] | undefined, id?: string) => {
+    if (!members || !id) return '我';
+    const m = members.find(m => m.id === id);
+    return m ? m.name : '我';
+};
+
+const getMemberAvatarColor = (name: string) => {
+    const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
 };
 
 // --- Sub Components ---
@@ -69,7 +84,7 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// --- Process Item (Immigration/Check-in Pill) ---
+// --- Process Item ---
 const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     return (
@@ -110,7 +125,6 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
         if (m.includes('flight')) return <Plane className="w-4 h-4" />;
         return <Bus className="w-4 h-4" />;
     };
-
     return (
         <div 
             ref={provided.innerRef} 
@@ -185,30 +199,64 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
-// --- Expense Item ---
-const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
+// --- [新] Expense Item (Polaroid Style) ---
+const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
+    const payerName = getMemberName(members, act.payer);
+    const avatarColor = getMemberAvatarColor(payerName);
+
     return (
         <div 
             ref={provided.innerRef} 
             {...provided.draggableProps} 
             style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-            className={`flex gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
+            className={`flex gap-3 py-2 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`}
             onClick={onClick}
         >
-            <div className="flex flex-col items-center w-[55px] pt-2">
-                <Banknote className="w-4 h-4 text-green-500" />
+            {/* Timeline Line */}
+            <div className="flex flex-col items-center w-[55px] self-stretch relative pt-2">
+                <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-200 left-1/2 -ml-[1px] -z-10"></div>
+                <div className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm z-10 text-xs font-bold text-gray-400">
+                    <Banknote className="w-4 h-4 text-green-500" />
+                </div>
             </div>
-            <div className="flex-1 bg-green-50 rounded-xl p-3 border border-green-100 flex items-center justify-between gap-3 active:scale-[0.98] transition-transform cursor-pointer">
-                <div className="min-w-0 flex items-center gap-2">
-                    <h4 className="font-bold text-green-800 text-sm truncate">{act.title || '支出'}</h4>
-                    <span className="text-xs font-bold bg-white text-green-600 px-2 py-0.5 rounded-full shadow-sm border border-green-100">
-                        {currencySymbol} {displayCost}
-                    </span>
+
+            {/* Polaroid Card */}
+            <div className="flex-1 bg-white p-3 pb-4 rounded-sm shadow-md border border-gray-100 rotate-1 transition-transform hover:rotate-0 active:scale-[0.98] cursor-pointer relative overflow-hidden">
+                {/* Photo Area */}
+                <div className="aspect-video bg-gray-100 mb-3 rounded-sm overflow-hidden relative group-hover:brightness-95 transition-all">
+                    {act.expenseImage ? (
+                        <img src={act.expenseImage} alt="Receipt" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                            <Camera className="w-8 h-8 opacity-50" />
+                        </div>
+                    )}
+                    {/* Payer Sticker */}
+                    <div className={`absolute top-2 right-2 ${avatarColor} text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-white transform rotate-6`}>
+                        {payerName} 付款
+                    </div>
                 </div>
-                <div {...provided.dragHandleProps} className="text-green-300 p-1" onClick={(e) => e.stopPropagation()}>
-                    <GripVertical className="w-4 h-4" />
+
+                {/* Info Area */}
+                <div className="flex justify-between items-end px-1">
+                    <div>
+                        <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1">{act.title || '未命名支出'}</div>
+                        <div className="text-[10px] text-gray-400 font-mono">{act.time}</div>
+                    </div>
+                    <div className="text-right">
+                        <div className="font-mono font-bold text-xl text-green-600">{currencySymbol}{displayCost}</div>
+                    </div>
                 </div>
+
+                {/* Split Dots */}
+                {act.splitWith && act.splitWith.length > 0 && (
+                    <div className="absolute bottom-2 left-4 flex -space-x-1">
+                        {act.splitWith.map((mid, idx) => (
+                            <div key={idx} className={`w-2 h-2 rounded-full border border-white ${getMemberAvatarColor(getMemberName(members, mid))}`} />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -260,17 +308,23 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
     );
 };
 
-// --- Activity Detail Modal ---
+// --- Activity Detail Modal (Enhanced with Members & AI) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
-    onClose: () => void; 
+    onClose: () => void;
     onSave: (updatedAct: Activity) => void; 
     onDelete: () => void; 
-}> = ({ act, onClose, onSave, onDelete }) => {
+    members?: Member[]; // New Prop
+}> = ({ act, onClose, onSave, onDelete, members = [] }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [edited, setEdited] = useState<Activity>({ ...act });
+    const [aiProcessing, setAiProcessing] = useState(false);
     
+    // Ensure payer has a value (default to first member or empty)
     useEffect(() => {
+        if (!edited.payer && members.length > 0) {
+            setEdited(prev => ({ ...prev, payer: members[0].id }));
+        }
         if ((edited.type === 'note' && edited.title === '新備註') || 
             (edited.type === 'expense' && edited.title === '新支出') ||
             (edited.type === 'transport' && edited.title === '移動')) {
@@ -297,6 +351,43 @@ const ActivityDetailModal: React.FC<{
                 [field]: value
             } as any
         }));
+    };
+
+    // AI Receipt Analysis
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Preview
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64 = reader.result as string;
+            setEdited(prev => ({ ...prev, expenseImage: base64 }));
+            
+            // Trigger AI
+            setAiProcessing(true);
+            const result = await analyzeReceiptImage(base64);
+            setAiProcessing(false);
+
+            if (result) {
+                setEdited(prev => ({ 
+                    ...prev, 
+                    title: result.title || prev.title, 
+                    cost: result.cost || prev.cost,
+                    expenseImage: base64 
+                }));
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const toggleSplitMember = (mid: string) => {
+        const currentSplits = edited.splitWith || [];
+        if (currentSplits.includes(mid)) {
+            setEdited(prev => ({ ...prev, splitWith: currentSplits.filter(id => id !== mid) }));
+        } else {
+            setEdited(prev => ({ ...prev, splitWith: [...currentSplits, mid] }));
+        }
     };
 
     return (
@@ -347,6 +438,87 @@ const ActivityDetailModal: React.FC<{
                         </div>
                     )}
 
+                    {/* Expense Special UI (Photo + AI + Split) */}
+                    {isExpense && (
+                        <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-4">
+                            {/* 1. Photo Upload Area */}
+                            <div className="relative w-full aspect-video bg-white rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group hover:border-[#45846D] transition-colors">
+                                {edited.expenseImage ? (
+                                    <>
+                                        <img src={edited.expenseImage} className="w-full h-full object-cover" />
+                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
+                                    </>
+                                ) : (
+                                    <div className="text-gray-400 flex flex-col items-center">
+                                        <Camera className="w-8 h-8 mb-2" />
+                                        <span className="text-xs font-bold">上傳收據 / 照片</span>
+                                        <span className="text-[10px] opacity-70 mt-1">AI 自動辨識品項與金額</span>
+                                    </div>
+                                )}
+                                {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
+                                {aiProcessing && (
+                                    <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-20">
+                                        <Loader2 className="w-8 h-8 text-[#45846D] animate-spin mb-2" />
+                                        <span className="text-xs font-bold text-[#45846D] animate-pulse">AI 辨識中...</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 2. Amount Input */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">金額</label>
+                                {isEditing ? (
+                                    <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} placeholder="0" className="text-2xl font-mono text-center" />
+                                ) : (
+                                    <div className="text-3xl font-black text-center text-[#1D1D1B] font-mono">{edited.cost}</div>
+                                )}
+                            </div>
+
+                            {/* 3. Payer & Split (Only if members exist) */}
+                            {members.length > 0 && (
+                                <>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">誰付的錢 (Payer)</label>
+                                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                                            {members.map(m => (
+                                                <button 
+                                                    key={m.id} 
+                                                    onClick={() => isEditing && handleChange('payer', m.id)}
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all ${edited.payer === m.id ? 'bg-[#1D1D1B] text-white border-[#1D1D1B] shadow-md' : 'bg-white text-gray-500 border-gray-200'}`}
+                                                    disabled={!isEditing}
+                                                >
+                                                    <div className={`w-4 h-4 rounded-full ${getMemberAvatarColor(m.name)} border border-white`} />
+                                                    <span className="text-xs font-bold">{m.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">分給誰 (Split)</label>
+                                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                                            {members.map(m => {
+                                                const isSelected = (edited.splitWith || []).includes(m.id);
+                                                return (
+                                                    <button 
+                                                        key={m.id} 
+                                                        onClick={() => isEditing && toggleSplitMember(m.id)}
+                                                        className={`flex flex-col items-center gap-1 min-w-[50px] transition-all ${!isEditing ? 'opacity-100' : ''}`}
+                                                        disabled={!isEditing}
+                                                    >
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isSelected ? `border-[#45846D] ${getMemberAvatarColor(m.name)} text-white` : 'border-gray-200 bg-white text-gray-300'}`}>
+                                                            {isSelected ? <Check className="w-5 h-5" /> : <span className="text-xs font-bold">{m.name[0]}</span>}
+                                                        </div>
+                                                        <span className={`text-[10px] font-bold ${isSelected ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>{m.name}</span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     {isNote && (
                         <div>
                             <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">備註標題</label>
@@ -371,7 +543,7 @@ const ActivityDetailModal: React.FC<{
                                     <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">工具/模式</label>
                                     {isEditing ? (
                                         <select value={edited.transportDetail?.mode || 'bus'} onChange={e => handleTransportDetailChange('mode', e.target.value)} className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold outline-none appearance-none">
-                                            <option value="bus">🚌 公車</option><option value="train">🚄 火車</option><option value="car">🚗 汽車</option><option value="walk">🚶 步行</option><option value="flight">✈️ 飛機</option>
+                                            <option value="bus"> 公車</option><option value="train"> 火車</option><option value="car"> 汽車</option><option value="walk"> 步行</option><option value="flight"> 飛機</option>
                                         </select>
                                     ) : (
                                         <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold capitalize">{edited.transportDetail?.mode || 'Bus'}</div>
@@ -394,16 +566,16 @@ const ActivityDetailModal: React.FC<{
                         </>
                     )}
 
-                    {!isTransport && !isNote && !isProcess && (
+                    {!isTransport && !isNote && !isProcess && !isExpense && (
                         <>
                             <div className="flex gap-3">
                                 <div className="flex-1">
                                     <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">類型</label>
                                     {isEditing ? (
                                         <select value={edited.type} onChange={e => handleChange('type', e.target.value)} className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold outline-none appearance-none text-sm">
-                                            <option value="sightseeing">📷 景點</option><option value="food">🍴 美食</option><option value="shopping">🛍️ 購物</option><option value="expense">💸 記帳</option><option value="other">📦 其他</option>
+                                            <option value="sightseeing"> 景點</option><option value="food"> 美食</option><option value="shopping"> 購物</option><option value="expense"> 記帳</option><option value="other"> 其他</option>
                                         </select>
-                                    ) : (
+                                     ) : (
                                         <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold flex items-center gap-2"><Tag type={edited.type} /></div>
                                     )}
                                 </div>
@@ -416,16 +588,14 @@ const ActivityDetailModal: React.FC<{
                                     )}
                                 </div>
                             </div>
-                            {!isExpense && (
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">地點</label>
-                                    {isEditing ? (
-                                        <div className="relative"><MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-[#F5F5F4] rounded-xl py-3 pl-9 pr-3 text-sm outline-none" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
-                                    ) : (
-                                        <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-[#F5F5F4] p-3 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D]">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
-                                    )}
-                                </div>
-                            )}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">地點</label>
+                                {isEditing ? (
+                                    <div className="relative"><MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-[#F5F5F4] rounded-xl py-3 pl-9 pr-3 text-sm outline-none" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
+                                ) : (
+                                    <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-[#F5F5F4] p-3 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D]">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
+                                )}
+                            </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">備註</label>
                                 {isEditing ? <textarea className="w-full bg-[#F5F5F4] rounded-xl p-3 h-32" value={edited.description || ''} onChange={e => handleChange('description', e.target.value)} /> : <div className="w-full bg-white border border-gray-100 rounded-xl p-4 text-sm text-gray-700 min-h-[100px]">{edited.description || '無'}</div>}
@@ -532,8 +702,8 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
     const { stops, mapUrl } = useMemo(() => {
         const _stops = day.activities.filter(a => a.type !== 'transport' && a.type !== 'note' && a.type !== 'expense' && a.type !== 'process').filter(a => a.title || a.location).map(a => a.location || a.title);
         let _mapUrl = '';
-        if (_stops.length === 0) _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
-        else if (_stops.length === 1) _mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(_stops[0])}`;
+        if (_stops.length === 0) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(destination)}`;
+        else if (_stops.length === 1) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(_stops[0])}`;
         else { 
             const origin = encodeURIComponent(_stops[0]); 
             const dest = encodeURIComponent(_stops[_stops.length - 1]); 
@@ -546,18 +716,103 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
 };
 
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
-    const [title, setTitle] = useState(''); const [time, setTime] = useState('09:00'); const [type, setType] = useState<string>('sightseeing');
-    const handleSubmit = () => { if (!title) return; onAdd({ time, title, description: '', type, location: '' }); };
+    const [title, setTitle] = useState('');
+    const [time, setTime] = useState('09:00'); const [type, setType] = useState<string>('sightseeing');
+    const handleSubmit = () => { if (!title) return;
+    onAdd({ time, title, description: '', type, location: '' }); };
     return (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><h3 className="text-xl font-bold mb-6">新增第 {day} 天</h3><div className="space-y-5"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold text-center" /><select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold"><option value="sightseeing">景點</option><option value="food">美食</option><option value="shopping">購物</option></select></div><button className="w-full py-4 rounded-2xl bg-[#45846D] text-white font-bold" onClick={handleSubmit}>確認</button></div></div></div>);
 };
 
-// --- EditTripSettingsModal ---
+// --- EditTripSettingsModal (with Members) ---
 const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
     const [dest, setDest] = useState(trip.destination);
     const [start, setStart] = useState(trip.startDate);
     const [daysCount, setDaysCount] = useState(trip.days.length);
-    const handleSave = () => { const s = new Date(start); const e = new Date(s); e.setDate(s.getDate() + (daysCount - 1)); let newDays = [...trip.days]; if (daysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= daysCount; i++) newDays.push({ day: i, activities: [] }); } else newDays = newDays.slice(0, daysCount); onUpdate({ ...trip, destination: dest, startDate: start, endDate: e.toISOString().split('T')[0], days: newDays }); onClose(); };
-    return (<div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-[#1D1D1B]">編輯行程資訊</h3><button onClick={onClose}><X className="w-5 h-5" /></button></div><div className="space-y-4"><div><label className="text-xs font-bold text-gray-400">目的地</label><IOSInput value={dest} onChange={e => setDest(e.target.value)} /></div><div><label className="text-xs font-bold text-gray-400">開始日期</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl font-bold" /></div><div><label className="text-xs font-bold text-gray-400">天數</label><IOSInput type="number" value={daysCount} onChange={e => setDaysCount(Number(e.target.value))} /></div><IOSButton fullWidth onClick={handleSave}>儲存變更</IOSButton></div></div></div>);
+    const [members, setMembers] = useState<Member[]>(trip.members || []);
+    const [newMemberName, setNewMemberName] = useState('');
+
+    const handleSave = () => { 
+        const s = new Date(start); 
+        const e = new Date(s);
+        e.setDate(s.getDate() + (daysCount - 1)); 
+        let newDays = [...trip.days]; 
+        if (daysCount > trip.days.length) { 
+            for (let i = trip.days.length + 1; i <= daysCount; i++) newDays.push({ day: i, activities: [] });
+        } else {
+            newDays = newDays.slice(0, daysCount); 
+        }
+        onUpdate({ 
+            ...trip, 
+            destination: dest, 
+            startDate: start, 
+            endDate: e.toISOString().split('T')[0], 
+            days: newDays,
+            members: members
+        }); 
+        onClose(); 
+    };
+
+    const addMember = () => {
+        if (!newMemberName.trim()) return;
+        const newMember: Member = {
+            id: Date.now().toString(),
+            name: newMemberName.trim()
+        };
+        setMembers([...members, newMember]);
+        setNewMemberName('');
+    };
+
+    const removeMember = (id: string) => {
+        setMembers(members.filter(m => m.id !== id));
+    };
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center sm:p-4">
+            <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10 animate-in slide-in-from-bottom">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-[#1D1D1B]">編輯行程設定</h3>
+                    <button onClick={onClose}><X className="w-5 h-5" /></button>
+                </div>
+                
+                <div className="space-y-5 overflow-y-auto max-h-[70vh]">
+                    {/* Basic Info */}
+                    <div className="space-y-4">
+                        <div><label className="text-xs font-bold text-gray-400">目的地</label><IOSInput value={dest} onChange={e => setDest(e.target.value)} /></div>
+                        <div><label className="text-xs font-bold text-gray-400">開始日期</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl font-bold" /></div>
+                        <div><label className="text-xs font-bold text-gray-400">天數</label><IOSInput type="number" value={daysCount} onChange={e => setDaysCount(Number(e.target.value))} /></div>
+                    </div>
+
+                    <div className="h-px bg-gray-100" />
+
+                    {/* Members Section */}
+                    <div>
+                        <label className="text-xs font-bold text-gray-400 mb-2 block uppercase">旅伴成員</label>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {members.map(m => (
+                                <div key={m.id} className="bg-gray-100 pl-3 pr-2 py-1.5 rounded-full flex items-center gap-2">
+                                    <span className="text-xs font-bold">{m.name}</span>
+                                    <button onClick={() => removeMember(m.id)} className="bg-white rounded-full p-0.5 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <input 
+                                placeholder="輸入名字 (如: Amy)" 
+                                className="flex-1 bg-[#F5F5F4] rounded-xl px-4 py-3 text-sm outline-none font-bold"
+                                value={newMemberName}
+                                onChange={e => setNewMemberName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && addMember()}
+                            />
+                            <button onClick={addMember} className="bg-[#1D1D1B] text-white rounded-xl w-12 flex items-center justify-center"><Plus className="w-5 h-5" /></button>
+                        </div>
+                    </div>
+
+                    <IOSButton fullWidth onClick={handleSave}>儲存變更</IOSButton>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // ============================================================================
@@ -579,12 +834,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const [editingTitle, setEditingTitle] = useState(trip.destination);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
-    
     // Plus Menu State
     const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
     const [menuTargetIndex, setMenuTargetIndex] = useState<{dayIdx: number, actIdx: number} | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
-
     // Detail Modal State
     const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity } | null>(null);
     
@@ -594,12 +847,22 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Initialize default member (Me) if empty
+    useEffect(() => {
+        if (!trip.members || trip.members.length === 0) {
+            onUpdateTrip({ 
+                ...trip, 
+                members: [{ id: 'me', name: '我', isHost: true }] 
+            });
+        }
+    }, []);
+
     useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
     const handleTitleBlur = () => { if (editingTitle !== trip.destination) onUpdateTrip({ ...trip, destination: editingTitle }); };
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file); } };
     const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); setShowSettings(false); };
     const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
-
+    
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         const sourceDayIndex = parseInt(result.source.droppableId.replace('day-', '')) - 1;
@@ -627,7 +890,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
         const { dayIdx, actIdx } = menuTargetIndex;
-        
         if (type === 'activity') {
             setActiveDayForAdd(dayIdx + 1);
             setIsAddModalOpen(true);
@@ -639,7 +901,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         
         const prevAct = newTrip.days[dayIdx].activities[actIdx];
         const nextTime = prevAct ? prevAct.time : '09:00';
-
         let newAct: Activity | null = null;
 
         if (type === 'ai') {
@@ -653,7 +914,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         } else if (type === 'note') {
             newAct = { time: nextTime, title: '新備註', type: 'note', description: '點擊編輯內容', cost: 0 };
         } else if (type === 'expense') {
-            newAct = { time: nextTime, title: '新支出', type: 'expense', description: '', cost: 0 };
+            newAct = { time: nextTime, title: '新支出', type: 'expense', description: '', cost: 0, payer: trip.members?.[0]?.id }; // Default payer
         }
 
         if (newAct) {
@@ -685,16 +946,14 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     }
 
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
-
+    
     // Dynamic Header Info
     const flightDisplayOrigin = trip.origin || 'ORIGIN';
     const flightDisplayDest = trip.destination || 'DEST';
     const firstType = trip.days[0]?.activities[0]?.type || 'other';
 
     // Header Background Logic
-    const headerBgClass = 
-        firstType === 'flight' ? 'bg-[#2C5E4B]' : 
-        firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
+    const headerBgClass = firstType === 'flight' ? 'bg-[#2C5E4B]' : firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
 
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full flex flex-col relative animate-in slide-in-from-right duration-300">
@@ -790,8 +1049,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                 <Plus className="w-5 h-5" />
                                             </button>
                                         </div>
-                                        {viewMode === 'list' ?
-                                        (
+                                        {viewMode === 'list' ? (
                                             <Droppable droppableId={`day-${dayIndex + 1}`}>
                                                 {(provided) => (
                                                     <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
@@ -806,7 +1064,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                         ) : act.type === 'note' ? (
                                                                             <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} />
                                                                         ) : act.type === 'expense' ? (
-                                                                            <ExpenseItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
+                                                                            <ExpenseItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
                                                                         ) : (
                                                                             <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
                                                                         )
@@ -850,6 +1108,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     onClose={() => setSelectedActivity(null)}
                     onSave={handleUpdateActivity}
                     onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)}
+                    members={trip.members}
                 />
             )}
 

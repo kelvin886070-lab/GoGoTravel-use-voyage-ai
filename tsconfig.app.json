@@ -20,7 +20,10 @@
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "erasableSyntaxOnly": true,
+    
+    /* 🔴 刪除或將下面這行改成 false */
+    "erasableSyntaxOnly": false, 
+
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
