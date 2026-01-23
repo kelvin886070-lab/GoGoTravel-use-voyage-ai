@@ -22,15 +22,14 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash", // 嘗試使用最新模型
-        "gemini-1.5-flash", // 備援
+        "gemini-2.5-flash", // 嘗試使用最新模型 (若有)
+        "gemini-2.0-flash", // 穩定版
     ];
     let lastError = null;
 
     for (const model of candidateModels) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
-            // console.log(` [Kelvin Trip] 嘗試呼叫模型: ${model}`);
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -43,32 +42,31 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
                 const data = await response.json();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
-                const err = await response.json().catch(() => ({}));
-                console.warn(` 模型 ${model} 失敗 (${response.status}):`, err.error?.message);
-                if ([429, 404, 503].includes(response.status)) {
+                // 如果遇到 404 (模型不存在) 或 429 (限流)，嘗試下一個模型
+                if ([404, 429, 503].includes(response.status)) {
                     continue;
                 }
+                const err = await response.json().catch(() => ({}));
                 lastError = new Error(`模型 ${model} 回傳 ${response.status}: ${err.error?.message}`);
             }
         } catch (e: any) {
-            console.error(` 連線錯誤 (${model}):`, e);
             lastError = e;
         }
     }
 
-    throw lastError || new Error("系統忙碌中，請稍後再試。");
+    throw lastError || new Error("AI 服務暫時無法使用，請稍後再試。");
 }
 
 // ==========================================================
 // [新增] 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
 // ==========================================================
 async function callGeminiVision(prompt: string, base64Image: string): Promise<string> {
-    // 視覺任務建議使用 1.5-flash 或 1.5-pro
-    const model = "gemini-1.5-flash"; 
+    // 視覺任務建議使用 1.5-flash，速度快且支援多模態
+    const model = "gemini-2.5-flash"; 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    // 移除 base64 的前綴 (data:image/jpeg;base64,) 如果有的話
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+    // 移除 base64 的前綴 (data:image/jpeg;base64,) 以便 API 讀取
+    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp|heic);base64,/, "");
 
     try {
         const response = await fetch(url, {
@@ -89,7 +87,11 @@ async function callGeminiVision(prompt: string, base64Image: string): Promise<st
             })
         });
 
-        if (!response.ok) throw new Error("Vision API failed");
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(`Vision API Error: ${err.error?.message || response.statusText}`);
+        }
+        
         const data = await response.json();
         return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch (e) {
@@ -115,20 +117,24 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinu
     } catch (error) { throw error; }
 }
 
+// JSON 解析輔助函式
 const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
     try {
         let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const firstChar = clean.indexOf('[');
         const lastChar = clean.lastIndexOf(']');
-        if (firstChar !== -1 && lastChar !== -1) clean = clean.substring(firstChar, lastChar + 1);
-        
-        if (firstChar === -1) {
+        // 嘗試抓取 [] 或 {}
+        if (firstChar !== -1 && lastChar !== -1) {
+             // 如果是陣列
+             clean = clean.substring(firstChar, lastChar + 1);
+        } else {
             const firstBrace = clean.indexOf('{');
             const lastBrace = clean.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1) clean = clean.substring(firstBrace, lastBrace + 1);
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                clean = clean.substring(firstBrace, lastBrace + 1);
+            }
         }
-
         return JSON.parse(clean) as T;
     } catch (e) {
         console.error("JSON Parse Error:", e);
@@ -335,27 +341,42 @@ export const suggestNextSpot = async (
 };
 
 // ==========================================================
-// [新增] 4. AI 辨識收據 (Vision API)
+// [新增] 4. AI 辨識收據 (Vision API - 升級版：支援明細)
 // ==========================================================
-export const analyzeReceiptImage = async (base64Image: string): Promise<{ title: string; cost: number } | null> => {
+interface ReceiptResult {
+    merchant: string;
+    total: number;
+    items: { name: string; amount: number }[];
+}
+
+export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptResult | null> => {
     const prompt = `
-        你是一個專業的會計助手。請分析這張圖片（收據、發票、或菜單）。
-        請幫我提取兩個資訊：
-        1. **主要品項名稱 (title)**：如果是餐廳，請給我餐廳名字；如果是購物，請給我商品類別或店名。請用精簡的中文。
-        2. **總金額 (cost)**：找出這張收據的「總計 (Total)」金額。請只回傳數字。
-
-        如果圖片模糊或不是收據，請回傳 null。
-
-        回傳 JSON 格式 (不要 Markdown):
+        Role: Professional Accountant & Receipt OCR Expert.
+        Task: Analyze this receipt/invoice/menu image.
+        
+        Extract the following information:
+        1. **Merchant Name**: The name of the store or restaurant. (Use concise Traditional Chinese if possible)
+        2. **Total Amount**: The final total cost.
+        3. **Items Breakdown**: A list of individual items purchased.
+           - Try to identify item names and their individual prices.
+           - If there's a service charge or tax, include it as an item named "服務費" or "稅金".
+        
+        **Output Format**: Return valid JSON ONLY (No Markdown, No Explanation).
         {
-            "title": "星巴克咖啡",
-            "cost": 150
+            "merchant": "星巴克",
+            "total": 350,
+            "items": [
+                { "name": "拿鐵", "amount": 150 },
+                { "name": "起司蛋糕", "amount": 200 }
+            ]
         }
+        
+        If the image is blurry or not a receipt, return null.
     `;
 
     try {
         const text = await callGeminiVision(prompt, base64Image);
-        return parseJSON<{ title: string; cost: number }>(text);
+        return parseJSON<ReceiptResult>(text);
     } catch (e) {
         console.error("AI Receipt Analysis Failed:", e);
         return null;

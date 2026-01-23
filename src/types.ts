@@ -32,12 +32,20 @@ export interface User {
   email?: string;
 }
 
-// [新增] 3.5 旅伴成員定義 (用於分帳)
+// 3.5 旅伴成員定義 (用於分帳)
 export interface Member {
   id: string;
   name: string;
-  avatar?: string; // 預留給未來大頭貼功能，目前可用預設圖
-  isHost?: boolean; // 是否為行程建立者(本人)
+  avatar?: string; // 預留給未來大頭貼功能
+  isHost?: boolean; // 是否為行程建立者
+}
+
+// [新增] 3.6 記帳明細項目 (用於單一品項指定)
+export interface ExpenseItem {
+  id: string;
+  name: string;       // 品項名稱 (如: 牛肉麵)
+  amount: number;     // 單項金額
+  assignedTo?: string[]; // 指定分攤的人 (Member ID 列表)。若為空，則視為「公費/平分」
 }
 
 // 4. 交通詳細資訊
@@ -63,10 +71,13 @@ export interface Activity {
   // 交通詳細資訊
   transportDetail?: TransportDetail; 
 
-  // [新增] 記帳相關欄位
-  payer?: string;        // 付款人的 Member ID (若無則預設為本人)
-  splitWith?: string[];  // 分攤者的 Member ID 列表 (空值代表不分攤或是全員分攤，視邏輯而定)
-  expenseImage?: string; // 拍立得照片/收據圖片 (Base64 或 URL)
+  // 記帳相關欄位
+  payer?: string;        // 先墊錢的人 (Member ID)
+  splitWith?: string[];  // 預設分攤者 (Member ID 列表)，若明細沒有指定人，就用這個設定
+  expenseImage?: string; // 拍立得照片/收據圖片 (Base64)
+  
+  // [新增] 消費明細列表 (AI 辨識或手動輸入)
+  items?: ExpenseItem[]; 
 }
 
 export interface TripDay {
@@ -89,7 +100,7 @@ export interface Trip {
   isDeleted?: boolean;
   currency?: string; 
 
-  // [新增] 行程成員名單
+  // 行程成員名單
   members?: Member[]; 
 }
 

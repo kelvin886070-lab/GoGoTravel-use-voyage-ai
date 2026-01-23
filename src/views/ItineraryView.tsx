@@ -5,9 +5,9 @@ import {
     RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
     Car, Footprints, TramFront, Clock, MapPin, ChevronRight, Edit3, Save, ExternalLink,
     StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding,
-    Users, UserPlus, Check, Image as ImageIcon, Loader2
+    Users, UserPlus, Check, Image as ImageIcon, Loader2, ZoomIn, Receipt
 } from 'lucide-react';
-import type { Trip, TripDay, Activity, Member } from '../types';
+import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { IOSInput, IOSShareSheet, IOSButton } from '../components/UI';
 import { getCurrencyRate, suggestNextSpot, analyzeReceiptImage } from '../services/gemini';
@@ -39,7 +39,7 @@ const getMemberName = (members: Member[] | undefined, id?: string) => {
 };
 
 const getMemberAvatarColor = (name: string) => {
-    const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
+    const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500', 'bg-teal-500'];
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
@@ -73,7 +73,6 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
     );
 };
 
-// --- Ghost Button (Insert Helper) ---
 const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     <div className="h-6 -my-3 relative group z-10 flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); onClick(); }}>
         <div className="absolute inset-0 bg-transparent" />
@@ -199,8 +198,8 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
-// --- [新] Expense Item (Polaroid Style) ---
-const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
+// --- [新] Expense Polaroid Card (拍立得風格) ---
+const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
     const avatarColor = getMemberAvatarColor(payerName);
@@ -213,7 +212,7 @@ const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
             className={`flex gap-3 py-2 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`}
             onClick={onClick}
         >
-            {/* Timeline Line */}
+            {/* Timeline & Icon */}
             <div className="flex flex-col items-center w-[55px] self-stretch relative pt-2">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-200 left-1/2 -ml-[1px] -z-10"></div>
                 <div className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm z-10 text-xs font-bold text-gray-400">
@@ -221,17 +220,25 @@ const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
                 </div>
             </div>
 
-            {/* Polaroid Card */}
-            <div className="flex-1 bg-white p-3 pb-4 rounded-sm shadow-md border border-gray-100 rotate-1 transition-transform hover:rotate-0 active:scale-[0.98] cursor-pointer relative overflow-hidden">
+            {/* Polaroid Body */}
+            <div className="flex-1 bg-white p-3 pb-4 rounded-sm shadow-md border border-gray-100 rotate-1 transition-transform hover:rotate-0 active:scale-[0.98] cursor-pointer relative overflow-hidden group/card">
+                
+                {/* Drag Handle (Hover Visible) */}
+                <div {...provided.dragHandleProps} className="absolute top-2 left-2 z-20 text-white/80 opacity-0 group-hover/card:opacity-100 transition-opacity p-1 bg-black/20 backdrop-blur-sm rounded-full" onClick={(e) => e.stopPropagation()}>
+                    <GripVertical className="w-4 h-4" />
+                </div>
+
                 {/* Photo Area */}
-                <div className="aspect-video bg-gray-100 mb-3 rounded-sm overflow-hidden relative group-hover:brightness-95 transition-all">
+                <div className="aspect-video bg-gray-100 mb-3 rounded-sm overflow-hidden relative border border-gray-100">
                     {act.expenseImage ? (
                         <img src={act.expenseImage} alt="Receipt" className="w-full h-full object-cover" />
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-300">
-                            <Camera className="w-8 h-8 opacity-50" />
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots">
+                            <Camera className="w-8 h-8 opacity-30 mb-1" />
+                            <span className="text-[10px] font-bold opacity-30">無照片</span>
                         </div>
                     )}
+                    
                     {/* Payer Sticker */}
                     <div className={`absolute top-2 right-2 ${avatarColor} text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-white transform rotate-6`}>
                         {payerName} 付款
@@ -240,9 +247,12 @@ const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
 
                 {/* Info Area */}
                 <div className="flex justify-between items-end px-1">
-                    <div>
-                        <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1">{act.title || '未命名支出'}</div>
-                        <div className="text-[10px] text-gray-400 font-mono">{act.time}</div>
+                    <div className="flex-1 min-w-0 pr-2">
+                        <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1 truncate">{act.title || '未命名支出'}</div>
+                        <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
+                            {act.time} 
+                            {act.items && act.items.length > 0 && <span className="bg-gray-100 px-1 rounded text-gray-500">{act.items.length} 筆明細</span>}
+                        </div>
                     </div>
                     <div className="text-right">
                         <div className="font-mono font-bold text-xl text-green-600">{currencySymbol}{displayCost}</div>
@@ -250,13 +260,13 @@ const ExpenseItem: React.FC<{ act: Activity, onClick: () => void, provided: any,
                 </div>
 
                 {/* Split Dots */}
-                {act.splitWith && act.splitWith.length > 0 && (
+                {(act.items && act.items.length > 0) || (act.splitWith && act.splitWith.length > 0) ? (
                     <div className="absolute bottom-2 left-4 flex -space-x-1">
-                        {act.splitWith.map((mid, idx) => (
-                            <div key={idx} className={`w-2 h-2 rounded-full border border-white ${getMemberAvatarColor(getMemberName(members, mid))}`} />
-                        ))}
+                        {/* Logic to show dots for involved members could be complex, simplifying to show "items exist" or splitWith */}
+                        <div className="w-2 h-2 rounded-full bg-gray-300 border border-white" />
+                        <div className="w-2 h-2 rounded-full bg-gray-400 border border-white" />
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );
@@ -308,19 +318,20 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
     );
 };
 
-// --- Activity Detail Modal (Enhanced with Members & AI) ---
+// --- Activity Detail Modal (Enhanced with Breakdown & Lightbox) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
     onClose: () => void;
     onSave: (updatedAct: Activity) => void; 
     onDelete: () => void; 
-    members?: Member[]; // New Prop
+    members?: Member[]; 
 }> = ({ act, onClose, onSave, onDelete, members = [] }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [edited, setEdited] = useState<Activity>({ ...act });
     const [aiProcessing, setAiProcessing] = useState(false);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
     
-    // Ensure payer has a value (default to first member or empty)
+    // Default Payer
     useEffect(() => {
         if (!edited.payer && members.length > 0) {
             setEdited(prev => ({ ...prev, payer: members[0].id }));
@@ -358,7 +369,6 @@ const ActivityDetailModal: React.FC<{
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Preview
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
@@ -370,17 +380,65 @@ const ActivityDetailModal: React.FC<{
             setAiProcessing(false);
 
             if (result) {
+                // Generate Expense Items from AI
+                // [修改點] 這裡加上 (result.items || []) 確保就算 AI 沒傳回 items 也不會報錯
+                const newItems: ExpenseItem[] = (result.items || []).map((item, idx) => ({
+                    id: Date.now().toString() + idx,
+                    name: item.name,
+                    amount: item.amount,
+                    assignedTo: [] // Default shared
+                }));
+
                 setEdited(prev => ({ 
                     ...prev, 
-                    title: result.title || prev.title, 
-                    cost: result.cost || prev.cost,
-                    expenseImage: base64 
+                    title: result.merchant || prev.title, 
+                    cost: result.total || prev.cost,
+                    expenseImage: base64,
+                    items: newItems
                 }));
             }
         };
         reader.readAsDataURL(file);
     };
 
+    // Item Management
+    const addItem = () => {
+        const newItem: ExpenseItem = { id: Date.now().toString(), name: '', amount: 0, assignedTo: [] };
+        setEdited(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
+    };
+
+    const updateItem = (id: string, field: keyof ExpenseItem, value: any) => {
+        setEdited(prev => {
+            const newItems = (prev.items || []).map(item => item.id === id ? { ...item, [field]: value } : item);
+            // Auto-sum if items exist
+            const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            return { ...prev, items: newItems, cost: newTotal };
+        });
+    };
+
+    const deleteItem = (id: string) => {
+        setEdited(prev => {
+            const newItems = (prev.items || []).filter(item => item.id !== id);
+            const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            return { ...prev, items: newItems, cost: newTotal };
+        });
+    };
+
+    const toggleItemMember = (itemId: string, memberId: string) => {
+        setEdited(prev => {
+            const newItems = (prev.items || []).map(item => {
+                if (item.id !== itemId) return item;
+                const current = item.assignedTo || [];
+                const newAssigned = current.includes(memberId) 
+                    ? current.filter(id => id !== memberId) 
+                    : [...current, memberId];
+                return { ...item, assignedTo: newAssigned };
+            });
+            return { ...prev, items: newItems };
+        });
+    };
+
+    // Toggle logic for Whole Bill Split (if no items)
     const toggleSplitMember = (mid: string) => {
         const currentSplits = edited.splitWith || [];
         if (currentSplits.includes(mid)) {
@@ -438,7 +496,7 @@ const ActivityDetailModal: React.FC<{
                         </div>
                     )}
 
-                    {/* Expense Special UI (Photo + AI + Split) */}
+                    {/* --- Expense Special UI --- */}
                     {isExpense && (
                         <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-4">
                             {/* 1. Photo Upload Area */}
@@ -446,7 +504,10 @@ const ActivityDetailModal: React.FC<{
                                 {edited.expenseImage ? (
                                     <>
                                         <img src={edited.expenseImage} className="w-full h-full object-cover" />
-                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
+                                        <div className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white cursor-pointer hover:bg-black/70" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}>
+                                            <ZoomIn className="w-4 h-4" />
+                                        </div>
+                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換/掃描</div>}
                                     </>
                                 ) : (
                                     <div className="text-gray-400 flex flex-col items-center">
@@ -457,65 +518,101 @@ const ActivityDetailModal: React.FC<{
                                 )}
                                 {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
                                 {aiProcessing && (
-                                    <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-20">
+                                    <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-20">
                                         <Loader2 className="w-8 h-8 text-[#45846D] animate-spin mb-2" />
-                                        <span className="text-xs font-bold text-[#45846D] animate-pulse">AI 辨識中...</span>
+                                        <span className="text-xs font-bold text-[#45846D] animate-pulse">AI 正在讀取收據...</span>
                                     </div>
                                 )}
                             </div>
 
                             {/* 2. Amount Input */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">金額</label>
+                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">總金額 (Total)</label>
                                 {isEditing ? (
-                                    <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} placeholder="0" className="text-2xl font-mono text-center" />
+                                    <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} placeholder="0" className="text-2xl font-mono text-center" disabled={edited.items && edited.items.length > 0} />
                                 ) : (
                                     <div className="text-3xl font-black text-center text-[#1D1D1B] font-mono">{edited.cost}</div>
                                 )}
                             </div>
 
-                            {/* 3. Payer & Split (Only if members exist) */}
+                            {/* 3. Payer Selector */}
                             {members.length > 0 && (
-                                <>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">誰付的錢 (Payer)</label>
-                                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                                            {members.map(m => (
-                                                <button 
-                                                    key={m.id} 
-                                                    onClick={() => isEditing && handleChange('payer', m.id)}
-                                                    className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all ${edited.payer === m.id ? 'bg-[#1D1D1B] text-white border-[#1D1D1B] shadow-md' : 'bg-white text-gray-500 border-gray-200'}`}
-                                                    disabled={!isEditing}
-                                                >
-                                                    <div className={`w-4 h-4 rounded-full ${getMemberAvatarColor(m.name)} border border-white`} />
-                                                    <span className="text-xs font-bold">{m.name}</span>
-                                                </button>
-                                            ))}
-                                        </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">誰先付錢 (Payer)</label>
+                                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                                        {members.map(m => (
+                                            <button 
+                                                key={m.id} 
+                                                onClick={() => isEditing && handleChange('payer', m.id)}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all ${edited.payer === m.id ? 'bg-[#1D1D1B] text-white border-[#1D1D1B] shadow-md' : 'bg-white text-gray-500 border-gray-200'}`}
+                                                disabled={!isEditing}
+                                            >
+                                                <div className={`w-4 h-4 rounded-full ${getMemberAvatarColor(m.name)} border border-white`} />
+                                                <span className="text-xs font-bold">{m.name}</span>
+                                            </button>
+                                        ))}
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">分給誰 (Split)</label>
-                                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                                            {members.map(m => {
-                                                const isSelected = (edited.splitWith || []).includes(m.id);
-                                                return (
-                                                    <button 
-                                                        key={m.id} 
-                                                        onClick={() => isEditing && toggleSplitMember(m.id)}
-                                                        className={`flex flex-col items-center gap-1 min-w-[50px] transition-all ${!isEditing ? 'opacity-100' : ''}`}
-                                                        disabled={!isEditing}
-                                                    >
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isSelected ? `border-[#45846D] ${getMemberAvatarColor(m.name)} text-white` : 'border-gray-200 bg-white text-gray-300'}`}>
-                                                            {isSelected ? <Check className="w-5 h-5" /> : <span className="text-xs font-bold">{m.name[0]}</span>}
-                                                        </div>
-                                                        <span className={`text-[10px] font-bold ${isSelected ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>{m.name}</span>
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                </>
+                                </div>
                             )}
+
+                            <div className="h-px bg-gray-200 my-2" />
+
+                            {/* 4. Item Breakdown & Allocation */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-gray-400 ml-1 uppercase flex items-center gap-1"><Receipt className="w-3 h-3" /> 消費明細</label>
+                                    {isEditing && <button onClick={addItem} className="text-xs font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-1 rounded hover:bg-[#45846D]/20">+ 新增品項</button>}
+                                </div>
+                                
+                                {edited.items && edited.items.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {edited.items.map((item) => (
+                                            <div key={item.id} className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm">
+                                                <div className="flex gap-2 mb-2">
+                                                    <input 
+                                                        className="flex-1 bg-gray-50 rounded px-2 py-1 text-sm font-bold outline-none" 
+                                                        value={item.name} 
+                                                        placeholder="品項"
+                                                        onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                                                        disabled={!isEditing}
+                                                    />
+                                                    <input 
+                                                        type="number"
+                                                        className="w-20 bg-gray-50 rounded px-2 py-1 text-sm font-mono text-right outline-none" 
+                                                        value={item.amount} 
+                                                        placeholder="0"
+                                                        onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
+                                                        disabled={!isEditing}
+                                                    />
+                                                    {isEditing && <button onClick={() => deleteItem(item.id)} className="text-red-400 p-1"><X className="w-4 h-4" /></button>}
+                                                </div>
+                                                {/* Member Allocation for this item */}
+                                                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+                                                    <span className="text-[9px] text-gray-400 mr-1 flex-shrink-0">分給:</span>
+                                                    {members.map(m => {
+                                                        const isAssigned = (item.assignedTo || []).includes(m.id);
+                                                        return (
+                                                            <button 
+                                                                key={m.id}
+                                                                onClick={() => isEditing && toggleItemMember(item.id, m.id)}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent` : 'bg-gray-100 text-gray-400 border-transparent opacity-50'}`}
+                                                                disabled={!isEditing}
+                                                            >
+                                                                {m.name[0]}
+                                                            </button>
+                                                        )
+                                                    })}
+                                                    {(!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] text-gray-300 ml-1">全員平分</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-xs text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+                                        {isEditing ? '點擊上方 + 新增，或上傳照片由 AI 自動填寫' : '無明細'}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -614,6 +711,14 @@ const ActivityDetailModal: React.FC<{
                     )}
                 </div>
             </div>
+
+            {/* Lightbox */}
+            {lightboxOpen && edited.expenseImage && (
+                <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-4 animate-in fade-in" onClick={() => setLightboxOpen(false)}>
+                    <img src={edited.expenseImage} className="max-w-full max-h-full object-contain" />
+                    <button className="absolute top-4 right-4 bg-white/20 p-2 rounded-full text-white"><X className="w-6 h-6" /></button>
+                </div>
+            )}
         </div>
     );
 };
@@ -798,7 +903,7 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
                         </div>
                         <div className="flex gap-2">
                             <input 
-                                placeholder="輸入名字 (如: Amy)" 
+                                placeholder="輸入名字 (如: Kelvin)" 
                                 className="flex-1 bg-[#F5F5F4] rounded-xl px-4 py-3 text-sm outline-none font-bold"
                                 value={newMemberName}
                                 onChange={e => setNewMemberName(e.target.value)}
@@ -1064,7 +1169,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                         ) : act.type === 'note' ? (
                                                                             <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} />
                                                                         ) : act.type === 'expense' ? (
-                                                                            <ExpenseItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
+                                                                            <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
                                                                         ) : (
                                                                             <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
                                                                         )
