@@ -5,7 +5,8 @@ import {
     RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
     Car, Footprints, TramFront, Clock, MapPin, ChevronRight, Edit3, Save, ExternalLink,
     StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding,
-    Users, UserPlus, Check, Image as ImageIcon, Loader2, ZoomIn, Receipt
+    Users, UserPlus, Check, Image as ImageIcon, Loader2, ZoomIn, Receipt,
+    ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -43,6 +44,83 @@ const getMemberAvatarColor = (name: string) => {
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
+};
+
+// --- [新] iOS Style Time Wheel Picker ---
+const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) => void, onClose: () => void }> = ({ value, onChange, onClose }) => {
+    const [hour, setHour] = useState(parseInt(value.split(':')[0] || '9'));
+    const [minute, setMinute] = useState(parseInt(value.split(':')[1] || '0'));
+    const hourRef = useRef<HTMLDivElement>(null);
+    const minuteRef = useRef<HTMLDivElement>(null);
+
+    // Initial Scroll Position
+    useEffect(() => {
+        if (hourRef.current) hourRef.current.scrollTop = hour * 40;
+        if (minuteRef.current) minuteRef.current.scrollTop = minute * 40;
+    }, []);
+
+    const handleScroll = (type: 'hour' | 'minute', e: React.UIEvent<HTMLDivElement>) => {
+        const target = e.currentTarget;
+        const index = Math.round(target.scrollTop / 40);
+        if (type === 'hour') setHour(index);
+        else setMinute(index);
+    };
+
+    const handleConfirm = () => {
+        const h = hour.toString().padStart(2, '0');
+        const m = minute.toString().padStart(2, '0');
+        onChange(`${h}:${m}`);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center animate-in fade-in duration-200">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="bg-white w-full max-w-sm rounded-t-[32px] p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300">
+                <div className="flex justify-between items-center mb-6">
+                    <button onClick={onClose} className="text-gray-400 font-bold text-sm">取消</button>
+                    <span className="text-lg font-bold text-[#1D1D1B]">選擇時間</span>
+                    <button onClick={handleConfirm} className="text-[#45846D] font-bold text-sm">確認</button>
+                </div>
+                
+                <div className="relative h-40 flex justify-center gap-4 overflow-hidden mask-gradient-to-b">
+                    {/* Selection Highlight Bar */}
+                    <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-10 bg-gray-100/50 rounded-lg pointer-events-none border-y border-gray-200/50" />
+                    
+                    {/* Hour Column */}
+                    <div 
+                        ref={hourRef}
+                        onScroll={(e) => handleScroll('hour', e)}
+                        className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]"
+                    >
+                        {Array.from({ length: 24 }).map((_, i) => (
+                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === hour ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>
+                                {i.toString().padStart(2, '0')}
+                            </div>
+                        ))}
+                        {/* Padding for bottom scroll */}
+                        <div className="h-[60px]" />
+                    </div>
+
+                    <div className="flex items-center pb-1 font-bold text-gray-300">:</div>
+
+                    {/* Minute Column */}
+                    <div 
+                        ref={minuteRef}
+                        onScroll={(e) => handleScroll('minute', e)}
+                        className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]"
+                    >
+                        {Array.from({ length: 60 }).map((_, i) => (
+                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === minute ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>
+                                {i.toString().padStart(2, '0')}
+                            </div>
+                        ))}
+                        <div className="h-[60px]" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // --- Sub Components ---
@@ -198,7 +276,7 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
-// --- [新] Expense Polaroid Card (拍立得風格) ---
+// --- Expense Polaroid Card (拍立得風格 - 具備拖曳手把) ---
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
@@ -258,15 +336,6 @@ const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: 
                         <div className="font-mono font-bold text-xl text-green-600">{currencySymbol}{displayCost}</div>
                     </div>
                 </div>
-
-                {/* Split Dots */}
-                {(act.items && act.items.length > 0) || (act.splitWith && act.splitWith.length > 0) ? (
-                    <div className="absolute bottom-2 left-4 flex -space-x-1">
-                        {/* Logic to show dots for involved members could be complex, simplifying to show "items exist" or splitWith */}
-                        <div className="w-2 h-2 rounded-full bg-gray-300 border border-white" />
-                        <div className="w-2 h-2 rounded-full bg-gray-400 border border-white" />
-                    </div>
-                ) : null}
             </div>
         </div>
     );
@@ -318,7 +387,7 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
     );
 };
 
-// --- Activity Detail Modal (Enhanced with Breakdown & Lightbox) ---
+// --- Activity Detail Modal (Ultimate Edition with Auto-Sum) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
     onClose: () => void;
@@ -329,9 +398,13 @@ const ActivityDetailModal: React.FC<{
     const [isEditing, setIsEditing] = useState(false);
     const [edited, setEdited] = useState<Activity>({ ...act });
     const [aiProcessing, setAiProcessing] = useState(false);
+    const [aiLoadingText, setAiLoadingText] = useState('正在掃描...');
     const [lightboxOpen, setLightboxOpen] = useState(false);
-    
-    // Default Payer
+    const [showTimePicker, setShowTimePicker] = useState(false);
+    const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
+    const newItemInputRef = useRef<HTMLInputElement>(null);
+
+    // Default Initialization
     useEffect(() => {
         if (!edited.payer && members.length > 0) {
             setEdited(prev => ({ ...prev, payer: members[0].id }));
@@ -343,11 +416,24 @@ const ActivityDetailModal: React.FC<{
         }
     }, []);
 
+    // AI Loading Game
+    useEffect(() => {
+        if (!aiProcessing) return;
+        const messages = ['正在掃描美味清單...', '正在計算戰利品...', 'AI 正在努力看懂收據...', '整理明細中...'];
+        let i = 0;
+        const timer = setInterval(() => {
+            setAiLoadingText(messages[i % messages.length]);
+            i++;
+        }, 1500);
+        return () => clearInterval(timer);
+    }, [aiProcessing]);
+
     const isTransport = edited.type === 'transport';
     const isNote = edited.type === 'note';
     const isExpense = edited.type === 'expense';
     const isProcess = edited.type === 'process';
 
+    // --- Logic & Handlers ---
     const handleChange = (field: keyof Activity, value: any) => {
         setEdited(prev => ({ ...prev, [field]: value }));
     };
@@ -364,7 +450,6 @@ const ActivityDetailModal: React.FC<{
         }));
     };
 
-    // AI Receipt Analysis
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -380,38 +465,33 @@ const ActivityDetailModal: React.FC<{
             setAiProcessing(false);
 
             if (result) {
-                // Generate Expense Items from AI
-                // [修改點] 這裡加上 (result.items || []) 確保就算 AI 沒傳回 items 也不會報錯
-                const newItems: ExpenseItem[] = (result.items || []).map((item, idx) => ({
-                    id: Date.now().toString() + idx,
-                    name: item.name,
-                    amount: item.amount,
-                    assignedTo: [] // Default shared
-                }));
-
+                // Only update total cost and title, NO items generation (as requested)
                 setEdited(prev => ({ 
                     ...prev, 
                     title: result.merchant || prev.title, 
-                    cost: result.total || prev.cost,
-                    expenseImage: base64,
-                    items: newItems
+                    cost: result.total || prev.cost, 
+                    expenseImage: base64
                 }));
             }
         };
         reader.readAsDataURL(file);
     };
 
-    // Item Management
+    // Item Management with Auto-Sum
     const addItem = () => {
         const newItem: ExpenseItem = { id: Date.now().toString(), name: '', amount: 0, assignedTo: [] };
+        // Don't change cost yet as amount is 0
         setEdited(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
+        setTimeout(() => newItemInputRef.current?.focus(), 100);
     };
 
     const updateItem = (id: string, field: keyof ExpenseItem, value: any) => {
         setEdited(prev => {
             const newItems = (prev.items || []).map(item => item.id === id ? { ...item, [field]: value } : item);
-            // Auto-sum if items exist
+            
+            // Auto-Sum Logic: If items exist, cost is strictly sum of items
             const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+            
             return { ...prev, items: newItems, cost: newTotal };
         });
     };
@@ -419,15 +499,23 @@ const ActivityDetailModal: React.FC<{
     const deleteItem = (id: string) => {
         setEdited(prev => {
             const newItems = (prev.items || []).filter(item => item.id !== id);
+            // Auto-Sum Logic
             const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
             return { ...prev, items: newItems, cost: newTotal };
         });
     };
 
-    const toggleItemMember = (itemId: string, memberId: string) => {
+    // Toggle specific member or Clear all (for "ALL" button)
+    const toggleItemMember = (itemId: string, memberId?: string) => {
         setEdited(prev => {
             const newItems = (prev.items || []).map(item => {
                 if (item.id !== itemId) return item;
+                
+                // If memberId is undefined, it means "Select All" (Reset to empty array)
+                if (!memberId) {
+                    return { ...item, assignedTo: [] };
+                }
+
                 const current = item.assignedTo || [];
                 const newAssigned = current.includes(memberId) 
                     ? current.filter(id => id !== memberId) 
@@ -438,24 +526,47 @@ const ActivityDetailModal: React.FC<{
         });
     };
 
-    // Toggle logic for Whole Bill Split (if no items)
-    const toggleSplitMember = (mid: string) => {
-        const currentSplits = edited.splitWith || [];
-        if (currentSplits.includes(mid)) {
-            setEdited(prev => ({ ...prev, splitWith: currentSplits.filter(id => id !== mid) }));
+    // Calculate Split Summary for Footer
+    const splitSummary = useMemo(() => {
+        const summary: Record<string, number> = {};
+        const currentTotal = Number(edited.cost || 0);
+        
+        // 1. Calculate from Items
+        if (edited.items && edited.items.length > 0) {
+            edited.items.forEach(item => {
+                if (!item.assignedTo || item.assignedTo.length === 0) {
+                    // Shared by all
+                    const share = item.amount / members.length;
+                    members.forEach(m => summary[m.id] = (summary[m.id] || 0) + share);
+                } else {
+                    const share = item.amount / item.assignedTo.length;
+                    item.assignedTo.forEach(mid => summary[mid] = (summary[mid] || 0) + share);
+                }
+            });
         } else {
-            setEdited(prev => ({ ...prev, splitWith: [...currentSplits, mid] }));
+            // 2. No Items, use total cost (shared by all by default for simplicity in this mode)
+            if (currentTotal > 0) {
+                const share = currentTotal / members.length;
+                members.forEach(m => summary[m.id] = (summary[m.id] || 0) + share);
+            }
         }
-    };
+        return summary;
+    }, [edited.items, edited.cost, members]);
+
+    const activePayerName = getMemberName(members, edited.payer);
+    const activePayerAvatarColor = getMemberAvatarColor(activePayerName);
 
     return (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center sm:p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Container */}
+            <div className="bg-white w-full max-w-sm rounded-[32px] overflow-hidden relative z-10 shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]">
                 
-                <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-20 pb-2 border-b border-gray-50">
+                {/* 1. Sticky Header */}
+                <div className="flex-shrink-0 bg-white z-20 px-6 pt-6 pb-4 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="text-xl font-bold text-[#1D1D1B]">
-                        {isEditing ? '編輯內容' : (isTransport ? '交通詳情' : isNote ? '備註內容' : isExpense ? '記帳詳情' : '行程資訊')}
+                        {isExpense ? '記帳詳情' : isEditing ? '編輯內容' : (isTransport ? '交通詳情' : isNote ? '備註內容' : '行程資訊')}
                     </h3>
                     <div className="flex gap-2">
                         {!isEditing ? (
@@ -474,15 +585,23 @@ const ActivityDetailModal: React.FC<{
                     </div>
                 </div>
 
-                <div className="space-y-5 pb-6">
+                {/* 2. Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth bg-[#FAFAFA]">
+                    
+                    {/* Basic Info Row */}
                     {!isNote && (
-                        <div className="flex gap-3">
-                            <div className="w-1/3">
+                        <div className="flex gap-4">
+                            <div className="w-2/5">
                                 <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">時間</label>
                                 {isEditing ? (
-                                    <input type="time" value={edited.time} onChange={e => handleChange('time', e.target.value)} className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold text-center outline-none" />
+                                    <button 
+                                        onClick={() => setShowTimePicker(true)}
+                                        className="w-full bg-white border border-gray-200 h-12 rounded-xl font-bold text-center flex items-center justify-center text-[#1D1D1B] shadow-sm active:scale-95 transition-transform"
+                                    >
+                                        {edited.time}
+                                    </button>
                                 ) : (
-                                    <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold text-center text-[#1D1D1B] text-lg font-mono">{edited.time}</div>
+                                    <div className="w-full bg-white border border-gray-200 h-12 flex items-center justify-center rounded-xl font-bold text-[#1D1D1B] font-mono shadow-sm">{edited.time}</div>
                                 )}
                             </div>
                             <div className="flex-1">
@@ -490,128 +609,225 @@ const ActivityDetailModal: React.FC<{
                                 {isEditing ? (
                                     <IOSInput value={edited.title} onChange={e => handleChange('title', e.target.value)} />
                                 ) : (
-                                    <div className="w-full bg-white border border-gray-100 p-3 rounded-xl font-bold text-[#1D1D1B] text-lg shadow-sm">{edited.title}</div>
+                                    <div className="w-full bg-white border border-gray-100 px-4 h-12 flex items-center rounded-xl font-bold text-[#1D1D1B] shadow-sm truncate">{edited.title}</div>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {/* --- Expense Special UI --- */}
+                    {/* --- Expense Special UI (Digital Receipt Style) --- */}
                     {isExpense && (
-                        <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-4">
-                            {/* 1. Photo Upload Area */}
-                            <div className="relative w-full aspect-video bg-white rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group hover:border-[#45846D] transition-colors">
-                                {edited.expenseImage ? (
-                                    <>
-                                        <img src={edited.expenseImage} className="w-full h-full object-cover" />
-                                        <div className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white cursor-pointer hover:bg-black/70" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}>
-                                            <ZoomIn className="w-4 h-4" />
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
+                            {/* Zigzag Top Border */}
+                            <div className="h-2 bg-[radial-gradient(circle,transparent_0.25rem,#fff_0.25rem)] bg-[length:0.75rem_0.75rem] -mt-1 opacity-50 absolute top-0 w-full" />
+
+                            {/* 1. Photo Area */}
+                            <div className="p-4 pb-0">
+                                <div className="relative w-full aspect-video bg-gray-50 rounded-xl border border-dashed border-gray-300 flex flex-col items-center justify-center overflow-hidden group transition-colors">
+                                    {edited.expenseImage ? (
+                                        <>
+                                            <img src={edited.expenseImage} className="w-full h-full object-cover" />
+                                            <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-full text-white cursor-pointer hover:bg-black/70 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}>
+                                                <ZoomIn className="w-4 h-4" />
+                                            </div>
+                                            {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
+                                        </>
+                                    ) : (
+                                        <div className="text-gray-400 flex flex-col items-center p-4 text-center">
+                                            <div className="w-16 h-10 border-2 border-gray-300 rounded-lg mb-2 flex items-center justify-center relative">
+                                                <ScanLine className="w-6 h-6 animate-pulse" />
+                                            </div>
+                                            <span className="text-xs font-bold text-[#45846D]">上傳收據</span>
+                                            <span className="text-[10px] opacity-60 mt-1">將單據放入框內，AI 自動掃描</span>
                                         </div>
-                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換/掃描</div>}
-                                    </>
-                                ) : (
-                                    <div className="text-gray-400 flex flex-col items-center">
-                                        <Camera className="w-8 h-8 mb-2" />
-                                        <span className="text-xs font-bold">上傳收據 / 照片</span>
-                                        <span className="text-[10px] opacity-70 mt-1">AI 自動辨識品項與金額</span>
-                                    </div>
-                                )}
-                                {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
-                                {aiProcessing && (
-                                    <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-20">
-                                        <Loader2 className="w-8 h-8 text-[#45846D] animate-spin mb-2" />
-                                        <span className="text-xs font-bold text-[#45846D] animate-pulse">AI 正在讀取收據...</span>
-                                    </div>
-                                )}
+                                    )}
+                                    {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
+                                    {aiProcessing && (
+                                        <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center z-20">
+                                            <Loader2 className="w-8 h-8 text-[#45846D] animate-spin mb-3" />
+                                            <span className="text-xs font-bold text-[#45846D] animate-pulse">{aiLoadingText}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
-                            {/* 2. Amount Input */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">總金額 (Total)</label>
-                                {isEditing ? (
-                                    <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} placeholder="0" className="text-2xl font-mono text-center" disabled={edited.items && edited.items.length > 0} />
-                                ) : (
-                                    <div className="text-3xl font-black text-center text-[#1D1D1B] font-mono">{edited.cost}</div>
-                                )}
-                            </div>
-
-                            {/* 3. Payer Selector */}
-                            {members.length > 0 && (
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">誰先付錢 (Payer)</label>
-                                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                                        {members.map(m => (
-                                            <button 
-                                                key={m.id} 
-                                                onClick={() => isEditing && handleChange('payer', m.id)}
-                                                className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all ${edited.payer === m.id ? 'bg-[#1D1D1B] text-white border-[#1D1D1B] shadow-md' : 'bg-white text-gray-500 border-gray-200'}`}
-                                                disabled={!isEditing}
-                                            >
-                                                <div className={`w-4 h-4 rounded-full ${getMemberAvatarColor(m.name)} border border-white`} />
-                                                <span className="text-xs font-bold">{m.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="h-px bg-gray-200 my-2" />
-
-                            {/* 4. Item Breakdown & Allocation */}
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-gray-400 ml-1 uppercase flex items-center gap-1"><Receipt className="w-3 h-3" /> 消費明細</label>
-                                    {isEditing && <button onClick={addItem} className="text-xs font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-1 rounded hover:bg-[#45846D]/20">+ 新增品項</button>}
-                                </div>
+                            {/* 2. Receipt Body */}
+                            <div className="p-5 font-mono text-sm space-y-3">
                                 
-                                {edited.items && edited.items.length > 0 ? (
-                                    <div className="space-y-2">
-                                        {edited.items.map((item) => (
-                                            <div key={item.id} className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm">
-                                                <div className="flex gap-2 mb-2">
+                                {/* Header: Items & Avatar Legend */}
+                                <div className="flex justify-between items-center text-[10px] text-gray-400 uppercase tracking-widest pb-2 border-b border-dashed border-gray-200">
+                                    <span>Item</span>
+                                    <span>Cost & Split</span>
+                                </div>
+
+                                {/* Items List */}
+                                <div className="space-y-3">
+                                    {edited.items && edited.items.length > 0 ? (
+                                        edited.items.map((item, idx) => (
+                                            <div key={item.id} className="group flex flex-col gap-1">
+                                                <div className="flex justify-between items-center">
+                                                    {/* Name Input */}
                                                     <input 
-                                                        className="flex-1 bg-gray-50 rounded px-2 py-1 text-sm font-bold outline-none" 
-                                                        value={item.name} 
-                                                        placeholder="品項"
+                                                        ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null}
+                                                        className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full truncate placeholder-gray-300"
+                                                        value={item.name}
+                                                        placeholder="品項名稱"
                                                         onChange={(e) => updateItem(item.id, 'name', e.target.value)}
                                                         disabled={!isEditing}
                                                     />
-                                                    <input 
-                                                        type="number"
-                                                        className="w-20 bg-gray-50 rounded px-2 py-1 text-sm font-mono text-right outline-none" 
-                                                        value={item.amount} 
-                                                        placeholder="0"
-                                                        onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
-                                                        disabled={!isEditing}
-                                                    />
-                                                    {isEditing && <button onClick={() => deleteItem(item.id)} className="text-red-400 p-1"><X className="w-4 h-4" /></button>}
+                                                    
+                                                    {/* Dots Spacer */}
+                                                    <div className="flex-1 border-b border-dotted border-gray-300 mx-2 h-4 opacity-50" />
+                                                    
+                                                    {/* Cost Input */}
+                                                    <div className="flex items-center">
+                                                        <span className="text-gray-400 text-xs mr-1">$</span>
+                                                        <input 
+                                                            type="number"
+                                                            className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right"
+                                                            value={item.amount}
+                                                            placeholder="0"
+                                                            onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
+                                                            disabled={!isEditing}
+                                                        />
+                                                    </div>
                                                 </div>
-                                                {/* Member Allocation for this item */}
-                                                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
-                                                    <span className="text-[9px] text-gray-400 mr-1 flex-shrink-0">分給:</span>
+
+                                                {/* Floating Avatars (Split Selector) */}
+                                                <div className="flex justify-end items-center gap-1.5 pl-4">
+                                                    {isEditing && (
+                                                        <button onClick={() => deleteItem(item.id)} className="text-gray-200 hover:text-red-400 mr-auto scale-75">
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    
+                                                    {/* ALL Button */}
+                                                    <button 
+                                                        onClick={() => isEditing && toggleItemMember(item.id)} 
+                                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                                        disabled={!isEditing}
+                                                    >
+                                                        ALL
+                                                    </button>
+
+                                                    {/* Members */}
                                                     {members.map(m => {
                                                         const isAssigned = (item.assignedTo || []).includes(m.id);
                                                         return (
                                                             <button 
                                                                 key={m.id}
                                                                 onClick={() => isEditing && toggleItemMember(item.id, m.id)}
-                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent` : 'bg-gray-100 text-gray-400 border-transparent opacity-50'}`}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-200 active:scale-90 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm scale-110` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'}`}
                                                                 disabled={!isEditing}
                                                             >
-                                                                {m.name[0]}
+                                                                {isAssigned ? <Check className="w-3 h-3" /> : m.name[0]}
                                                             </button>
                                                         )
                                                     })}
-                                                    {(!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] text-gray-300 ml-1">全員平分</span>}
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-4 text-xs text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-                                        {isEditing ? '點擊上方 + 新增，或上傳照片由 AI 自動填寫' : '無明細'}
-                                    </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-4 text-xs text-gray-300 italic">
+                                            - 無明細，輸入總金額即可 -
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isEditing && (
+                                    <button onClick={addItem} className="w-full py-2 text-xs font-bold text-[#45846D] bg-[#45846D]/5 hover:bg-[#45846D]/10 rounded-lg border border-dashed border-[#45846D]/30 transition-colors">
+                                        + 新增品項
+                                    </button>
                                 )}
+
+                                {/* Total Section */}
+                                <div className="border-t-2 border-dashed border-gray-200 pt-3 mt-4">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-lg text-gray-400">TOTAL</span>
+                                        <div className="flex items-center">
+                                            <span className="text-lg font-bold text-gray-400 mr-1">$</span>
+                                            {isEditing ? (
+                                                <IOSInput 
+                                                    type="number" 
+                                                    value={edited.cost || ''} 
+                                                    onChange={e => handleChange('cost', e.target.value)} 
+                                                    placeholder="0" 
+                                                    className="text-3xl font-black text-[#1D1D1B] font-mono text-right w-32 h-10 p-0 border-none bg-transparent focus:ring-0"
+                                                    // Disable total editing only if items exist
+                                                    disabled={edited.items && edited.items.length > 0}
+                                                />
+                                            ) : (
+                                                <span className="text-3xl font-black text-[#1D1D1B]">{edited.cost}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Auto-Sum Indicator */}
+                                    {edited.items && edited.items.length > 0 && (
+                                        <div className="flex items-center justify-end gap-1 text-green-500 text-[10px] font-bold mt-1">
+                                            <CheckCircle2 className="w-3 h-3" /> 自動加總中
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 3. Tear-off Footer (Payer & Split) */}
+                            <div className="bg-gray-50 p-5 border-t border-gray-200 relative">
+                                <div className="absolute top-0 left-0 right-0 h-1 bg-[linear-gradient(45deg,transparent_33.333%,#f9fafb_33.333%,#f9fafb_66.667%,transparent_66.667%),linear-gradient(-45deg,transparent_33.333%,#f9fafb_33.333%,#f9fafb_66.667%,transparent_66.667%)] bg-[length:0.5rem_0.5rem] bg-repeat-x -mt-1 transform rotate-180" />
+                                
+                                <div className="flex justify-between items-start">
+                                    {/* Minimalist Payer UI */}
+                                    <div className="relative">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Paid By</label>
+                                        <button 
+                                            onClick={() => isEditing && setIsPayerDropdownOpen(!isPayerDropdownOpen)}
+                                            className={`flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border transition-all ${isEditing ? 'bg-white hover:bg-gray-100 border-gray-200 shadow-sm' : 'border-transparent'}`}
+                                            disabled={!isEditing}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${activePayerAvatarColor}`}>
+                                                {activePayerName[0]}
+                                            </div>
+                                            {isEditing && <ChevronUp className="w-3 h-3 text-gray-400" />}
+                                        </button>
+
+                                        {/* Payer Dropdown (Opens UPWARDS) */}
+                                        {isPayerDropdownOpen && isEditing && (
+                                            <>
+                                                <div className="fixed inset-0 z-10" onClick={() => setIsPayerDropdownOpen(false)} />
+                                                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-xl border border-gray-100 p-1 z-20 min-w-[120px] animate-in slide-in-from-bottom-2">
+                                                    {members.map(m => (
+                                                        <button 
+                                                            key={m.id}
+                                                            onClick={() => { handleChange('payer', m.id); setIsPayerDropdownOpen(false); }}
+                                                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 transition-colors ${edited.payer === m.id ? 'text-[#45846D]' : 'text-gray-600'}`}
+                                                        >
+                                                            <div className={`w-2 h-2 rounded-full ${getMemberAvatarColor(m.name)}`} />
+                                                            {m.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Split Summary */}
+                                    <div className="flex-1 text-right">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Split Summary</label>
+                                        <div className="space-y-1">
+                                            {Object.entries(splitSummary).map(([mid, amount]) => {
+                                                const mName = getMemberName(members, mid);
+                                                if (amount <= 0 || (mid === edited.payer)) return null; 
+                                                return (
+                                                    <div key={mid} className="text-xs font-mono text-gray-600 flex justify-end gap-2">
+                                                        <span>{mName}</span>
+                                                        <span className="font-bold border-b border-dotted border-gray-300 text-[#1D1D1B]">${Math.round(amount)}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                            {Object.keys(splitSummary).length === 0 && <span className="text-xs text-gray-300">無分帳資訊</span>}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -635,15 +851,18 @@ const ActivityDetailModal: React.FC<{
 
                     {(isTransport || isProcess) && (
                         <>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">工具/模式</label>
                                     {isEditing ? (
-                                        <select value={edited.transportDetail?.mode || 'bus'} onChange={e => handleTransportDetailChange('mode', e.target.value)} className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold outline-none appearance-none">
-                                            <option value="bus"> 公車</option><option value="train"> 火車</option><option value="car"> 汽車</option><option value="walk"> 步行</option><option value="flight"> 飛機</option>
-                                        </select>
+                                        <div className="relative">
+                                            <select value={edited.transportDetail?.mode || 'bus'} onChange={e => handleTransportDetailChange('mode', e.target.value)} className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold outline-none appearance-none shadow-sm">
+                                                <option value="bus"> 公車</option><option value="train"> 火車</option><option value="car"> 汽車</option><option value="walk"> 步行</option><option value="flight"> 飛機</option>
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                        </div>
                                     ) : (
-                                        <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold capitalize">{edited.transportDetail?.mode || 'Bus'}</div>
+                                        <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl font-bold capitalize shadow-sm">{edited.transportDetail?.mode || 'Bus'}</div>
                                     )}
                                 </div>
                                 <div>
@@ -651,29 +870,32 @@ const ActivityDetailModal: React.FC<{
                                     {isEditing ? (
                                         <IOSInput value={edited.transportDetail?.duration || ''} onChange={e => handleTransportDetailChange('duration', e.target.value)} placeholder="例: 30 min" />
                                     ) : (
-                                        <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold">{edited.transportDetail?.duration || '--'}</div>
+                                        <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl font-bold shadow-sm">{edited.transportDetail?.duration || '--'}</div>
                                     )}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">起點</label>{isEditing ? <IOSInput value={edited.transportDetail?.fromStation || ''} onChange={e => handleTransportDetailChange('fromStation', e.target.value)} /> : <div className="w-full bg-[#F5F5F4] p-3 rounded-xl text-sm">{edited.transportDetail?.fromStation || '-'}</div>}</div>
-                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">終點</label>{isEditing ? <IOSInput value={edited.transportDetail?.toStation || ''} onChange={e => handleTransportDetailChange('toStation', e.target.value)} /> : <div className="w-full bg-[#F5F5F4] p-3 rounded-xl text-sm">{edited.transportDetail?.toStation || '-'}</div>}</div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">起點</label>{isEditing ? <IOSInput value={edited.transportDetail?.fromStation || ''} onChange={e => handleTransportDetailChange('fromStation', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl text-sm shadow-sm">{edited.transportDetail?.fromStation || '-'}</div>}</div>
+                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">終點</label>{isEditing ? <IOSInput value={edited.transportDetail?.toStation || ''} onChange={e => handleTransportDetailChange('toStation', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl text-sm shadow-sm">{edited.transportDetail?.toStation || '-'}</div>}</div>
                             </div>
-                            <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">指引/說明</label>{isEditing ? <textarea className="w-full bg-[#F5F5F4] rounded-xl p-3 h-24" value={edited.transportDetail?.instruction || ''} onChange={e => handleTransportDetailChange('instruction', e.target.value)} /> : <div className="w-full bg-[#F5F5F4] rounded-xl p-4 text-sm">{edited.transportDetail?.instruction || '無'}</div>}</div>
+                            <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">指引/說明</label>{isEditing ? <textarea className="w-full bg-white border border-gray-200 rounded-xl p-3 h-24 outline-none resize-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.transportDetail?.instruction || ''} onChange={e => handleTransportDetailChange('instruction', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm shadow-sm">{edited.transportDetail?.instruction || '無'}</div>}</div>
                         </>
                     )}
 
                     {!isTransport && !isNote && !isProcess && !isExpense && (
                         <>
-                            <div className="flex gap-3">
+                            <div className="flex gap-4">
                                 <div className="flex-1">
                                     <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">類型</label>
                                     {isEditing ? (
-                                        <select value={edited.type} onChange={e => handleChange('type', e.target.value)} className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold outline-none appearance-none text-sm">
-                                            <option value="sightseeing"> 景點</option><option value="food"> 美食</option><option value="shopping"> 購物</option><option value="expense"> 記帳</option><option value="other"> 其他</option>
-                                        </select>
+                                        <div className="relative">
+                                            <select value={edited.type} onChange={e => handleChange('type', e.target.value)} className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold outline-none appearance-none text-sm shadow-sm">
+                                                <option value="sightseeing"> 景點</option><option value="food"> 美食</option><option value="shopping"> 購物</option><option value="expense"> 記帳</option><option value="other"> 其他</option>
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                        </div>
                                      ) : (
-                                        <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold flex items-center gap-2"><Tag type={edited.type} /></div>
+                                        <div className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold flex items-center gap-2 shadow-sm"><Tag type={edited.type} /></div>
                                     )}
                                 </div>
                                 <div className="w-1/3">
@@ -681,43 +903,51 @@ const ActivityDetailModal: React.FC<{
                                     {isEditing ? (
                                         <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} />
                                     ) : (
-                                        <div className="w-full bg-[#F5F5F4] p-3 rounded-xl font-bold text-right">{edited.cost !== undefined ? edited.cost : 0}</div>
+                                        <div className="w-full bg-white border border-gray-200 h-12 px-4 flex items-center justify-end rounded-xl font-bold shadow-sm">{edited.cost !== undefined ? edited.cost : 0}</div>
                                     )}
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">地點</label>
                                 {isEditing ? (
-                                    <div className="relative"><MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-[#F5F5F4] rounded-xl py-3 pl-9 pr-3 text-sm outline-none" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
+                                    <div className="relative"><MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-white border border-gray-200 h-12 rounded-xl pl-10 pr-4 text-sm outline-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
                                 ) : (
-                                    <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-[#F5F5F4] p-3 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D]">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
+                                    <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D] shadow-sm">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
                                 )}
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">備註</label>
-                                {isEditing ? <textarea className="w-full bg-[#F5F5F4] rounded-xl p-3 h-32" value={edited.description || ''} onChange={e => handleChange('description', e.target.value)} /> : <div className="w-full bg-white border border-gray-100 rounded-xl p-4 text-sm text-gray-700 min-h-[100px]">{edited.description || '無'}</div>}
+                                {isEditing ? <textarea className="w-full bg-white border border-gray-200 rounded-xl p-3 h-32 outline-none resize-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.description || ''} onChange={e => handleChange('description', e.target.value)} /> : <div className="w-full bg-white border border-gray-100 rounded-xl p-4 text-sm text-gray-700 min-h-[100px] shadow-sm">{edited.description || '無'}</div>}
                             </div>
                         </>
                     )}
+                </div>
 
+                {/* 3. Fixed Footer */}
+                <div className="p-4 border-t border-gray-100 bg-white z-20">
                     {isEditing ? (
-                        <div className="pt-4 mt-2">
-                            <button onClick={() => { onSave(edited); setIsEditing(false); }} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-lg shadow-[#45846D]/20 active:scale-95 transition-transform flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 儲存變更</button>
-                        </div>
+                        <button onClick={() => { onSave(edited); setIsEditing(false); }} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-lg shadow-[#45846D]/20 active:scale-95 transition-transform flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 儲存變更</button>
                     ) : (
-                        <div className="pt-2">
-                             <button onClick={onClose} className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform">確認</button>
-                        </div>
+                         <button onClick={onClose} className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform">確認</button>
                     )}
                 </div>
             </div>
 
             {/* Lightbox */}
             {lightboxOpen && edited.expenseImage && (
-                <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-4 animate-in fade-in" onClick={() => setLightboxOpen(false)}>
+                <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setLightboxOpen(false)}>
                     <img src={edited.expenseImage} className="max-w-full max-h-full object-contain" />
-                    <button className="absolute top-4 right-4 bg-white/20 p-2 rounded-full text-white"><X className="w-6 h-6" /></button>
+                    <button className="absolute top-6 right-6 bg-white/20 hover:bg-white/40 p-2 rounded-full text-white transition-colors"><X className="w-6 h-6" /></button>
                 </div>
+            )}
+
+            {/* Time Picker Wheel Modal */}
+            {showTimePicker && (
+                <TimePickerWheel 
+                    value={edited.time} 
+                    onChange={(val) => handleChange('time', val)} 
+                    onClose={() => setShowTimePicker(false)} 
+                />
             )}
         </div>
     );
@@ -903,7 +1133,7 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
                         </div>
                         <div className="flex gap-2">
                             <input 
-                                placeholder="輸入名字 (如: Kelvin)" 
+                                placeholder="輸入名字 (如: Amy)" 
                                 className="flex-1 bg-[#F5F5F4] rounded-xl px-4 py-3 text-sm outline-none font-bold"
                                 value={newMemberName}
                                 onChange={e => setNewMemberName(e.target.value)}

@@ -22,8 +22,7 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash", // 嘗試使用最新模型 (若有)
-        "gemini-2.0-flash", // 穩定版
+        "gemini-2.5-flash", 
     ];
     let lastError = null;
 
@@ -42,7 +41,6 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
                 const data = await response.json();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
-                // 如果遇到 404 (模型不存在) 或 429 (限流)，嘗試下一個模型
                 if ([404, 429, 503].includes(response.status)) {
                     continue;
                 }
@@ -61,11 +59,9 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 // [新增] 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
 // ==========================================================
 async function callGeminiVision(prompt: string, base64Image: string): Promise<string> {
-    // 視覺任務建議使用 1.5-flash，速度快且支援多模態
     const model = "gemini-2.5-flash"; 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    // 移除 base64 的前綴 (data:image/jpeg;base64,) 以便 API 讀取
     const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp|heic);base64,/, "");
 
     try {
@@ -78,7 +74,7 @@ async function callGeminiVision(prompt: string, base64Image: string): Promise<st
                         { text: prompt },
                         {
                             inline_data: {
-                                mime_type: "image/jpeg", // 假設大多是 jpeg/png，API 通常能容錯
+                                mime_type: "image/jpeg", 
                                 data: cleanBase64
                             }
                         }
@@ -117,16 +113,14 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinu
     } catch (error) { throw error; }
 }
 
-// JSON 解析輔助函式
 const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
     try {
         let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const firstChar = clean.indexOf('[');
         const lastChar = clean.lastIndexOf(']');
-        // 嘗試抓取 [] 或 {}
+        
         if (firstChar !== -1 && lastChar !== -1) {
-             // 如果是陣列
              clean = clean.substring(firstChar, lastChar + 1);
         } else {
             const firstBrace = clean.indexOf('{');
@@ -143,7 +137,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成 (維持不變)
+// 1. 行程生成
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -283,14 +277,6 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
             Act as an aviation data specialist.
             Task: Provide the **STANDARD SCHEDULED ROUTE** for flight number "${flightCode}".
             
-            **CRITICAL RULES**:
-            1. Return the accurate IATA Airport Codes for Origin and Destination.
-            2. Do NOT guess. Use historical flight data knowledge.
-            3. Specific known routes (Examples):
-               - CI166 is KHH (Kaohsiung) -> KIX (Osaka/Kansai).
-               - CI167 is KIX (Osaka/Kansai) -> KHH (Kaohsiung).
-               - JX800 is TPE -> NRT.
-            
             Return valid JSON ONLY (No markdown):
             {
                 "code": "${flightCode}",
@@ -312,7 +298,7 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
 };
 
 // ==========================================================
-// 3. AI 推薦下一站 (新增功能)
+// 3. AI 推薦下一站
 // ==========================================================
 export const suggestNextSpot = async (
     currentLocation: string, 
@@ -341,12 +327,12 @@ export const suggestNextSpot = async (
 };
 
 // ==========================================================
-// [新增] 4. AI 辨識收據 (Vision API - 升級版：支援明細)
+// [修改] 4. AI 辨識收據 (Vision API - 簡化版：只抓總額與店家)
 // ==========================================================
 interface ReceiptResult {
     merchant: string;
     total: number;
-    items: { name: string; amount: number }[];
+    // 移除 items 欄位，專注於總金額
 }
 
 export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptResult | null> => {
@@ -354,21 +340,14 @@ export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptR
         Role: Professional Accountant & Receipt OCR Expert.
         Task: Analyze this receipt/invoice/menu image.
         
-        Extract the following information:
+        Extract ONLY the following information:
         1. **Merchant Name**: The name of the store or restaurant. (Use concise Traditional Chinese if possible)
         2. **Total Amount**: The final total cost.
-        3. **Items Breakdown**: A list of individual items purchased.
-           - Try to identify item names and their individual prices.
-           - If there's a service charge or tax, include it as an item named "服務費" or "稅金".
         
         **Output Format**: Return valid JSON ONLY (No Markdown, No Explanation).
         {
             "merchant": "星巴克",
-            "total": 350,
-            "items": [
-                { "name": "拿鐵", "amount": 150 },
-                { "name": "起司蛋糕", "amount": 200 }
-            ]
+            "total": 350
         }
         
         If the image is blurry or not a receipt, return null.
