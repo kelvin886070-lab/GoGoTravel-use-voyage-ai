@@ -387,15 +387,16 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
     );
 };
 
-// --- Activity Detail Modal (Ultimate Edition with Auto-Sum) ---
+// --- Activity Detail Modal (Ultimate Edition with Auto-Sum & View Mode) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
     onClose: () => void;
     onSave: (updatedAct: Activity) => void; 
     onDelete: () => void; 
     members?: Member[]; 
-}> = ({ act, onClose, onSave, onDelete, members = [] }) => {
-    const [isEditing, setIsEditing] = useState(false);
+    initialEdit?: boolean;
+}> = ({ act, onClose, onSave, onDelete, members = [], initialEdit = false }) => {
+    const [isEditing, setIsEditing] = useState(initialEdit);
     const [edited, setEdited] = useState<Activity>({ ...act });
     const [aiProcessing, setAiProcessing] = useState(false);
     const [aiLoadingText, setAiLoadingText] = useState('正在掃描...');
@@ -408,11 +409,6 @@ const ActivityDetailModal: React.FC<{
     useEffect(() => {
         if (!edited.payer && members.length > 0) {
             setEdited(prev => ({ ...prev, payer: members[0].id }));
-        }
-        if ((edited.type === 'note' && edited.title === '新備註') || 
-            (edited.type === 'expense' && edited.title === '新支出') ||
-            (edited.type === 'transport' && edited.title === '移動')) {
-            setIsEditing(true);
         }
     }, []);
 
@@ -566,7 +562,7 @@ const ActivityDetailModal: React.FC<{
                 {/* 1. Sticky Header */}
                 <div className="flex-shrink-0 bg-white z-20 px-6 pt-6 pb-4 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="text-xl font-bold text-[#1D1D1B]">
-                        {isExpense ? '記帳詳情' : isEditing ? '編輯內容' : (isTransport ? '交通詳情' : isNote ? '備註內容' : '行程資訊')}
+                        {isEditing ? '編輯內容' : (isTransport ? '交通詳情' : isNote ? '備註內容' : isExpense ? '記帳詳情' : '行程資訊')}
                     </h3>
                     <div className="flex gap-2">
                         {!isEditing ? (
@@ -667,14 +663,17 @@ const ActivityDetailModal: React.FC<{
                                             <div key={item.id} className="group flex flex-col gap-1">
                                                 <div className="flex justify-between items-center">
                                                     {/* Name Input */}
-                                                    <input 
-                                                        ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null}
-                                                        className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full truncate placeholder-gray-300"
-                                                        value={item.name}
-                                                        placeholder="品項名稱"
-                                                        onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                                                        disabled={!isEditing}
-                                                    />
+                                                    {isEditing ? (
+                                                        <input 
+                                                            ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null}
+                                                            className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full truncate placeholder-gray-300"
+                                                            value={item.name}
+                                                            placeholder="品項名稱"
+                                                            onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                                                        />
+                                                    ) : (
+                                                        <span className="font-bold text-[#1D1D1B] truncate">{item.name || '未命名品項'}</span>
+                                                    )}
                                                     
                                                     {/* Dots Spacer */}
                                                     <div className="flex-1 border-b border-dotted border-gray-300 mx-2 h-4 opacity-50" />
@@ -682,14 +681,17 @@ const ActivityDetailModal: React.FC<{
                                                     {/* Cost Input */}
                                                     <div className="flex items-center">
                                                         <span className="text-gray-400 text-xs mr-1">$</span>
-                                                        <input 
-                                                            type="number"
-                                                            className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right"
-                                                            value={item.amount}
-                                                            placeholder="0"
-                                                            onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
-                                                            disabled={!isEditing}
-                                                        />
+                                                        {isEditing ? (
+                                                            <input 
+                                                                type="number"
+                                                                className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right"
+                                                                value={item.amount}
+                                                                placeholder="0"
+                                                                onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
+                                                            />
+                                                        ) : (
+                                                            <span className="font-bold text-[#1D1D1B] text-right">{item.amount}</span>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -701,29 +703,38 @@ const ActivityDetailModal: React.FC<{
                                                         </button>
                                                     )}
                                                     
-                                                    {/* ALL Button */}
-                                                    <button 
-                                                        onClick={() => isEditing && toggleItemMember(item.id)} 
-                                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                                                        disabled={!isEditing}
-                                                    >
-                                                        ALL
-                                                    </button>
+                                                    {/* ALL Button (Only in Edit Mode) */}
+                                                    {isEditing && (
+                                                        <button 
+                                                            onClick={() => toggleItemMember(item.id)} 
+                                                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                                        >
+                                                            ALL
+                                                        </button>
+                                                    )}
 
                                                     {/* Members */}
                                                     {members.map(m => {
                                                         const isAssigned = (item.assignedTo || []).includes(m.id);
+                                                        // In View Mode, only show assigned members or if All (show nothing specific, handled below)
+                                                        if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
+
                                                         return (
                                                             <button 
                                                                 key={m.id}
                                                                 onClick={() => isEditing && toggleItemMember(item.id, m.id)}
-                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-200 active:scale-90 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm scale-110` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'}`}
+                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`}
                                                                 disabled={!isEditing}
                                                             >
                                                                 {isAssigned ? <Check className="w-3 h-3" /> : m.name[0]}
                                                             </button>
                                                         )
                                                     })}
+                                                    
+                                                    {/* All Indicator (View Mode) */}
+                                                    {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && (
+                                                        <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))
@@ -763,7 +774,7 @@ const ActivityDetailModal: React.FC<{
                                     </div>
                                     
                                     {/* Auto-Sum Indicator */}
-                                    {edited.items && edited.items.length > 0 && (
+                                    {isEditing && edited.items && edited.items.length > 0 && (
                                         <div className="flex items-center justify-end gap-1 text-green-500 text-[10px] font-bold mt-1">
                                             <CheckCircle2 className="w-3 h-3" /> 自動加總中
                                         </div>
@@ -1174,7 +1185,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const [menuTargetIndex, setMenuTargetIndex] = useState<{dayIdx: number, actIdx: number} | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     // Detail Modal State
-    const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity } | null>(null);
+    const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity, initialEdit: boolean } | null>(null);
     
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
@@ -1258,7 +1269,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             onUpdateTrip(newTrip);
             
             if (['note', 'expense', 'transport'].includes(type)) {
-                setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct });
+                setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true });
             }
         }
     };
@@ -1393,15 +1404,15 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                                 <Draggable draggableId={`${day.day}-${index}`} index={index}>
                                                                     {(provided, snapshot) => (
                                                                         act.type === 'process' ? (
-                                                                            <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} />
+                                                                            <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
                                                                         ) : act.type === 'transport' ? (
-                                                                            <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} />
+                                                                            <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
                                                                         ) : act.type === 'note' ? (
-                                                                            <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} />
+                                                                            <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
                                                                         ) : act.type === 'expense' ? (
-                                                                            <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
+                                                                            <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
                                                                         ) : (
-                                                                            <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
+                                                                            <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
                                                                         )
                                                                     )}
                                                                 </Draggable>
@@ -1444,6 +1455,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     onSave={handleUpdateActivity}
                     onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)}
                     members={trip.members}
+                    initialEdit={selectedActivity.initialEdit}
                 />
             )}
 
