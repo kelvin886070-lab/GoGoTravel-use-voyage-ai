@@ -7,7 +7,7 @@ import {
     StickyNote, Banknote, Sparkles, UserCheck, 
     Check, Loader2, ZoomIn, Receipt,
     ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Copy, BarChart3, Scale, Image as ImageIcon,
-    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical
+    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical, Navigation
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -29,11 +29,6 @@ const CURRENCY_LABELS: Record<CurrencyCode, string> = {
     'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元', 'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
 };
 
-/**
- * CATEGORIES 權威定義
- * isSystem: true -> 系統功能卡片 (連接線/便利貼)，使用特殊版型
- * 注意：layout 屬性決定是否使用拍立得版型，與此處定義無關
- */
 const CATEGORIES = [
     // --- 一般消費活動 ---
     { id: 'food', label: '美食', icon: Utensils, tagClass: 'bg-orange-100 text-orange-600 border-orange-200', chartClass: 'bg-orange-500' },
@@ -50,7 +45,7 @@ const CATEGORIES = [
     { id: 'expense', label: '一般支出', icon: Banknote, tagClass: 'bg-green-100 text-green-600 border-green-200', chartClass: 'bg-green-500' },
     { id: 'other', label: '其他', icon: Banknote, tagClass: 'bg-gray-100 text-gray-600 border-gray-200', chartClass: 'bg-gray-400' },
     
-    // --- 系統特殊功能 (System Style) ---
+    // --- 系統特殊功能 ---
     { id: 'transport', label: '移動', icon: Bus, tagClass: 'bg-gray-100 text-gray-600', chartClass: 'bg-gray-400', isSystem: true }, 
     { id: 'flight', label: '航班', icon: Plane, tagClass: 'bg-emerald-100 text-emerald-600', chartClass: 'bg-emerald-500', isSystem: true },
     { id: 'note', label: '備註', icon: StickyNote, tagClass: 'bg-yellow-100 text-yellow-600', chartClass: 'bg-yellow-500', isSystem: true },
@@ -86,6 +81,13 @@ const getMemberAvatarColor = (name: string) => {
 const isSystemType = (type: string) => {
     const cat = CATEGORIES.find(c => c.id === type);
     return cat ? !!cat.isSystem : false;
+};
+
+// 簡單的日期加法 helper
+const addDays = (dateStr: string, days: number): string => {
+    const date = new Date(dateStr);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
 };
 
 // ============================================================================
@@ -170,6 +172,55 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
+// [新增] 1. 現在時刻線元件 (高質感設計)
+const CurrentTimeIndicator: React.FC = () => {
+    // 讓這個元件 mount 時自動捲動到視野中
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        setTimeout(() => {
+            ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 500); // 延遲一點點確保頁面 render 完畢
+    }, []);
+
+    return (
+        <div ref={ref} className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700">
+            {/* 左側：時間軸上的定位點 */}
+            <div className="w-[55px] flex justify-center relative">
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <div className="w-full h-px bg-rose-200"></div>
+                </div>
+                {/* 質感膠囊 */}
+                <div className="relative z-10 bg-rose-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg ring-2 ring-white tracking-wider flex items-center gap-1">
+                    <Navigation className="w-2.5 h-2.5 fill-current" /> NOW
+                </div>
+            </div>
+            
+            {/* 右側：貫穿的虛線 */}
+            <div className="flex-1 h-px bg-gradient-to-r from-rose-400 via-rose-300 to-transparent border-t border-dashed border-rose-300/0"></div>
+        </div>
+    );
+};
+
+// [新增] 2. 空狀態插圖元件 (具備 Droppable 佔位符)
+const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => {
+    return (
+        <div 
+            ref={provided.innerRef} 
+            {...provided.droppableProps}
+            className="min-h-[160px] rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-8 text-gray-400 bg-gray-50/50 transition-all hover:bg-white hover:border-[#45846D]/30 group"
+        >
+            <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                <Map className="w-8 h-8 text-gray-300 group-hover:text-[#45846D] transition-colors" />
+            </div>
+            <p className="text-sm font-bold text-gray-500 mb-1">這天還是空的</p>
+            <p className="text-xs opacity-60">從側邊欄加入行程，或把別天的行程拖曳過來吧！</p>
+            
+            {/* 隱藏的 placeholder，確保拖曳功能正常運作 */}
+            <div className="hidden">{provided.placeholder}</div>
+        </div>
+    );
+};
+
 // ============================================================================
 // 4. List Items
 // ============================================================================
@@ -239,8 +290,6 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
 };
 
 // [拍立得版型] 適用於：純記帳、以及 layout='polaroid' 的活動
-// [視覺優化] 高度固定為 h-40 (160px)，更為精簡寬螢幕
-// [功能新增] 支援讀取 imagePositionY 進行顯示
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
@@ -266,7 +315,7 @@ const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: 
                             src={act.expenseImage} 
                             alt="Receipt" 
                             className="w-full h-full object-cover" 
-                            style={{ objectPosition: `center ${act.imagePositionY ?? 50}%` }} // [關鍵] 讀取裁切位置
+                            style={{ objectPosition: `center ${act.imagePositionY ?? 50}%` }} // 讀取裁切位置
                         /> : 
                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots"><Camera className="w-8 h-8 opacity-30 mb-1" /><span className="text-[10px] font-bold opacity-30">無照片</span></div>
                     }
@@ -289,7 +338,7 @@ const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: 
     );
 };
 
-// [條列式版型] 適用於：美食、景點、購物等一般行程
+// [條列式版型] 適用於：一般行程
 const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : null;
     const category = CATEGORIES.find(c => c.id === act.type);
@@ -316,7 +365,6 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
 // 5. Modals (Detail, Dashboard, Settings, etc.)
 // ============================================================================
 
-// --- Activity Detail Modal (Strict Receipt Mode & Per-Item Split) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
     onClose: () => void;
@@ -333,7 +381,7 @@ const ActivityDetailModal: React.FC<{
     const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
     const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false); 
     
-    // [新增] 圖片拖曳位置狀態
+    // 圖片拖曳位置狀態
     const [imagePositionY, setImagePositionY] = useState(act.imagePositionY ?? 50);
     const [isDraggingImage, setIsDraggingImage] = useState(false);
     const imageDragStartY = useRef(0);
@@ -366,7 +414,7 @@ const ActivityDetailModal: React.FC<{
         setEdited(prev => ({ ...prev, [field]: value }));
     };
 
-    // [新增] 圖片拖曳邏輯
+    // 圖片拖曳邏輯
     const handleImageMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isEditing) return;
         setIsDraggingImage(true);
@@ -380,15 +428,10 @@ const ActivityDetailModal: React.FC<{
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
         const deltaY = clientY - imageDragStartY.current;
         const containerHeight = imageContainerRef.current.clientHeight;
-        
-        // 靈敏度調整：移動像素對應百分比
         const percentChange = (deltaY / containerHeight) * 100 * 1.5; 
         
-        // 拖曳方向與直覺一致：往下拖 -> 顯示上面 -> %數減少 (0% = top)
-        // 往上拖 -> 顯示下面 -> %數增加 (100% = bottom)
         let newPos = imageStartPos.current - percentChange;
-        newPos = Math.max(0, Math.min(100, newPos)); // Clamp between 0 and 100
-        
+        newPos = Math.max(0, Math.min(100, newPos)); 
         setImagePositionY(newPos);
     };
 
@@ -721,7 +764,7 @@ const ActivityDetailModal: React.FC<{
                             </div>
                         </div>
                     ) : (
-                        // --- SYSTEM LAYOUT ---
+                        // --- SYSTEM LAYOUT (System features only: Transport Connector, Note, Process...) ---
                         <div className="space-y-4">
                             {!isNote && (
                                 <div className="flex gap-4">
@@ -1128,6 +1171,21 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const flightDisplayDest = trip.destination || 'DEST';
     const firstType = trip.days[0]?.activities[0]?.type || 'other';
 
+    // [新增] 現在時刻的邏輯計算
+    // 假設行程從今天開始，或者從 trip.startDate 開始
+    // 在這裡我們簡單模擬「今天是行程的第幾天」
+    // 真實應用中應使用 new Date() 和 trip.startDate 比較
+    const today = new Date().toISOString().split('T')[0];
+    const currentDayIndex = trip.days.findIndex(d => {
+        const tripStart = new Date(trip.startDate);
+        const currentTripDate = new Date(tripStart);
+        currentTripDate.setDate(tripStart.getDate() + (d.day - 1));
+        return currentTripDate.toISOString().split('T')[0] === today;
+    });
+    
+    // 找出目前時間應該插在哪個活動之間
+    const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    
     // Initialize default member (Me) if empty
     useEffect(() => {
         if (!trip.members || trip.members.length === 0) {
@@ -1242,10 +1300,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
             
-            {/* 1. Header Container (Relative container for absolute nav) */}
+            {/* 1. Header Container */}
             <div className={`relative h-72 w-full ${headerBgClass}`}>
                 
-                {/* 1.1 Nav Buttons (Now Absolute, scrolls with header) */}
+                {/* 1.1 Nav Buttons (Scrolls with header) */}
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
                     <div className="flex gap-3 pointer-events-auto">
@@ -1317,57 +1375,77 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     {showExpenses && <ExpenseDashboard trip={trip} />}
                     <DragDropContext onDragEnd={onDragEnd}>
                         <div className="py-4 space-y-10">
-                            {trip.days.map((day: TripDay, dayIndex: number) => (
-                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
-                                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
-                                    <div className="flex justify-between items-center mb-4 -mt-1">
-                                        <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                        {/* Top Plus Button for Day Start */}
-                                        <button 
-                                            onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
-                                            className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
-                                        >
-                                            <Plus className="w-5 h-5" />
-                                        </button>
+                            {trip.days.map((day: TripDay, dayIndex: number) => {
+                                const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
+                                const activities = day.activities;
+                                
+                                return (
+                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
+                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
+                                        <div className="flex justify-between items-center mb-4 -mt-1">
+                                            <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
+                                            {/* Top Plus Button for Day Start */}
+                                            <button 
+                                                onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
+                                                className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                        {viewMode === 'list' ? (
+                                            <Droppable droppableId={`day-${dayIndex + 1}`}>
+                                                {(provided) => (
+                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
+                                                        {/* [新功能] 空狀態插圖 (如果是空的就顯示) */}
+                                                        {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
+
+                                                        {/* 渲染活動列表 */}
+                                                        {activities.map((act: Activity, index: number) => {
+                                                            const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
+                                                            
+                                                            return (
+                                                                <React.Fragment key={`${day.day}-${index}`}>
+                                                                    {/* [新功能] 現在時刻線 (插入在正確的時間位置) */}
+                                                                    {isNextActivity && <CurrentTimeIndicator />}
+                                                                    
+                                                                    <Draggable draggableId={`${day.day}-${index}`} index={index}>
+                                                                        {(provided, snapshot) => {
+                                                                            // [版型分流核心]
+                                                                            // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
+                                                                            if (isSystemType(act.type)) {
+                                                                                if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                                if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                                return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                            }
+                                                                            
+                                                                            // 2. 拍立得版型 (layout='polaroid')
+                                                                            if (act.layout === 'polaroid') {
+                                                                                return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
+                                                                            }
+                                                                            
+                                                                            // 3. 預設版型 (List)
+                                                                            return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
+                                                                        }}
+                                                                    </Draggable>
+                                                                    {/* Ghost Insert Button (Between Items) */}
+                                                                    <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
+                                                                </React.Fragment>
+                                                            );
+                                                        })}
+                                                        
+                                                        {/* 如果是今天，且已經晚於所有活動時間，顯示紅線在最後 */}
+                                                        {isCurrentDay && activities.length > 0 && currentTime >= activities[activities.length - 1].time && <CurrentTimeIndicator />}
+                                                        
+                                                        {provided.placeholder}
+                                                    </div>
+                                                )}
+                                            </Droppable>
+                                        ) : (
+                                            <RouteVisualization day={day} destination={trip.destination} />
+                                        )}
                                     </div>
-                                    {viewMode === 'list' ? (
-                                        <Droppable droppableId={`day-${dayIndex + 1}`}>
-                                            {(provided) => (
-                                                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                    {day.activities.map((act: Activity, index: number) => (
-                                                        <div key={`${day.day}-${index}`}>
-                                                            <Draggable draggableId={`${day.day}-${index}`} index={index}>
-                                                                {(provided, snapshot) => {
-                                                                    // [版型分流核心]
-                                                                    // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
-                                                                    if (isSystemType(act.type)) {
-                                                                        if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                        if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                        return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                    }
-                                                                    
-                                                                    // 2. 拍立得版型 (layout='polaroid') -> 強調照片與金額 (如: 快速記帳產生的卡片)
-                                                                    if (act.layout === 'polaroid') {
-                                                                        return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
-                                                                    }
-                                                                    
-                                                                    // 3. 預設版型 (List) -> 一般行程 (美食/景點/購物...)
-                                                                    return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
-                                                                }}
-                                                            </Draggable>
-                                                            {/* Ghost Insert Button (Between Items) */}
-                                                            <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
-                                                        </div>
-                                                    ))}
-                                                    {provided.placeholder}
-                                                </div>
-                                            )}
-                                        </Droppable>
-                                    ) : (
-                                        <RouteVisualization day={day} destination={trip.destination} />
-                                    )}
-                                </div>
-                            ))}
+                                );
+                            })}
                             <div className="h-24"></div>
                         </div>
                     </DragDropContext>
