@@ -1,27 +1,61 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-    ArrowLeft, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, 
-    ArrowLeftRight, Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
-    RefreshCw, PenTool, Share, Train, Calendar, AlertTriangle, 
+    ArrowLeft, ArrowLeftRight, Trash2, Camera, List, Map, Plus, GripVertical, Wallet, 
+    Settings, X, Utensils, Bed, Bus, Plane, Tag as TagIcon, 
+    RefreshCw, PenTool, Share, Train, Calendar, 
     Car, Footprints, TramFront, Clock, MapPin, ChevronRight, Edit3, Save, ExternalLink,
-    StickyNote, Banknote, Sparkles, UserCheck, PlaneTakeoff, PlaneLanding,
-    Users, UserPlus, Check, Image as ImageIcon, Loader2, ZoomIn, Receipt,
-    ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown
+    StickyNote, Banknote, Sparkles, UserCheck, 
+    Check, Loader2, ZoomIn, Receipt,
+    ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Copy, BarChart3, Scale, Image as ImageIcon,
+    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { IOSInput, IOSShareSheet, IOSButton } from '../components/UI';
-import { getCurrencyRate, suggestNextSpot, analyzeReceiptImage } from '../services/gemini';
+import { IOSInput, IOSShareSheet } from '../components/UI';
+import { getCurrencyRate, suggestNextSpot } from '../services/gemini';
 import { recalculateTimeline } from '../services/timeline';
 
-// --- Constants ---
-const CURRENCY_SYMBOLS: Record<string, string> = {
-    'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
-};
+// ============================================================================
+// 1. Constants & Types (Single Source of Truth)
+// ============================================================================
 
-const CURRENCY_LABELS: Record<string, string> = {
+const CURRENCY_SYMBOLS = {
+    'TWD': 'NT$', 'USD': '$', 'JPY': '¥', 'KRW': '₩', 'EUR': '€', 'CNY': '¥', 'HKD': 'HK$'
+} as const;
+
+type CurrencyCode = keyof typeof CURRENCY_SYMBOLS;
+
+const CURRENCY_LABELS: Record<CurrencyCode, string> = {
     'TWD': '新台幣', 'USD': '美金', 'JPY': '日圓', 'KRW': '韓元', 'EUR': '歐元', 'CNY': '人民幣', 'HKD': '港幣'
 };
+
+/**
+ * CATEGORIES 權威定義
+ * isSystem: true -> 系統功能卡片 (連接線/便利貼)，使用特殊版型
+ * 注意：layout 屬性決定是否使用拍立得版型，與此處定義無關
+ */
+const CATEGORIES = [
+    // --- 一般消費活動 ---
+    { id: 'food', label: '美食', icon: Utensils, tagClass: 'bg-orange-100 text-orange-600 border-orange-200', chartClass: 'bg-orange-500' },
+    { id: 'commute', label: '交通費', icon: Car, tagClass: 'bg-blue-100 text-blue-600 border-blue-200', chartClass: 'bg-blue-500' }, 
+    { id: 'shopping', label: '購物', icon: TagIcon, tagClass: 'bg-pink-100 text-pink-600 border-pink-200', chartClass: 'bg-pink-500' },
+    { id: 'sightseeing', label: '景點', icon: Camera, tagClass: 'bg-indigo-100 text-indigo-600 border-indigo-200', chartClass: 'bg-indigo-500' },
+    { id: 'hotel', label: '住宿', icon: Bed, tagClass: 'bg-purple-100 text-purple-600 border-purple-200', chartClass: 'bg-purple-500' },
+    { id: 'gift', label: '伴手禮', icon: TagIcon, tagClass: 'bg-rose-100 text-rose-600 border-rose-200', chartClass: 'bg-rose-500' },
+    { id: 'bar', label: '酒吧', icon: Utensils, tagClass: 'bg-violet-100 text-violet-600 border-violet-200', chartClass: 'bg-violet-500' },
+    { id: 'activity', label: '體驗', icon: Sparkles, tagClass: 'bg-cyan-100 text-cyan-600 border-cyan-200', chartClass: 'bg-cyan-500' },
+    { id: 'tickets', label: '票券', icon: Ticket, tagClass: 'bg-sky-100 text-sky-600 border-sky-200', chartClass: 'bg-sky-500' },
+    { id: 'snacks', label: '點心', icon: Coffee, tagClass: 'bg-amber-100 text-amber-600 border-amber-200', chartClass: 'bg-amber-500' },
+    { id: 'health', label: '藥妝', icon: Pill, tagClass: 'bg-teal-100 text-teal-600 border-teal-200', chartClass: 'bg-teal-500' },
+    { id: 'expense', label: '一般支出', icon: Banknote, tagClass: 'bg-green-100 text-green-600 border-green-200', chartClass: 'bg-green-500' },
+    { id: 'other', label: '其他', icon: Banknote, tagClass: 'bg-gray-100 text-gray-600 border-gray-200', chartClass: 'bg-gray-400' },
+    
+    // --- 系統特殊功能 (System Style) ---
+    { id: 'transport', label: '移動', icon: Bus, tagClass: 'bg-gray-100 text-gray-600', chartClass: 'bg-gray-400', isSystem: true }, 
+    { id: 'flight', label: '航班', icon: Plane, tagClass: 'bg-emerald-100 text-emerald-600', chartClass: 'bg-emerald-500', isSystem: true },
+    { id: 'note', label: '備註', icon: StickyNote, tagClass: 'bg-yellow-100 text-yellow-600', chartClass: 'bg-yellow-500', isSystem: true },
+    { id: 'process', label: '程序', icon: UserCheck, tagClass: 'bg-slate-100 text-slate-600', chartClass: 'bg-slate-500', isSystem: true },
+];
 
 const parseCost = (costStr?: string | number): number => {
     if (costStr === undefined || costStr === null || costStr === '') return 0;
@@ -32,7 +66,10 @@ const parseCost = (costStr?: string | number): number => {
     return 0;
 };
 
-// --- Helper: Get Member Name by ID ---
+// ============================================================================
+// 2. Helper Functions
+// ============================================================================
+
 const getMemberName = (members: Member[] | undefined, id?: string) => {
     if (!members || !id) return '我';
     const m = members.find(m => m.id === id);
@@ -46,14 +83,21 @@ const getMemberAvatarColor = (name: string) => {
     return colors[Math.abs(hash) % colors.length];
 };
 
-// --- [新] iOS Style Time Wheel Picker ---
+const isSystemType = (type: string) => {
+    const cat = CATEGORIES.find(c => c.id === type);
+    return cat ? !!cat.isSystem : false;
+};
+
+// ============================================================================
+// 3. UI Components
+// ============================================================================
+
 const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) => void, onClose: () => void }> = ({ value, onChange, onClose }) => {
     const [hour, setHour] = useState(parseInt(value.split(':')[0] || '9'));
     const [minute, setMinute] = useState(parseInt(value.split(':')[1] || '0'));
     const hourRef = useRef<HTMLDivElement>(null);
     const minuteRef = useRef<HTMLDivElement>(null);
 
-    // Initial Scroll Position
     useEffect(() => {
         if (hourRef.current) hourRef.current.scrollTop = hour * 40;
         if (minuteRef.current) minuteRef.current.scrollTop = minute * 40;
@@ -82,38 +126,18 @@ const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) => void
                     <span className="text-lg font-bold text-[#1D1D1B]">選擇時間</span>
                     <button onClick={handleConfirm} className="text-[#45846D] font-bold text-sm">確認</button>
                 </div>
-                
                 <div className="relative h-40 flex justify-center gap-4 overflow-hidden mask-gradient-to-b">
-                    {/* Selection Highlight Bar */}
                     <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-10 bg-gray-100/50 rounded-lg pointer-events-none border-y border-gray-200/50" />
-                    
-                    {/* Hour Column */}
-                    <div 
-                        ref={hourRef}
-                        onScroll={(e) => handleScroll('hour', e)}
-                        className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]"
-                    >
+                    <div ref={hourRef} onScroll={(e) => handleScroll('hour', e)} className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]">
                         {Array.from({ length: 24 }).map((_, i) => (
-                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === hour ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>
-                                {i.toString().padStart(2, '0')}
-                            </div>
+                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === hour ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>{i.toString().padStart(2, '0')}</div>
                         ))}
-                        {/* Padding for bottom scroll */}
                         <div className="h-[60px]" />
                     </div>
-
                     <div className="flex items-center pb-1 font-bold text-gray-300">:</div>
-
-                    {/* Minute Column */}
-                    <div 
-                        ref={minuteRef}
-                        onScroll={(e) => handleScroll('minute', e)}
-                        className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]"
-                    >
+                    <div ref={minuteRef} onScroll={(e) => handleScroll('minute', e)} className="w-20 h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar text-center py-[60px]">
                         {Array.from({ length: 60 }).map((_, i) => (
-                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === minute ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>
-                                {i.toString().padStart(2, '0')}
-                            </div>
+                            <div key={i} className={`h-10 flex items-center justify-center snap-center text-xl font-mono transition-all duration-100 ${i === minute ? 'font-black text-[#1D1D1B] scale-110' : 'text-gray-300 scale-90'}`}>{i.toString().padStart(2, '0')}</div>
                         ))}
                         <div className="h-[60px]" />
                     </div>
@@ -123,29 +147,14 @@ const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) => void
     );
 };
 
-// --- Sub Components ---
-
 const Tag: React.FC<{ type: string }> = ({ type }) => {
-    const config: Record<string, { color: string, label: string, icon: any }> = {
-        sightseeing: { color: 'bg-blue-100 text-blue-700', label: '景點', icon: Camera },
-        food: { color: 'bg-orange-100 text-orange-700', label: '美食', icon: Utensils },
-        transport: { color: 'bg-gray-100 text-gray-700', label: '交通', icon: Bus },
-        flight: { color: 'bg-[#45846D]/10 text-[#45846D]', label: '航班', icon: Plane },
-        hotel: { color: 'bg-indigo-100 text-indigo-700', label: '住宿', icon: Bed },
-        cafe: { color: 'bg-amber-100 text-amber-700', label: '咖啡廳', icon: Utensils },
-        shopping: { color: 'bg-pink-100 text-pink-700', label: '購物', icon: TagIcon },
-        relax: { color: 'bg-emerald-100 text-emerald-700', label: '放鬆', icon: TagIcon },
-        bar: { color: 'bg-violet-100 text-violet-700', label: '酒吧', icon: TagIcon },
-        culture: { color: 'bg-rose-100 text-rose-700', label: '文化', icon: TagIcon },
-        activity: { color: 'bg-cyan-100 text-cyan-700', label: '體驗', icon: TagIcon },
-        note: { color: 'bg-yellow-100 text-yellow-700', label: '備註', icon: StickyNote },
-        expense: { color: 'bg-green-100 text-green-700', label: '記帳', icon: Banknote },
-        process: { color: 'bg-slate-100 text-slate-700', label: '程序', icon: UserCheck },
-        default: { color: 'bg-gray-100 text-gray-600', label: '其他', icon: TagIcon }
-    };
-    const { color, label, icon: Icon } = config[type] || config.default;
+    const cat = CATEGORIES.find(c => c.id === type) || CATEGORIES.find(c => c.id === 'other');
+    const Icon = cat?.icon || TagIcon;
+    const tagClass = cat?.tagClass || 'bg-gray-100 text-gray-600';
+    const label = cat?.label || type;
+
     return (
-        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wide flex items-center gap-1 w-fit ${color}`}>
+        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wide flex items-center gap-1 w-fit ${tagClass} bg-opacity-10 text-opacity-100`}>
             <Icon className="w-3 h-3" /> {label}
         </span>
     );
@@ -161,36 +170,25 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// --- Process Item ---
+// ============================================================================
+// 4. List Items
+// ============================================================================
+
 const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     return (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.draggableProps} 
-            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-            className={`relative flex items-center py-2 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
-            onClick={onClick}
-        >
-            <div className="flex flex-col items-center w-[55px] self-stretch relative">
-                <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div>
-            </div>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center py-2 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
+            <div className="flex flex-col items-center w-[55px] self-stretch relative"><div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div></div>
             <div className="flex-1 flex items-center">
                 <div className="bg-slate-100 border border-slate-200 rounded-full px-4 py-2 flex items-center gap-3 shadow-sm active:scale-95 transition-transform cursor-pointer hover:bg-slate-200">
-                    <UserCheck className="w-4 h-4 text-slate-500" />
-                    <span className="text-xs font-bold text-slate-700">{act.title}</span>
-                    <div className="w-px h-3 bg-slate-300 mx-1"></div>
-                    <span className="text-xs font-mono text-slate-500">{detail?.duration || '60 min'}</span>
+                    <UserCheck className="w-4 h-4 text-slate-500" /><span className="text-xs font-bold text-slate-700">{act.title}</span><div className="w-px h-3 bg-slate-300 mx-1"></div><span className="text-xs font-mono text-slate-500">{detail?.duration || '60 min'}</span>
                 </div>
-                <div {...provided.dragHandleProps} className="text-transparent group-hover:text-gray-300 p-2 ml-auto" onClick={(e) => e.stopPropagation()}>
-                    <GripVertical className="w-4 h-4" />
-                </div>
+                <div {...provided.dragHandleProps} className="text-transparent group-hover:text-gray-300 p-2 ml-auto" onClick={(e) => e.stopPropagation()}><GripVertical className="w-4 h-4" /></div>
             </div>
         </div>
     );
 };
 
-// --- Transport Connector Item ---
 const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     const getIcon = () => {
@@ -203,191 +201,109 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
         return <Bus className="w-4 h-4" />;
     };
     return (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.draggableProps} 
-            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-            className={`relative flex items-center gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
-            onClick={onClick}
-        >
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] self-stretch relative">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div>
-                <div className="relative z-10 bg-gray-100 border-2 border-white text-gray-500 rounded-full p-1.5 shadow-sm mt-2">
-                    {getIcon()}
-                </div>
+                <div className="relative z-10 bg-gray-100 border-2 border-white text-gray-500 rounded-full p-1.5 shadow-sm mt-2">{getIcon()}</div>
             </div>
             <div className="flex-1 bg-gray-50/80 rounded-xl p-3 border border-gray-200/50 flex items-center justify-between gap-3 backdrop-blur-sm active:scale-[0.98] transition-transform cursor-pointer hover:bg-gray-100/80 overflow-hidden">
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-white bg-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                            {detail?.mode || 'Transport'}
-                        </span>
-                        <span className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {detail?.duration || '15 min'}
-                        </span>
+                        <span className="text-[10px] font-bold text-white bg-gray-400 px-1.5 py-0.5 rounded uppercase tracking-wider">{detail?.mode || 'Transport'}</span>
+                        <span className="text-xs font-bold text-gray-600 flex items-center gap-1"><Clock className="w-3 h-3" />{detail?.duration || '15 min'}</span>
                     </div>
                     {(detail?.fromStation || detail?.toStation) ? (
                         <div className="text-xs text-gray-800 font-bold flex flex-wrap items-center gap-1 min-w-0">
-                            <span className="truncate max-w-[40%]">{detail.fromStation || '起點'}</span>
-                            <ArrowLeftRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                            <span className="truncate max-w-[40%]">{detail.toStation || '終點'}</span>
+                            <span className="truncate max-w-[40%]">{detail.fromStation || '起點'}</span><ArrowLeftRight className="w-3 h-3 text-gray-400 flex-shrink-0" /><span className="truncate max-w-[40%]">{detail.toStation || '終點'}</span>
                         </div>
                     ) : (
-                        <div className="text-xs text-gray-800 font-medium truncate">
-                            {detail?.instruction || act.description || '移動至下個地點'}
-                        </div>
+                        <div className="text-xs text-gray-800 font-medium truncate">{detail?.instruction || act.description || '移動至下個地點'}</div>
                     )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    <ChevronRight className="w-4 h-4 text-gray-300" />
-                    <div {...provided.dragHandleProps} className="text-gray-300 p-1" onClick={(e) => e.stopPropagation()}>
-                        <GripVertical className="w-4 h-4" />
-                    </div>
-                </div>
+                <div className="flex items-center gap-2 flex-shrink-0"><ChevronRight className="w-4 h-4 text-gray-300" /><div {...provided.dragHandleProps} className="text-gray-300 p-1" onClick={(e) => e.stopPropagation()}><GripVertical className="w-4 h-4" /></div></div>
             </div>
         </div>
     );
 };
 
-// --- Note Item ---
 const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     return (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.draggableProps} 
-            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-            className={`flex gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`}
-            onClick={onClick}
-        >
-            <div className="flex flex-col items-center w-[55px] pt-2">
-                <StickyNote className="w-4 h-4 text-yellow-400" />
-            </div>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
+            <div className="flex flex-col items-center w-[55px] pt-2"><StickyNote className="w-4 h-4 text-yellow-400" /></div>
             <div className="flex-1 bg-yellow-50 rounded-xl p-3 border border-yellow-100 flex items-center justify-between gap-3 active:scale-[0.98] transition-transform cursor-pointer">
-                <div className="min-w-0">
-                    <h4 className="font-bold text-yellow-800 text-sm truncate">{act.title || '備註'}</h4>
-                    <p className="text-xs text-yellow-600/80 truncate">{act.description || '點擊編輯內容...'}</p>
-                </div>
-                <div {...provided.dragHandleProps} className="text-yellow-300 p-1" onClick={(e) => e.stopPropagation()}>
-                    <GripVertical className="w-4 h-4" />
-                </div>
+                <div className="min-w-0"><h4 className="font-bold text-yellow-800 text-sm truncate">{act.title || '備註'}</h4><p className="text-xs text-yellow-600/80 truncate">{act.description || '點擊編輯內容...'}</p></div>
+                <div {...provided.dragHandleProps} className="text-yellow-300 p-1" onClick={(e) => e.stopPropagation()}><GripVertical className="w-4 h-4" /></div>
             </div>
         </div>
     );
 };
 
-// --- Expense Polaroid Card (拍立得風格 - 具備拖曳手把) ---
+// [拍立得版型] 適用於：純記帳、以及使用者指定要用大卡片的活動
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
     const avatarColor = getMemberAvatarColor(payerName);
+    const category = CATEGORIES.find(c => c.id === act.type) || CATEGORIES.find(c => c.id === 'expense');
 
     return (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.draggableProps} 
-            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }}
-            className={`flex gap-3 py-2 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`}
-            onClick={onClick}
-        >
-            {/* Timeline & Icon */}
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-2 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] self-stretch relative pt-2">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-200 left-1/2 -ml-[1px] -z-10"></div>
-                <div className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm z-10 text-xs font-bold text-gray-400">
-                    <Banknote className="w-4 h-4 text-green-500" />
+                {/* 根據類別顯示不同的左側圖示 */}
+                <div className={`w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm z-10 text-xs font-bold ${category?.tagClass.replace('bg-', 'text-').replace('100', '500')}`}>
+                    {category?.icon ? <category.icon className="w-4 h-4" /> : <Banknote className="w-4 h-4" />}
                 </div>
             </div>
-
-            {/* Polaroid Body */}
             <div className="flex-1 bg-white p-3 pb-4 rounded-sm shadow-md border border-gray-100 rotate-1 transition-transform hover:rotate-0 active:scale-[0.98] cursor-pointer relative overflow-hidden group/card">
-                
-                {/* Drag Handle (Hover Visible) */}
-                <div {...provided.dragHandleProps} className="absolute top-2 left-2 z-20 text-white/80 opacity-0 group-hover/card:opacity-100 transition-opacity p-1 bg-black/20 backdrop-blur-sm rounded-full" onClick={(e) => e.stopPropagation()}>
-                    <GripVertical className="w-4 h-4" />
-                </div>
-
-                {/* Photo Area */}
+                <div {...provided.dragHandleProps} className="absolute top-2 left-2 z-20 text-white/80 opacity-0 group-hover/card:opacity-100 transition-opacity p-1 bg-black/20 backdrop-blur-sm rounded-full" onClick={(e) => e.stopPropagation()}><GripVertical className="w-4 h-4" /></div>
                 <div className="aspect-video bg-gray-100 mb-3 rounded-sm overflow-hidden relative border border-gray-100">
-                    {act.expenseImage ? (
-                        <img src={act.expenseImage} alt="Receipt" className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots">
-                            <Camera className="w-8 h-8 opacity-30 mb-1" />
-                            <span className="text-[10px] font-bold opacity-30">無照片</span>
-                        </div>
-                    )}
-                    
-                    {/* Payer Sticker */}
-                    <div className={`absolute top-2 right-2 ${avatarColor} text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-white transform rotate-6`}>
-                        {payerName} 付款
-                    </div>
+                    {act.expenseImage ? <img src={act.expenseImage} alt="Receipt" className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots"><Camera className="w-8 h-8 opacity-30 mb-1" /><span className="text-[10px] font-bold opacity-30">無照片</span></div>}
+                    {/* 右上角顯示付款人 */}
+                    <div className={`absolute top-2 right-2 ${avatarColor} text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-white transform rotate-6`}>{payerName} 付款</div>
                 </div>
-
-                {/* Info Area */}
                 <div className="flex justify-between items-end px-1">
                     <div className="flex-1 min-w-0 pr-2">
-                        <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1 truncate">{act.title || '未命名支出'}</div>
-                        <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">
-                            {act.time} 
-                            {act.items && act.items.length > 0 && <span className="bg-gray-100 px-1 rounded text-gray-500">{act.items.length} 筆明細</span>}
+                        <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1 truncate">{act.title || category?.label || '新項目'}</div>
+                        <div className="flex items-center gap-2">
+                            <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1">{act.time} {act.items && act.items.length > 0 && <span className="bg-gray-100 px-1 rounded text-gray-500">{act.items.length} 筆明細</span>}</div>
+                            {category && <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${category.tagClass}`}>{category.label}</span>}
                         </div>
                     </div>
-                    <div className="text-right">
-                        <div className="font-mono font-bold text-xl text-green-600">{currencySymbol}{displayCost}</div>
-                    </div>
+                    <div className="text-right"><div className="font-mono font-bold text-xl text-green-600">{currencySymbol}{displayCost}</div></div>
                 </div>
             </div>
         </div>
     );
 };
 
-// --- Activity Item ---
+// [條列式版型] 適用於：美食、景點、購物等一般行程
 const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : null;
+    const category = CATEGORIES.find(c => c.id === act.type);
 
     return (
-        <div 
-            ref={provided.innerRef} 
-            {...provided.draggableProps} 
-            style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} 
-            className={`bg-white rounded-2xl p-4 shadow-sm border border-white flex flex-col gap-2 group relative cursor-pointer active:scale-[0.98] transition-all hover:shadow-md ${snapshot.isDragging ? 'shadow-lg z-50 scale-[1.02]' : ''}`}
-            onClick={onClick}
-        >
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`bg-white rounded-2xl p-4 shadow-sm border border-white flex flex-col gap-2 group relative cursor-pointer active:scale-[0.98] transition-all hover:shadow-md ${snapshot.isDragging ? 'shadow-lg z-50 scale-[1.02]' : ''}`} onClick={onClick}>
             <div className="flex gap-3">
-                <div className="flex flex-col items-center pt-1 min-w-[55px]">
-                    <span className="text-xs font-bold text-[#1D1D1B] bg-gray-100 px-2 py-1 rounded-md">{act.time}</span>
-                </div>
-                
+                <div className="flex flex-col items-center pt-1 min-w-[55px]"><span className="text-xs font-bold text-[#1D1D1B] bg-gray-100 px-2 py-1 rounded-md">{act.time}</span></div>
                 <div className="flex-1 min-w-0 border-l border-gray-100 pl-4">
                     <h4 className="font-bold text-[#1D1D1B] truncate text-base leading-tight">{act.title}</h4>
-                    
                     <div className="flex items-center justify-between mt-2">
-                        <Tag type={act.type} />
-                        {displayCost !== null && (
-                            <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded-md">
-                                {currencySymbol} {displayCost}
-                            </span>
-                        )}
+                        {category ? <Tag type={act.type} /> : <Tag type="other" />}
+                        {displayCost !== null && Number(displayCost) > 0 && <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded-md">{currencySymbol} {displayCost}</span>}
                     </div>
-                    
-                    {act.description && (
-                        <p className="text-xs text-gray-500 mt-2 font-medium line-clamp-2 leading-relaxed">
-                            {act.description}
-                        </p>
-                    )}
+                    {act.description && <p className="text-xs text-gray-500 mt-2 font-medium line-clamp-2 leading-relaxed">{act.description}</p>}
                 </div>
-
-                <div {...provided.dragHandleProps} className="flex flex-col justify-between items-end pl-1" onClick={(e) => e.stopPropagation()}>
-                    <div className="text-gray-300 p-1">
-                        <GripVertical className="w-5 h-5" />
-                    </div>
-                </div>
+                <div {...provided.dragHandleProps} className="flex flex-col justify-between items-end pl-1" onClick={(e) => e.stopPropagation()}><div className="text-gray-300 p-1"><GripVertical className="w-5 h-5" /></div></div>
             </div>
         </div>
     );
 };
 
-// --- Activity Detail Modal (Ultimate Edition with Auto-Sum & View Mode) ---
+// ============================================================================
+// 5. Modals (Detail, Dashboard, Settings, etc.)
+// ============================================================================
+
+// --- Activity Detail Modal (Strict Receipt Mode & Per-Item Split) ---
 const ActivityDetailModal: React.FC<{ 
     act: Activity; 
     onClose: () => void;
@@ -395,41 +311,33 @@ const ActivityDetailModal: React.FC<{
     onDelete: () => void; 
     members?: Member[]; 
     initialEdit?: boolean;
-}> = ({ act, onClose, onSave, onDelete, members = [], initialEdit = false }) => {
+    currencySymbol: string; 
+}> = ({ act, onClose, onSave, onDelete, members = [], initialEdit = false, currencySymbol }) => {
     const [isEditing, setIsEditing] = useState(initialEdit);
     const [edited, setEdited] = useState<Activity>({ ...act });
-    const [aiProcessing, setAiProcessing] = useState(false);
-    const [aiLoadingText, setAiLoadingText] = useState('正在掃描...');
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
+    const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false); 
+    
+    // Stealth Toolbar State
+    const [showLocationField, setShowLocationField] = useState(!!act.location);
+    const [showNoteField, setShowNoteField] = useState(!!act.description);
+
+    // [Unified Mode Check] All non-system types use "Receipt Mode"
+    const isSystem = isSystemType(edited.type);
+    const isReceiptMode = !isSystem; 
+    const isTransport = edited.type === 'transport'; 
+    const isNote = edited.type === 'note';
+    
     const newItemInputRef = useRef<HTMLInputElement>(null);
 
-    // Default Initialization
     useEffect(() => {
         if (!edited.payer && members.length > 0) {
             setEdited(prev => ({ ...prev, payer: members[0].id }));
         }
     }, []);
 
-    // AI Loading Game
-    useEffect(() => {
-        if (!aiProcessing) return;
-        const messages = ['正在掃描美味清單...', '正在計算戰利品...', 'AI 正在努力看懂收據...', '整理明細中...'];
-        let i = 0;
-        const timer = setInterval(() => {
-            setAiLoadingText(messages[i % messages.length]);
-            i++;
-        }, 1500);
-        return () => clearInterval(timer);
-    }, [aiProcessing]);
-
-    const isTransport = edited.type === 'transport';
-    const isNote = edited.type === 'note';
-    const isExpense = edited.type === 'expense';
-    const isProcess = edited.type === 'process';
-
-    // --- Logic & Handlers ---
     const handleChange = (field: keyof Activity, value: any) => {
         setEdited(prev => ({ ...prev, [field]: value }));
     };
@@ -449,34 +357,16 @@ const ActivityDetailModal: React.FC<{
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
             setEdited(prev => ({ ...prev, expenseImage: base64 }));
-            
-            // Trigger AI
-            setAiProcessing(true);
-            const result = await analyzeReceiptImage(base64);
-            setAiProcessing(false);
-
-            if (result) {
-                // Only update total cost and title, NO items generation (as requested)
-                setEdited(prev => ({ 
-                    ...prev, 
-                    title: result.merchant || prev.title, 
-                    cost: result.total || prev.cost, 
-                    expenseImage: base64
-                }));
-            }
         };
         reader.readAsDataURL(file);
     };
 
-    // Item Management with Auto-Sum
     const addItem = () => {
         const newItem: ExpenseItem = { id: Date.now().toString(), name: '', amount: 0, assignedTo: [] };
-        // Don't change cost yet as amount is 0
         setEdited(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
         setTimeout(() => newItemInputRef.current?.focus(), 100);
     };
@@ -484,10 +374,7 @@ const ActivityDetailModal: React.FC<{
     const updateItem = (id: string, field: keyof ExpenseItem, value: any) => {
         setEdited(prev => {
             const newItems = (prev.items || []).map(item => item.id === id ? { ...item, [field]: value } : item);
-            
-            // Auto-Sum Logic: If items exist, cost is strictly sum of items
             const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-            
             return { ...prev, items: newItems, cost: newTotal };
         });
     };
@@ -495,52 +382,45 @@ const ActivityDetailModal: React.FC<{
     const deleteItem = (id: string) => {
         setEdited(prev => {
             const newItems = (prev.items || []).filter(item => item.id !== id);
-            // Auto-Sum Logic
             const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
             return { ...prev, items: newItems, cost: newTotal };
         });
     };
 
-    // Toggle specific member or Clear all (for "ALL" button)
     const toggleItemMember = (itemId: string, memberId?: string) => {
         setEdited(prev => {
             const newItems = (prev.items || []).map(item => {
                 if (item.id !== itemId) return item;
-                
-                // If memberId is undefined, it means "Select All" (Reset to empty array)
-                if (!memberId) {
-                    return { ...item, assignedTo: [] };
-                }
-
+                if (!memberId) return { ...item, assignedTo: [] };
                 const current = item.assignedTo || [];
-                const newAssigned = current.includes(memberId) 
-                    ? current.filter(id => id !== memberId) 
-                    : [...current, memberId];
+                let newAssigned: string[] = [];
+                if (current.includes(memberId)) {
+                    newAssigned = current.filter(id => id !== memberId);
+                } else {
+                    newAssigned = [...current, memberId];
+                }
                 return { ...item, assignedTo: newAssigned };
             });
             return { ...prev, items: newItems };
         });
     };
 
-    // Calculate Split Summary for Footer
     const splitSummary = useMemo(() => {
         const summary: Record<string, number> = {};
         const currentTotal = Number(edited.cost || 0);
-        
-        // 1. Calculate from Items
         if (edited.items && edited.items.length > 0) {
             edited.items.forEach(item => {
-                if (!item.assignedTo || item.assignedTo.length === 0) {
-                    // Shared by all
-                    const share = item.amount / members.length;
-                    members.forEach(m => summary[m.id] = (summary[m.id] || 0) + share);
-                } else {
-                    const share = item.amount / item.assignedTo.length;
-                    item.assignedTo.forEach(mid => summary[mid] = (summary[mid] || 0) + share);
+                const amount = Number(item.amount) || 0;
+                const splitters = (item.assignedTo && item.assignedTo.length > 0) 
+                    ? item.assignedTo 
+                    : members.map(m => m.id); 
+                
+                if (splitters.length > 0) {
+                    const share = amount / splitters.length;
+                    splitters.forEach(mid => summary[mid] = (summary[mid] || 0) + share);
                 }
             });
         } else {
-            // 2. No Items, use total cost (shared by all by default for simplicity in this mode)
             if (currentTotal > 0) {
                 const share = currentTotal / members.length;
                 members.forEach(m => summary[m.id] = (summary[m.id] || 0) + share);
@@ -551,28 +431,21 @@ const ActivityDetailModal: React.FC<{
 
     const activePayerName = getMemberName(members, edited.payer);
     const activePayerAvatarColor = getMemberAvatarColor(activePayerName);
+    const currentCategory = CATEGORIES.find(c => c.id === edited.type) || CATEGORIES.find(c => c.id === 'other');
 
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} />
-            
-            {/* Modal Container */}
             <div className="bg-white w-full max-w-sm rounded-[32px] overflow-hidden relative z-10 shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]">
                 
-                {/* 1. Sticky Header */}
+                {/* Header */}
                 <div className="flex-shrink-0 bg-white z-20 px-6 pt-6 pb-4 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-[#1D1D1B]">
-                        {isEditing ? '編輯內容' : (isTransport ? '交通詳情' : isNote ? '備註內容' : isExpense ? '記帳詳情' : '行程資訊')}
-                    </h3>
+                    <h3 className="text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯內容' : '詳情資訊'}</h3>
                     <div className="flex gap-2">
                         {!isEditing ? (
                             <>
-                                <button onClick={() => { if(confirm('確定刪除此行程？')) onDelete(); }} className="bg-red-50 p-2 rounded-full text-red-500 hover:bg-red-100 transition-colors">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => setIsEditing(true)} className="bg-[#1D1D1B] p-2 rounded-full text-white hover:bg-gray-800 transition-colors shadow-md">
-                                    <Edit3 className="w-4 h-4" />
-                                </button>
+                                <button onClick={() => { if(confirm('確定刪除此行程？')) onDelete(); }} className="bg-red-50 p-2 rounded-full text-red-500 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                <button onClick={() => setIsEditing(true)} className="bg-[#1D1D1B] p-2 rounded-full text-white hover:bg-gray-800 transition-colors shadow-md"><Edit3 className="w-4 h-4" /></button>
                             </>
                         ) : (
                             <button onClick={() => setIsEditing(false)} className="text-gray-400 text-sm font-bold px-2">取消</button>
@@ -581,406 +454,294 @@ const ActivityDetailModal: React.FC<{
                     </div>
                 </div>
 
-                {/* 2. Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth bg-[#FAFAFA]">
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[#FAFAFA]">
                     
-                    {/* Basic Info Row */}
-                    {!isNote && (
-                        <div className="flex gap-4">
-                            <div className="w-2/5">
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">時間</label>
+                    {/* --- RECEIPT STYLE UI (For ALL consumption types) --- */}
+                    {isReceiptMode ? (
+                        <div className="space-y-4">
+                            {/* 1. Hero Photo (Always Top) */}
+                            <div className="relative w-full aspect-video bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 hover:bg-[#45846D]/5">
+                                {edited.expenseImage ? (
+                                    <>
+                                        <img src={edited.expenseImage} className="w-full h-full object-cover" />
+                                        <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-full text-white cursor-pointer hover:bg-black/70 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}><ZoomIn className="w-4 h-4" /></div>
+                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
+                                    </>
+                                ) : (
+                                    isEditing ? (
+                                        <div className="text-gray-400 flex flex-col items-center p-4 text-center">
+                                            <Camera className="w-10 h-10 opacity-20 mb-2" />
+                                            <span className="text-sm font-bold text-[#45846D]">上傳收據 / 照片</span>
+                                            <span className="text-[10px] opacity-60 mt-1">點擊上傳</span>
+                                        </div>
+                                    ) : <div className="text-gray-300 text-xs py-4">無照片</div>
+                                )}
+                                {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
+                            </div>
+
+                            {/* 2. Info Row (Time & Category) */}
+                            <div className="flex justify-between items-center px-1">
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-gray-400" />
+                                    {isEditing ? (
+                                        <button onClick={() => setShowTimePicker(true)} className="font-mono font-bold text-lg text-[#1D1D1B] border-b border-dotted border-gray-300 hover:text-[#45846D]">{edited.time}</button>
+                                    ) : (
+                                        <span className="font-mono font-bold text-lg text-[#1D1D1B]">{edited.time}</span>
+                                    )}
+                                </div>
+                                {/* Smart Capsule for Category */}
                                 {isEditing ? (
                                     <button 
-                                        onClick={() => setShowTimePicker(true)}
-                                        className="w-full bg-white border border-gray-200 h-12 rounded-xl font-bold text-center flex items-center justify-center text-[#1D1D1B] shadow-sm active:scale-95 transition-transform"
+                                        onClick={() => setIsCategorySheetOpen(true)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${currentCategory?.tagClass.replace('bg-opacity-10 text-opacity-100', '')} border shadow-sm active:scale-95`}
                                     >
-                                        {edited.time}
+                                        {currentCategory?.icon && <currentCategory.icon className="w-3 h-3" />}
+                                        {currentCategory?.label}
+                                        <ChevronDown className="w-3 h-3 opacity-50" />
                                     </button>
                                 ) : (
-                                    <div className="w-full bg-white border border-gray-200 h-12 flex items-center justify-center rounded-xl font-bold text-[#1D1D1B] font-mono shadow-sm">{edited.time}</div>
+                                    <Tag type={edited.type} />
                                 )}
                             </div>
-                            <div className="flex-1">
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">{isTransport ? '標題' : '名稱'}</label>
+
+                            {/* 3. Title Input (Editable) */}
+                            <div className="px-1">
                                 {isEditing ? (
-                                    <IOSInput value={edited.title} onChange={e => handleChange('title', e.target.value)} />
+                                    <div>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">名稱</label>
+                                        <IOSInput value={edited.title} onChange={e => handleChange('title', e.target.value)} placeholder="項目名稱 (如: 晚餐)" />
+                                    </div>
                                 ) : (
-                                    <div className="w-full bg-white border border-gray-100 px-4 h-12 flex items-center rounded-xl font-bold text-[#1D1D1B] shadow-sm truncate">{edited.title}</div>
+                                    <div className="font-bold text-xl text-[#1D1D1B] mt-2 mb-1">{edited.title}</div>
                                 )}
                             </div>
-                        </div>
-                    )}
 
-                    {/* --- Expense Special UI (Digital Receipt Style) --- */}
-                    {isExpense && (
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
-                            {/* Zigzag Top Border */}
-                            <div className="h-2 bg-[radial-gradient(circle,transparent_0.25rem,#fff_0.25rem)] bg-[length:0.75rem_0.75rem] -mt-1 opacity-50 absolute top-0 w-full" />
-
-                            {/* 1. Photo Area */}
-                            <div className="p-4 pb-0">
-                                <div className="relative w-full aspect-video bg-gray-50 rounded-xl border border-dashed border-gray-300 flex flex-col items-center justify-center overflow-hidden group transition-colors">
-                                    {edited.expenseImage ? (
-                                        <>
-                                            <img src={edited.expenseImage} className="w-full h-full object-cover" />
-                                            <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-full text-white cursor-pointer hover:bg-black/70 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}>
-                                                <ZoomIn className="w-4 h-4" />
-                                            </div>
-                                            {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
-                                        </>
-                                    ) : (
-                                        <div className="text-gray-400 flex flex-col items-center p-4 text-center">
-                                            <div className="w-16 h-10 border-2 border-gray-300 rounded-lg mb-2 flex items-center justify-center relative">
-                                                <ScanLine className="w-6 h-6 animate-pulse" />
-                                            </div>
-                                            <span className="text-xs font-bold text-[#45846D]">上傳收據</span>
-                                            <span className="text-[10px] opacity-60 mt-1">將單據放入框內，AI 自動掃描</span>
-                                        </div>
-                                    )}
-                                    {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
-                                    {aiProcessing && (
-                                        <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center z-20">
-                                            <Loader2 className="w-8 h-8 text-[#45846D] animate-spin mb-3" />
-                                            <span className="text-xs font-bold text-[#45846D] animate-pulse">{aiLoadingText}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* 2. Receipt Body */}
-                            <div className="p-5 font-mono text-sm space-y-3">
-                                
-                                {/* Header: Items & Avatar Legend */}
-                                <div className="flex justify-between items-center text-[10px] text-gray-400 uppercase tracking-widest pb-2 border-b border-dashed border-gray-200">
-                                    <span>Item</span>
-                                    <span>Cost & Split</span>
-                                </div>
-
-                                {/* Items List */}
-                                <div className="space-y-3">
+                            {/* 4. Items List with Per-Item Splitting */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 relative overflow-hidden">
+                                <div className="h-1 bg-[radial-gradient(circle,transparent_0.2rem,#f3f4f6_0.2rem)] bg-[length:0.5rem_0.5rem] absolute top-0 left-0 right-0 -mt-1 opacity-50" />
+                                <div className="space-y-4">
+                                    {/* Header Row */}
+                                    <div className="flex justify-between text-[10px] text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2"><span>Item Details</span><span>Cost & Split</span></div>
+                                    
                                     {edited.items && edited.items.length > 0 ? (
                                         edited.items.map((item, idx) => (
-                                            <div key={item.id} className="group flex flex-col gap-1">
+                                            <div key={item.id} className="flex flex-col gap-2 border-b border-dashed border-gray-50 pb-2 last:border-0 last:pb-0">
+                                                {/* Top Row: Name & Cost */}
                                                 <div className="flex justify-between items-center">
-                                                    {/* Name Input */}
-                                                    {isEditing ? (
-                                                        <input 
-                                                            ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null}
-                                                            className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full truncate placeholder-gray-300"
-                                                            value={item.name}
-                                                            placeholder="品項名稱"
-                                                            onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                                                        />
-                                                    ) : (
-                                                        <span className="font-bold text-[#1D1D1B] truncate">{item.name || '未命名品項'}</span>
-                                                    )}
-                                                    
-                                                    {/* Dots Spacer */}
-                                                    <div className="flex-1 border-b border-dotted border-gray-300 mx-2 h-4 opacity-50" />
-                                                    
-                                                    {/* Cost Input */}
-                                                    <div className="flex items-center">
-                                                        <span className="text-gray-400 text-xs mr-1">$</span>
-                                                        {isEditing ? (
-                                                            <input 
-                                                                type="number"
-                                                                className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right"
-                                                                value={item.amount}
-                                                                placeholder="0"
-                                                                onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))}
-                                                            />
-                                                        ) : (
-                                                            <span className="font-bold text-[#1D1D1B] text-right">{item.amount}</span>
-                                                        )}
+                                                    {isEditing ? <input ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null} className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full placeholder-gray-300 text-sm" value={item.name} placeholder="品項名稱" onChange={(e) => updateItem(item.id, 'name', e.target.value)} /> : <span className="font-bold text-[#1D1D1B] text-sm">{item.name || '未命名'}</span>}
+                                                    <div className="flex items-center gap-2">
+                                                        {isEditing ? <input type="number" className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right text-sm" value={item.amount} placeholder="0" onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))} /> : <span className="font-bold text-[#1D1D1B] text-right text-sm">{item.amount}</span>}
+                                                        {isEditing && <button onClick={() => deleteItem(item.id)} className="text-gray-200 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
                                                     </div>
                                                 </div>
-
-                                                {/* Floating Avatars (Split Selector) */}
-                                                <div className="flex justify-end items-center gap-1.5 pl-4">
-                                                    {isEditing && (
-                                                        <button onClick={() => deleteItem(item.id)} className="text-gray-200 hover:text-red-400 mr-auto scale-75">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    )}
-                                                    
-                                                    {/* ALL Button (Only in Edit Mode) */}
-                                                    {isEditing && (
-                                                        <button 
-                                                            onClick={() => toggleItemMember(item.id)} 
-                                                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                                                        >
-                                                            ALL
-                                                        </button>
-                                                    )}
-
-                                                    {/* Members */}
-                                                    {members.map(m => {
-                                                        const isAssigned = (item.assignedTo || []).includes(m.id);
-                                                        // In View Mode, only show assigned members or if All (show nothing specific, handled below)
-                                                        if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
-
-                                                        return (
-                                                            <button 
-                                                                key={m.id}
-                                                                onClick={() => isEditing && toggleItemMember(item.id, m.id)}
-                                                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`}
-                                                                disabled={!isEditing}
-                                                            >
-                                                                {isAssigned ? <Check className="w-3 h-3" /> : m.name[0]}
-                                                            </button>
-                                                        )
-                                                    })}
-                                                    
-                                                    {/* All Indicator (View Mode) */}
-                                                    {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && (
-                                                        <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>
-                                                    )}
-                                                </div>
+                                                
+                                                {/* Bottom Row: Splitting Avatars (Only visible in Edit Mode or if specific split exists) */}
+                                                {(isEditing || (item.assignedTo && item.assignedTo.length > 0)) && (
+                                                    <div className="flex justify-end items-center gap-1">
+                                                        {isEditing && <button onClick={() => toggleItemMember(item.id)} className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>ALL</button>}
+                                                        {members.map(m => {
+                                                            const isAssigned = (item.assignedTo || []).includes(m.id);
+                                                            if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
+                                                            return <button key={m.id} onClick={() => isEditing && toggleItemMember(item.id, m.id)} className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`} disabled={!isEditing}>{isAssigned ? <Check className="w-2.5 h-2.5" /> : m.name[0]}</button>
+                                                        })}
+                                                        {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>}
+                                                    </div>
+                                                )}
                                             </div>
                                         ))
-                                    ) : (
-                                        <div className="text-center py-4 text-xs text-gray-300 italic">
-                                            - 無明細，輸入總金額即可 -
-                                        </div>
-                                    )}
+                                    ) : <div className="text-center text-xs text-gray-300 italic py-2">無明細，請輸入總金額</div>}
                                 </div>
-
-                                {isEditing && (
-                                    <button onClick={addItem} className="w-full py-2 text-xs font-bold text-[#45846D] bg-[#45846D]/5 hover:bg-[#45846D]/10 rounded-lg border border-dashed border-[#45846D]/30 transition-colors">
-                                        + 新增品項
-                                    </button>
-                                )}
-
-                                {/* Total Section */}
-                                <div className="border-t-2 border-dashed border-gray-200 pt-3 mt-4">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-lg text-gray-400">TOTAL</span>
-                                        <div className="flex items-center">
-                                            <span className="text-lg font-bold text-gray-400 mr-1">$</span>
-                                            {isEditing ? (
-                                                <IOSInput 
-                                                    type="number" 
-                                                    value={edited.cost || ''} 
-                                                    onChange={e => handleChange('cost', e.target.value)} 
-                                                    placeholder="0" 
-                                                    className="text-3xl font-black text-[#1D1D1B] font-mono text-right w-32 h-10 p-0 border-none bg-transparent focus:ring-0"
-                                                    // Disable total editing only if items exist
-                                                    disabled={edited.items && edited.items.length > 0}
-                                                />
-                                            ) : (
-                                                <span className="text-3xl font-black text-[#1D1D1B]">{edited.cost}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Auto-Sum Indicator */}
-                                    {isEditing && edited.items && edited.items.length > 0 && (
-                                        <div className="flex items-center justify-end gap-1 text-green-500 text-[10px] font-bold mt-1">
-                                            <CheckCircle2 className="w-3 h-3" /> 自動加總中
-                                        </div>
-                                    )}
-                                </div>
+                                {isEditing && <button onClick={addItem} className="w-full mt-3 py-2 text-xs font-bold text-[#45846D] bg-[#45846D]/5 hover:bg-[#45846D]/10 rounded-lg border border-dashed border-[#45846D]/30 transition-colors">+ 新增品項</button>}
                             </div>
 
-                            {/* 3. Tear-off Footer (Payer & Split) */}
-                            <div className="bg-gray-50 p-5 border-t border-gray-200 relative">
-                                <div className="absolute top-0 left-0 right-0 h-1 bg-[linear-gradient(45deg,transparent_33.333%,#f9fafb_33.333%,#f9fafb_66.667%,transparent_66.667%),linear-gradient(-45deg,transparent_33.333%,#f9fafb_33.333%,#f9fafb_66.667%,transparent_66.667%)] bg-[length:0.5rem_0.5rem] bg-repeat-x -mt-1 transform rotate-180" />
-                                
-                                <div className="flex justify-between items-start">
-                                    {/* Minimalist Payer UI */}
+                            {/* 5. Total & Payer Footer */}
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className="text-xs font-bold text-gray-400 uppercase">TOTAL</span>
+                                    <div className="flex items-center">
+                                        <span className="text-xl font-bold text-gray-400 mr-1">{currencySymbol}</span>
+                                        <span className="text-4xl font-black text-[#1D1D1B]">{edited.cost}</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-start border-t border-dashed border-gray-100 pt-4">
                                     <div className="relative">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Paid By</label>
-                                        <button 
-                                            onClick={() => isEditing && setIsPayerDropdownOpen(!isPayerDropdownOpen)}
-                                            className={`flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border transition-all ${isEditing ? 'bg-white hover:bg-gray-100 border-gray-200 shadow-sm' : 'border-transparent'}`}
-                                            disabled={!isEditing}
-                                        >
-                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${activePayerAvatarColor}`}>
-                                                {activePayerName[0]}
-                                            </div>
-                                            {isEditing && <ChevronUp className="w-3 h-3 text-gray-400" />}
+                                        <button onClick={() => isEditing && setIsPayerDropdownOpen(!isPayerDropdownOpen)} className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-gray-50 border border-gray-200 ${isEditing ? 'active:scale-95' : ''}`}>
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${activePayerAvatarColor}`}>{activePayerName[0]}</div>
+                                            <span className="text-xs font-bold text-gray-700">{activePayerName}</span>
                                         </button>
-
-                                        {/* Payer Dropdown (Opens UPWARDS) */}
                                         {isPayerDropdownOpen && isEditing && (
-                                            <>
-                                                <div className="fixed inset-0 z-10" onClick={() => setIsPayerDropdownOpen(false)} />
-                                                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-xl border border-gray-100 p-1 z-20 min-w-[120px] animate-in slide-in-from-bottom-2">
-                                                    {members.map(m => (
-                                                        <button 
-                                                            key={m.id}
-                                                            onClick={() => { handleChange('payer', m.id); setIsPayerDropdownOpen(false); }}
-                                                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 transition-colors ${edited.payer === m.id ? 'text-[#45846D]' : 'text-gray-600'}`}
-                                                        >
-                                                            <div className={`w-2 h-2 rounded-full ${getMemberAvatarColor(m.name)}`} />
-                                                            {m.name}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </>
+                                            <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-xl border border-gray-100 p-1 z-20 min-w-[120px] animate-in slide-in-from-bottom-2">
+                                                {members.map(m => (
+                                                    <button key={m.id} onClick={() => { handleChange('payer', m.id); setIsPayerDropdownOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 transition-colors ${edited.payer === m.id ? 'text-[#45846D]' : 'text-gray-600'}`}><div className={`w-2 h-2 rounded-full ${getMemberAvatarColor(m.name)}`} /> {m.name}</button>
+                                                ))}
+                                            </div>
                                         )}
                                     </div>
-
-                                    {/* Split Summary */}
-                                    <div className="flex-1 text-right">
+                                    <div className="text-right flex-1 pl-4">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Split Summary</label>
                                         <div className="space-y-1">
                                             {Object.entries(splitSummary).map(([mid, amount]) => {
                                                 const mName = getMemberName(members, mid);
                                                 if (amount <= 0 || (mid === edited.payer)) return null; 
-                                                return (
-                                                    <div key={mid} className="text-xs font-mono text-gray-600 flex justify-end gap-2">
-                                                        <span>{mName}</span>
-                                                        <span className="font-bold border-b border-dotted border-gray-300 text-[#1D1D1B]">${Math.round(amount)}</span>
-                                                    </div>
-                                                )
+                                                return <div key={mid} className="text-xs font-mono text-gray-600 flex justify-end gap-2"><span>{mName}</span><span className="font-bold border-b border-dotted border-gray-300 text-[#1D1D1B]">{currencySymbol}{Math.round(amount)}</span></div>
                                             })}
-                                            {Object.keys(splitSummary).length === 0 && <span className="text-xs text-gray-300">無分帳資訊</span>}
+                                            {Object.keys(splitSummary).length === 0 && <span className="text-xs text-gray-300">無分帳資訊 (全員平分)</span>}
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
 
-                    {isNote && (
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">備註標題</label>
-                            {isEditing ? (
-                                <IOSInput value={edited.title} onChange={e => handleChange('title', e.target.value)} />
-                            ) : (
-                                <div className="text-lg font-bold text-yellow-800 mb-2">{edited.title}</div>
-                            )}
-                            <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase mt-4">內容</label>
-                            {isEditing ? (
-                                <textarea className="w-full bg-yellow-50 rounded-xl p-3 text-sm border-none outline-none focus:ring-2 focus:ring-yellow-400/50 h-40 resize-none" value={edited.description} onChange={e => handleChange('description', e.target.value)} />
-                            ) : (
-                                <div className="w-full bg-yellow-50 rounded-xl p-4 text-sm text-yellow-900 leading-relaxed whitespace-pre-wrap">{edited.description || '無內容'}</div>
-                            )}
-                        </div>
-                    )}
+                            {/* 6. Stealth Toolbar (Location & Note) & Read-Only Display */}
+                            <div className="pt-2 flex flex-col gap-3">
+                                {/* READ ONLY VIEW: Show text if exists */}
+                                {!isEditing && edited.location && (
+                                    <div className="flex items-center gap-2 text-gray-500 text-xs px-2">
+                                        <MapPinIcon className="w-3 h-3" /> {edited.location}
+                                    </div>
+                                )}
+                                {!isEditing && edited.description && (
+                                    <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-600 leading-relaxed mx-1">
+                                        {edited.description}
+                                    </div>
+                                )}
 
-                    {(isTransport || isProcess) && (
-                        <>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">工具/模式</label>
-                                    {isEditing ? (
+                                {/* EDITING: Show Inputs if active */}
+                                {isEditing && showLocationField && (
+                                    <div className="animate-in slide-in-from-bottom-2 fade-in">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">地點</label>
                                         <div className="relative">
-                                            <select value={edited.transportDetail?.mode || 'bus'} onChange={e => handleTransportDetailChange('mode', e.target.value)} className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold outline-none appearance-none shadow-sm">
-                                                <option value="bus"> 公車</option><option value="train"> 火車</option><option value="car"> 汽車</option><option value="walk"> 步行</option><option value="flight"> 飛機</option>
-                                            </select>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                            <MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input className="w-full bg-white border border-gray-200 h-10 rounded-xl pl-9 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#45846D]/50" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} placeholder="輸入地點..." autoFocus />
+                                            <button onClick={() => { setShowLocationField(false); handleChange('location', ''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3 h-3" /></button>
                                         </div>
-                                    ) : (
-                                        <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl font-bold capitalize shadow-sm">{edited.transportDetail?.mode || 'Bus'}</div>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">耗時</label>
-                                    {isEditing ? (
-                                        <IOSInput value={edited.transportDetail?.duration || ''} onChange={e => handleTransportDetailChange('duration', e.target.value)} placeholder="例: 30 min" />
-                                    ) : (
-                                        <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl font-bold shadow-sm">{edited.transportDetail?.duration || '--'}</div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">起點</label>{isEditing ? <IOSInput value={edited.transportDetail?.fromStation || ''} onChange={e => handleTransportDetailChange('fromStation', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl text-sm shadow-sm">{edited.transportDetail?.fromStation || '-'}</div>}</div>
-                                <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">終點</label>{isEditing ? <IOSInput value={edited.transportDetail?.toStation || ''} onChange={e => handleTransportDetailChange('toStation', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 h-12 flex items-center px-4 rounded-xl text-sm shadow-sm">{edited.transportDetail?.toStation || '-'}</div>}</div>
-                            </div>
-                            <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">指引/說明</label>{isEditing ? <textarea className="w-full bg-white border border-gray-200 rounded-xl p-3 h-24 outline-none resize-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.transportDetail?.instruction || ''} onChange={e => handleTransportDetailChange('instruction', e.target.value)} /> : <div className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm shadow-sm">{edited.transportDetail?.instruction || '無'}</div>}</div>
-                        </>
-                    )}
-
-                    {!isTransport && !isNote && !isProcess && !isExpense && (
-                        <>
-                            <div className="flex gap-4">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">類型</label>
-                                    {isEditing ? (
+                                    </div>
+                                )}
+                                {isEditing && showNoteField && (
+                                    <div className="animate-in slide-in-from-bottom-2 fade-in">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">備註</label>
                                         <div className="relative">
-                                            <select value={edited.type} onChange={e => handleChange('type', e.target.value)} className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold outline-none appearance-none text-sm shadow-sm">
-                                                <option value="sightseeing"> 景點</option><option value="food"> 美食</option><option value="shopping"> 購物</option><option value="expense"> 記帳</option><option value="other"> 其他</option>
-                                            </select>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                                            <textarea className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-[#45846D]/50 min-h-[80px]" value={edited.description || ''} onChange={e => handleChange('description', e.target.value)} placeholder="輸入備註..." autoFocus />
+                                            <button onClick={() => { setShowNoteField(false); handleChange('description', ''); }} className="absolute right-2 top-2 text-gray-300 hover:text-gray-500"><X className="w-3 h-3" /></button>
                                         </div>
-                                     ) : (
-                                        <div className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-bold flex items-center gap-2 shadow-sm"><Tag type={edited.type} /></div>
-                                    )}
-                                </div>
-                                <div className="w-1/3">
-                                    <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">花費</label>
-                                    {isEditing ? (
-                                        <IOSInput type="number" value={edited.cost || ''} onChange={e => handleChange('cost', e.target.value)} />
-                                    ) : (
-                                        <div className="w-full bg-white border border-gray-200 h-12 px-4 flex items-center justify-end rounded-xl font-bold shadow-sm">{edited.cost !== undefined ? edited.cost : 0}</div>
-                                    )}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">地點</label>
-                                {isEditing ? (
-                                    <div className="relative"><MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input className="w-full bg-white border border-gray-200 h-12 rounded-xl pl-10 pr-4 text-sm outline-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.location || ''} onChange={e => handleChange('location', e.target.value)} /></div>
-                                ) : (
-                                    <a href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent((edited.location || '') + ' ' + edited.title)}`} target="_blank" rel="noreferrer" className="w-full bg-white border border-gray-200 h-12 px-4 rounded-xl font-medium text-sm flex items-center gap-2 text-[#45846D] shadow-sm">{edited.location || '未指定'}<ExternalLink className="w-3 h-3 ml-auto opacity-50" /></a>
+                                    </div>
+                                )}
+                                
+                                {/* The Toolbar Icons (Only in Edit Mode) */}
+                                {isEditing && (
+                                    <div className="flex justify-center gap-6 pb-2 opacity-50 hover:opacity-100 transition-opacity">
+                                        {!showLocationField && <button onClick={() => setShowLocationField(true)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"><MapPinIcon className="w-5 h-5" /></button>}
+                                        {!showNoteField && <button onClick={() => setShowNoteField(true)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"><FileText className="w-5 h-5" /></button>}
+                                    </div>
                                 )}
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">備註</label>
-                                {isEditing ? <textarea className="w-full bg-white border border-gray-200 rounded-xl p-3 h-32 outline-none resize-none shadow-sm focus:ring-2 focus:ring-[#45846D]/50" value={edited.description || ''} onChange={e => handleChange('description', e.target.value)} /> : <div className="w-full bg-white border border-gray-100 rounded-xl p-4 text-sm text-gray-700 min-h-[100px] shadow-sm">{edited.description || '無'}</div>}
-                            </div>
-                        </>
+                        </div>
+                    ) : (
+                        // --- SYSTEM LAYOUT (System features only: Transport Connector, Note, Process...) ---
+                        <div className="space-y-4">
+                            {!isNote && (
+                                <div className="flex gap-4">
+                                    <div className="w-2/5">
+                                        <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">時間</label>
+                                        {isEditing ? (
+                                            <button onClick={() => setShowTimePicker(true)} className="w-full bg-white border border-gray-200 h-12 rounded-xl font-bold text-center flex items-center justify-center text-[#1D1D1B] shadow-sm active:scale-95 transition-transform">{edited.time}</button>
+                                        ) : (
+                                            <div className="w-full bg-white border border-gray-200 h-12 flex items-center justify-center rounded-xl font-bold text-[#1D1D1B] font-mono shadow-sm">{edited.time}</div>
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">{isTransport ? '標題' : '名稱'}</label>
+                                        {isEditing ? <IOSInput value={edited.title} onChange={e => handleChange('title', e.target.value)} /> : <div className="w-full bg-white border border-gray-100 px-4 h-12 flex items-center rounded-xl font-bold text-[#1D1D1B] shadow-sm truncate">{edited.title}</div>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {isTransport && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">工具</label><div className="font-bold text-lg">{edited.transportDetail?.mode}</div></div>
+                                        <div><label className="block text-xs font-bold text-gray-400 mb-1 ml-1 uppercase">耗時</label><div className="font-bold text-lg">{edited.transportDetail?.duration}</div></div>
+                                    </div>
+                                    <div className="text-sm text-gray-600">{edited.transportDetail?.instruction}</div>
+                                </div>
+                            )}
+
+                            {isNote && (
+                                <div className="bg-yellow-50 p-4 rounded-xl">
+                                    <div className="font-bold text-yellow-800 mb-2">{edited.title}</div>
+                                    <div className="text-sm text-yellow-900 whitespace-pre-wrap">{edited.description}</div>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 
-                {/* 3. Fixed Footer */}
+                {/* Footer */}
                 <div className="p-4 border-t border-gray-100 bg-white z-20">
                     {isEditing ? (
-                        <button onClick={() => { onSave(edited); setIsEditing(false); }} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-lg shadow-[#45846D]/20 active:scale-95 transition-transform flex items-center justify-center gap-2"><Save className="w-4 h-4" /> 儲存變更</button>
+                        <button 
+                            onClick={() => { onSave(edited); setIsEditing(false); }} 
+                            className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
+                        >
+                            <Save className="w-4 h-4" /> 儲存變更
+                        </button>
                     ) : (
                          <button onClick={onClose} className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform">確認</button>
                     )}
                 </div>
             </div>
 
-            {/* Lightbox */}
-            {lightboxOpen && edited.expenseImage && (
-                <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setLightboxOpen(false)}>
-                    <img src={edited.expenseImage} className="max-w-full max-h-full object-contain" />
-                    <button className="absolute top-6 right-6 bg-white/20 hover:bg-white/40 p-2 rounded-full text-white transition-colors"><X className="w-6 h-6" /></button>
+            {/* Category Drawer (Bottom Sheet) */}
+            {isCategorySheetOpen && (
+                <div className="fixed inset-0 z-[90] flex items-end justify-center">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setIsCategorySheetOpen(false)} />
+                    <div className="bg-white w-full max-w-sm rounded-t-[32px] p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-[#1D1D1B]">選擇類別</h3>
+                            <button onClick={() => setIsCategorySheetOpen(false)} className="bg-gray-100 p-2 rounded-full"><X className="w-4 h-4" /></button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-4 mb-4">
+                            {CATEGORIES.filter(c => !c.isSystem).map(cat => (
+                                <button 
+                                    key={cat.id} 
+                                    onClick={() => { handleChange('type', cat.id); setIsCategorySheetOpen(false); }}
+                                    className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all ${edited.type === cat.id ? 'bg-[#45846D]/10 ring-2 ring-[#45846D]' : 'hover:bg-gray-50'}`}
+                                >
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${cat.tagClass.replace('bg-opacity-10 text-opacity-100', '')}`}>
+                                        <cat.icon className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-600">{cat.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Time Picker Wheel Modal */}
-            {showTimePicker && (
-                <TimePickerWheel 
-                    value={edited.time} 
-                    onChange={(val) => handleChange('time', val)} 
-                    onClose={() => setShowTimePicker(false)} 
-                />
-            )}
+            {lightboxOpen && edited.expenseImage && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in" onClick={() => setLightboxOpen(false)}><img src={edited.expenseImage} className="max-w-full max-h-full object-contain" /><button className="absolute top-6 right-6 bg-white/20 hover:bg-white/40 p-2 rounded-full text-white transition-colors"><X className="w-6 h-6" /></button></div>}
+            {showTimePicker && <TimePickerWheel value={edited.time} onChange={(val) => handleChange('time', val)} onClose={() => setShowTimePicker(false)} />}
         </div>
     );
 };
 
-// --- ExpenseDashboard (Enhanced to show all present categories) ---
+// ============================================================================
+// 6. Expense Dashboard
+// ============================================================================
+
 const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     const currencyCode = trip.currency || 'TWD';
-    const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+    const currencySymbol = CURRENCY_SYMBOLS[currencyCode as CurrencyCode] || '$';
     const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
     const [isConverting, setIsConverting] = useState(false);
+    const [tab, setTab] = useState<'analysis' | 'settlement'>('analysis');
     
-    // Memoized stats calculation: Now tracks existence separate from cost
     const stats = useMemo(() => {
         return trip.days.reduce((acc, day) => {
             day.activities.forEach(act => {
                 const cost = parseCost(act.cost);
                 const type = act.type || 'other';
-                
-                // Mark category as present even if cost is 0
                 acc.presentCategories.add(type);
-                
                 if (cost > 0) {
                     acc.total += cost;
                     acc.byCategory[type] = (acc.byCategory[type] || 0) + cost;
@@ -990,60 +751,129 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
         }, { total: 0, byCategory: {} as Record<string, number>, presentCategories: new Set<string>() });
     }, [trip.days]);
 
-    const categories = [
-        { type: 'flight', label: '機票', color: 'bg-purple-500' },
-        { type: 'hotel', label: '住宿', color: 'bg-indigo-500' },
-        { type: 'transport', label: '交通', color: 'bg-gray-500' },
-        { type: 'food', label: '美食', color: 'bg-orange-500' },
-        { type: 'cafe', label: '咖啡', color: 'bg-amber-500' },
-        { type: 'sightseeing', label: '景點', color: 'bg-blue-500' },
-        { type: 'shopping', label: '購物', color: 'bg-pink-500' },
-        { type: 'relax', label: '放鬆', color: 'bg-emerald-500' },
-        { type: 'bar', label: '酒吧', color: 'bg-violet-500' },
-        { type: 'culture', label: '文化', color: 'bg-rose-500' },
-        { type: 'activity', label: '體驗', color: 'bg-cyan-500' },
-        { type: 'expense', label: '其他', color: 'bg-green-500' },
-        { type: 'other', label: '雜項', color: 'bg-gray-400' }
-    ];
-    
+    const settlement = useMemo(() => {
+        const balances: Record<string, number> = {}; 
+        const myId = trip.members?.find(m => m.isHost || m.id === 'me')?.id || 'me';
+
+        trip.days.forEach(day => {
+            day.activities.forEach(act => {
+                if (!act.cost) return;
+                const cost = parseCost(act.cost);
+                if (cost === 0) return;
+
+                const payer = act.payer || myId;
+                let splitters: string[] = [];
+                if (act.items && act.items.length > 0) {
+                    splitters = (act.splitWith && act.splitWith.length > 0) ? act.splitWith : (trip.members || []).map(m => m.id);
+                } else {
+                    splitters = (act.splitWith && act.splitWith.length > 0) ? act.splitWith : (trip.members || []).map(m => m.id);
+                }
+
+                const share = cost / splitters.length;
+
+                splitters.forEach(memberId => {
+                    if (memberId !== payer) {
+                        if (payer === myId) {
+                            balances[memberId] = (balances[memberId] || 0) + share;
+                        } else if (memberId === myId) {
+                            balances[payer] = (balances[payer] || 0) - share;
+                        }
+                    }
+                });
+            });
+        });
+        return balances;
+    }, [trip]);
+
     const handleConvert = async () => { if (convertedTotal || stats.total === 0) { setConvertedTotal(null); return; } setIsConverting(true); const target = currencyCode === 'TWD' ? 'USD' : 'TWD'; const res = await getCurrencyRate(currencyCode, target, stats.total); setConvertedTotal(res); setIsConverting(false); };
     
+    const copySettlement = () => {
+        let text = `💰 ${trip.destination} 之旅結算 (${currencyCode}):\n`;
+        Object.entries(settlement).forEach(([mid, amount]) => {
+            const name = getMemberName(trip.members, mid);
+            if (amount > 0) text += `• ${name} 應付給我: $${Math.round(amount)}\n`;
+            else if (amount < 0) text += `• 我應付給 ${name}: $${Math.round(Math.abs(amount))}\n`;
+        });
+        navigator.clipboard.writeText(text);
+        alert('結算明細已複製！');
+    };
+
     return (
         <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 mb-6">
             <div className="flex justify-between mb-4">
                 <div>
                     <p className="text-xs text-gray-600 font-bold uppercase">總花費 ({currencyCode})</p>
-                    <h3 className="text-3xl font-black text-[#1D1D1B] mt-1"><span className="text-lg font-bold text-gray-400 mr-1">{currencySymbol}</span>{stats.total.toLocaleString()}</h3>
+                    <h3 className="text-4xl font-black text-[#1D1D1B] mt-1 tracking-tight"><span className="text-xl font-bold text-gray-400 mr-1">{currencySymbol}</span>{stats.total.toLocaleString()}</h3>
                     <div className="h-5 mt-1">{isConverting ? <span className="text-xs text-gray-400 animate-pulse">計算中...</span> : convertedTotal && <span className="text-sm font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-0.5 rounded-lg">{convertedTotal}</span>}</div>
                 </div>
-                <button onClick={handleConvert} className="p-3 rounded-full bg-gray-100 text-gray-400"><RefreshCw className="w-5 h-5" /></button>
+                <button onClick={handleConvert} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"><RefreshCw className="w-5 h-5" /></button>
+            </div>
+
+            <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative">
+                <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+4px)]'}`} />
+                <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                    <BarChart3 className="w-3.5 h-3.5" /> 分析
+                </button>
+                <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                    <Scale className="w-3.5 h-3.5" /> 結算
+                </button>
             </div>
             
-            {/* Progress Bar */}
-            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{categories.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.type] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.type} style={{width:`${p}%`}} className={c.color} /> : null; })}</div>
-            
-            {/* Detailed Grid - Shows ALL used categories even if cost is 0 */}
-            <div className="grid grid-cols-2 gap-y-2 gap-x-4 mt-4">
-                {categories.map(cat => {
-                    // Check existence instead of amount
-                    if (!stats.presentCategories.has(cat.type)) return null;
-                    const amount = stats.byCategory[cat.type] || 0;
-                    return (
-                        <div key={cat.type} className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
-                                <span className="text-gray-600 font-medium">{cat.label}</span>
-                            </div>
-                            <span className="font-bold text-[#1D1D1B]">{currencySymbol}{amount.toLocaleString()}</span>
-                        </div>
-                    );
-                })}
-            </div>
+            {tab === 'analysis' ? (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{CATEGORIES.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.id] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.id} style={{width:`${p}%`}} className={c.chartClass.split(' ')[0]} /> : null; })}</div>
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                        {CATEGORIES.map(cat => {
+                            if (!stats.presentCategories.has(cat.id)) return null;
+                            const amount = stats.byCategory[cat.id] || 0;
+                            return (
+                                <div key={cat.id} className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-2 h-2 rounded-full ${cat.chartClass.split(' ')[0]}`} />
+                                        <span className="text-gray-600 font-medium">{cat.label}</span>
+                                    </div>
+                                    <span className="font-bold text-[#1D1D1B]">{currencySymbol}{amount.toLocaleString()}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-3">
+                    {Object.entries(settlement).length > 0 ? (
+                        <>
+                            {Object.entries(settlement).map(([mid, amount]) => {
+                                const m = trip.members?.find(m => m.id === mid);
+                                if (!m || Math.round(amount) === 0) return null;
+                                const isReceiving = amount > 0;
+                                return (
+                                    <div key={mid} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm ${getMemberAvatarColor(m.name)}`}>{m.name[0]}</div>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold text-gray-800">{m.name}</span>
+                                                <span className="text-[10px] text-gray-400">{isReceiving ? '應付給你' : '你應付他'}</span>
+                                            </div>
+                                        </div>
+                                        <div className={`text-lg font-black font-mono ${isReceiving ? 'text-green-500' : 'text-red-500'}`}>
+                                            {isReceiving ? '+' : '-'}{currencySymbol}{Math.abs(Math.round(amount))}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                            <button onClick={copySettlement} className="w-full py-3 mt-2 flex items-center justify-center gap-2 text-xs font-bold text-[#45846D] bg-[#45846D]/10 rounded-xl hover:bg-[#45846D]/20 transition-colors">
+                                <Copy className="w-3.5 h-3.5" /> 複製結算明細
+                            </button>
+                        </>
+                    ) : (
+                        <div className="text-center py-8 text-gray-300 text-xs font-bold">目前沒有需要結算的帳目 🎉</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
 
-// Route Visualization (Google Maps Fix)
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
     const { stops, mapUrl } = useMemo(() => {
         const _stops = day.activities.filter(a => a.type !== 'transport' && a.type !== 'note' && a.type !== 'expense' && a.type !== 'process').filter(a => a.title || a.location).map(a => a.location || a.title);
@@ -1061,15 +891,29 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
     return (<div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-2"><div className="h-24 bg-[#45846D]/5 flex items-center justify-center relative"><Map className="w-8 h-8 text-[#45846D] opacity-50" /></div><div className="p-5">{stops.length===0?<div className="text-center text-gray-400 text-sm">暫無地點</div>:<><div className="space-y-0 mb-6 pl-2">{stops.map((s, i) => (<div key={i} className="flex gap-4"><div className="flex flex-col items-center w-4"><div className="w-3 h-3 rounded-full bg-[#45846D]"></div>{i!==stops.length-1&&<div className="w-[2px] flex-1 bg-gray-100"></div>}</div><p className="text-sm pb-5">{s}</p></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-[#45846D] text-white font-bold py-3.5 rounded-2xl">開啟導航</a></>}</div></div>);
 };
 
+// ============================================================================
+// 8. Add Activity Modal
+// ============================================================================
+
 const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act: Activity) => void; }> = ({ day, onClose, onAdd }) => {
     const [title, setTitle] = useState('');
     const [time, setTime] = useState('09:00'); const [type, setType] = useState<string>('sightseeing');
     const handleSubmit = () => { if (!title) return;
     onAdd({ time, title, description: '', type, location: '' }); };
-    return (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><h3 className="text-xl font-bold mb-6">新增第 {day} 天</h3><div className="space-y-5"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold text-center" /><select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold"><option value="sightseeing">景點</option><option value="food">美食</option><option value="shopping">購物</option></select></div><button className="w-full py-4 rounded-2xl bg-[#45846D] text-white font-bold" onClick={handleSubmit}>確認</button></div></div></div>);
+    
+    // 只顯示非系統類型
+    const validCategories = CATEGORIES.filter(c => !c.isSystem);
+
+    return (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4"><div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} /><div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10"><h3 className="text-xl font-bold mb-6">新增第 {day} 天</h3><div className="space-y-5"><IOSInput value={title} onChange={e => setTitle(e.target.value)} placeholder="活動名稱" /><div className="flex gap-3"><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold text-center" />
+    <select value={type} onChange={e => setType(e.target.value)} className="w-full bg-[#F5F5F4] rounded-2xl py-4 px-3 font-bold">
+        {validCategories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+    </select></div><button className="w-full py-4 rounded-2xl bg-[#45846D] text-white font-bold" onClick={handleSubmit}>確認</button></div></div></div>);
 };
 
-// --- EditTripSettingsModal (with Members) ---
+// ============================================================================
+// 9. Edit Trip Settings Modal
+// ============================================================================
+
 const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
     const [dest, setDest] = useState(trip.destination);
     const [start, setStart] = useState(trip.startDate);
@@ -1122,7 +966,6 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
                 </div>
                 
                 <div className="space-y-5 overflow-y-auto max-h-[70vh]">
-                    {/* Basic Info */}
                     <div className="space-y-4">
                         <div><label className="text-xs font-bold text-gray-400">目的地</label><IOSInput value={dest} onChange={e => setDest(e.target.value)} /></div>
                         <div><label className="text-xs font-bold text-gray-400">開始日期</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl font-bold" /></div>
@@ -1131,7 +974,6 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
 
                     <div className="h-px bg-gray-100" />
 
-                    {/* Members Section */}
                     <div>
                         <label className="text-xs font-bold text-gray-400 mb-2 block uppercase">旅伴成員</label>
                         <div className="flex flex-wrap gap-2 mb-3">
@@ -1154,7 +996,12 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
                         </div>
                     </div>
 
-                    <IOSButton fullWidth onClick={handleSave}>儲存變更</IOSButton>
+                    <button 
+                        onClick={handleSave} 
+                        className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform shadow-md"
+                    >
+                        儲存變更
+                    </button>
                 </div>
             </div>
         </div>
@@ -1162,7 +1009,7 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
 };
 
 // ============================================================================
-// Main View Component
+// 10. Main Itinerary View & Props
 // ============================================================================
 
 interface ItineraryViewProps { 
@@ -1190,8 +1037,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
     const currencyCode = trip.currency || 'TWD';
-    const currencySymbol = CURRENCY_SYMBOLS[currencyCode] || '$';
+    const currencySymbol = CURRENCY_SYMBOLS[currencyCode as CurrencyCode] || '$';
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Dynamic Header Info
+    const flightDisplayOrigin = trip.origin || 'ORIGIN';
+    const flightDisplayDest = trip.destination || 'DEST';
+    const firstType = trip.days[0]?.activities[0]?.type || 'other';
 
     // Initialize default member (Me) if empty
     useEffect(() => {
@@ -1260,7 +1112,16 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         } else if (type === 'note') {
             newAct = { time: nextTime, title: '新備註', type: 'note', description: '點擊編輯內容', cost: 0 };
         } else if (type === 'expense') {
-            newAct = { time: nextTime, title: '新支出', type: 'expense', description: '', cost: 0, payer: trip.members?.[0]?.id }; // Default payer
+            // [正規寫法] layout 是合法屬性，直接賦值
+            newAct = { 
+                time: nextTime, 
+                title: '新支出', 
+                type: 'expense', 
+                description: '', 
+                cost: 0, 
+                payer: trip.members?.[0]?.id,
+                layout: 'polaroid' 
+            }; 
         }
 
         if (newAct) {
@@ -1293,11 +1154,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
 
     const openAddModal = (day: number) => { setActiveDayForAdd(day); setIsAddModalOpen(true); };
     
-    // Dynamic Header Info
-    const flightDisplayOrigin = trip.origin || 'ORIGIN';
-    const flightDisplayDest = trip.destination || 'DEST';
-    const firstType = trip.days[0]?.activities[0]?.type || 'other';
-
     // Header Background Logic
     const headerBgClass = firstType === 'flight' ? 'bg-[#2C5E4B]' : firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
 
@@ -1362,7 +1218,18 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         <div className="absolute inset-0 bg-[#1D1D1B]/80 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
                         <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl">
                             <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-[#1D1D1B]">選擇幣別</h3><button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button></div>
-                            <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">{Object.keys(CURRENCY_SYMBOLS).map(cur => (<button key={cur} onClick={() => handleCurrencyChange(cur)} className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium ${currencyCode === cur ? 'bg-[#45846D] text-white' : 'bg-gray-50'}`}><span>{CURRENCY_LABELS[cur] || cur}</span><span className="font-mono">{CURRENCY_SYMBOLS[cur]}</span></button>))}</div>
+                            <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
+                                {(Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[]).map(cur => (
+                                    <button 
+                                        key={cur} 
+                                        onClick={() => handleCurrencyChange(cur)} 
+                                        className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium ${currencyCode === cur ? 'bg-[#45846D] text-white' : 'bg-gray-50'}`}
+                                    >
+                                        <span>{CURRENCY_LABELS[cur] || cur}</span>
+                                        <span className="font-mono">{CURRENCY_SYMBOLS[cur]}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1382,7 +1249,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         {showExpenses && <ExpenseDashboard trip={trip} />}
                         <DragDropContext onDragEnd={onDragEnd}>
                             <div className="py-4 space-y-10">
-                                {trip.days.map((day, dayIndex) => (
+                                {trip.days.map((day: TripDay, dayIndex: number) => (
                                     <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
                                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
                                         <div className="flex justify-between items-center mb-4 -mt-1">
@@ -1399,22 +1266,26 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                             <Droppable droppableId={`day-${dayIndex + 1}`}>
                                                 {(provided) => (
                                                     <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                        {day.activities.map((act, index) => (
+                                                        {day.activities.map((act: Activity, index: number) => (
                                                             <div key={`${day.day}-${index}`}>
                                                                 <Draggable draggableId={`${day.day}-${index}`} index={index}>
-                                                                    {(provided, snapshot) => (
-                                                                        act.type === 'process' ? (
-                                                                            <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
-                                                                        ) : act.type === 'transport' ? (
-                                                                            <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
-                                                                        ) : act.type === 'note' ? (
-                                                                            <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />
-                                                                        ) : act.type === 'expense' ? (
-                                                                            <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />
-                                                                        ) : (
-                                                                            <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />
-                                                                        )
-                                                                    )}
+                                                                    {(provided, snapshot) => {
+                                                                        // [版型分流核心]
+                                                                        // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
+                                                                        if (isSystemType(act.type)) {
+                                                                            if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                            if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                            return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                        }
+                                                                        
+                                                                        // 2. 拍立得版型 (layout='polaroid') -> 強調照片與金額 (如: 快速記帳產生的卡片)
+                                                                        if (act.layout === 'polaroid') {
+                                                                            return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
+                                                                        }
+                                                                        
+                                                                        // 3. 預設版型 (List) -> 一般行程 (美食/景點/購物...)
+                                                                        return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
+                                                                    }}
                                                                 </Draggable>
                                                                 {/* Ghost Insert Button (Between Items) */}
                                                                 <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
@@ -1456,6 +1327,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)}
                     members={trip.members}
                     initialEdit={selectedActivity.initialEdit}
+                    currencySymbol={currencySymbol}
                 />
             )}
 
@@ -1481,3 +1353,5 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         </div>
     );
 };
+
+export default ItineraryView;

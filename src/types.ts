@@ -1,6 +1,8 @@
 // src/types.ts
 
-// 1. App 視圖切換
+// ==========================================
+// 1. App 基礎設定
+// ==========================================
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
@@ -10,7 +12,6 @@ export const AppView = {
 } as const;
 export type AppView = typeof AppView[keyof typeof AppView];
 
-// 2. 小工具類型
 export const ToolType = {
   TRANSLATE: 'translate',
   CURRENCY: 'currency',
@@ -23,7 +24,9 @@ export const ToolType = {
 } as const;
 export type ToolType = typeof ToolType[keyof typeof ToolType];
 
-// 3. 使用者定義 (登入者本人)
+// ==========================================
+// 2. 使用者與成員
+// ==========================================
 export interface User {
   id: string;
   name: string;
@@ -32,56 +35,85 @@ export interface User {
   email?: string;
 }
 
-// 3.5 旅伴成員定義 (用於分帳)
+// 旅伴成員 (用於分帳)
 export interface Member {
   id: string;
   name: string;
-  avatar?: string; // 預留給未來大頭貼功能
-  isHost?: boolean; // 是否為行程建立者
+  avatar?: string;
+  isHost?: boolean;
 }
 
-// [新增] 3.6 記帳明細項目 (用於單一品項指定)
-export interface ExpenseItem {
-  id: string;
-  name: string;       // 品項名稱 (如: 牛肉麵)
-  amount: number;     // 單項金額
-  assignedTo?: string[]; // 指定分攤的人 (Member ID 列表)。若為空，則視為「公費/平分」
-}
+// ==========================================
+// 3. 行程與活動 (核心結構)
+// ==========================================
 
-// 4. 交通詳細資訊
+// [新增] 卡片版型定義
+// list: 條列式 (一般行程預設)
+// polaroid: 拍立得樣式 (快速記帳/強調回憶用)
+export type ActivityLayout = 'list' | 'polaroid';
+
+// [新增] 活動類別定義 (包含一般消費與系統功能)
+export type ActivityType = 
+  // 一般消費類
+  | 'food' | 'shopping' | 'sightseeing' | 'hotel' | 'gift' | 'bar' | 'activity' 
+  | 'tickets' | 'snacks' | 'health' | 'cafe' | 'relax' | 'culture' | 'other'
+  // 記帳專用
+  | 'expense' | 'commute'
+  // 系統功能類
+  | 'transport' | 'flight' | 'note' | 'process'
+  // 容錯用 (避免舊資料報錯)
+  | string;
+
+// [新增] 交通模式定義
+export type TransportMode = 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight';
+
+// 交通詳細資訊
 export interface TransportDetail {
-  mode: 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight';
+  mode: TransportMode;
   duration: string;      
   fromStation?: string;  
   toStation?: string;    
   instruction?: string;  
 }
 
-// 5. 行程細節相關
+// 記帳明細項目 (單一品項)
+export interface ExpenseItem {
+  id: string;
+  name: string;       // 品項名稱
+  amount: number;     // 金額
+  assignedTo?: string[]; // 指定分攤成員 ID (空值代表全員平分)
+}
+
+// 行程活動單元
 export interface Activity {
   id?: string;
   time: string;
   title: string;
   description: string;
-  type: 'sightseeing' | 'food' | 'transport' | 'flight' | 'hotel' | 'cafe' | 'shopping' | 'relax' | 'bar' | 'culture' | 'activity' | 'note' | 'expense' | 'process' | 'other' | string;
+  type: ActivityType; // 使用定義好的型別
+  
+  // [新增] 視覺呈現設定 (重要修改)
+  layout?: ActivityLayout; 
+
   category?: string; 
   location?: string; 
-  cost?: string | number;
+  cost?: string | number; // 建議統一轉為 number，但保留 string 相容性
   
-  // 交通詳細資訊
+  // 交通資訊
   transportDetail?: TransportDetail; 
 
-  // 記帳相關欄位
-  payer?: string;        // 先墊錢的人 (Member ID)
-  splitWith?: string[];  // 預設分攤者 (Member ID 列表)，若明細沒有指定人，就用這個設定
-  expenseImage?: string; // 拍立得照片/收據圖片 (Base64)
+  // 記帳與分帳
+  payer?: string;        // 付款人 Member ID
+  splitWith?: string[];  // (舊版欄位，保留相容)
+  expenseImage?: string; // Base64 圖片
   
-  // [新增] 消費明細列表 (AI 辨識或手動輸入)
+  // 消費明細列表
   items?: ExpenseItem[]; 
 }
 
 export interface TripDay {
   day: number;
+  date?: string; // 可選：具體日期
   activities: Activity[];
 }
 
@@ -98,13 +130,17 @@ export interface Trip {
   coverImage: string;
   days: TripDay[];
   isDeleted?: boolean;
-  currency?: string; 
+  currency?: string; // e.g., 'JPY', 'TWD'
 
-  // 行程成員名單
+  // 成員名單
   members?: Member[]; 
 }
 
-// 6. 檢查表相關
+// ==========================================
+// 4. 其他功能 (檢查表/保管箱/API)
+// ==========================================
+
+// 檢查表
 export type ChecklistCategory = 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
 
 export interface ChecklistItem {
@@ -114,7 +150,7 @@ export interface ChecklistItem {
   category: ChecklistCategory;
 }
 
-// 7. 保管箱相關
+// 保管箱
 export interface VaultFolder {
   id: string;
   name: string;
@@ -136,7 +172,7 @@ export interface VaultFile {
   isPinned: boolean;
 }
 
-// 8. 小工具 API 資料相關
+// 小工具 API
 export interface WeatherInfo {
   location: string;
   temperature: string;
