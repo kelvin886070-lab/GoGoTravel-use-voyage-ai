@@ -7,7 +7,7 @@ import {
     StickyNote, Banknote, Sparkles, UserCheck, 
     Check, Loader2, ZoomIn, Receipt,
     ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Copy, BarChart3, Scale, Image as ImageIcon,
-    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText
+    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -238,7 +238,9 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
-// [拍立得版型] 適用於：純記帳、以及使用者指定要用大卡片的活動
+// [拍立得版型] 適用於：純記帳、以及 layout='polaroid' 的活動
+// [視覺優化] 高度固定為 h-40 (160px)，更為精簡寬螢幕
+// [功能新增] 支援讀取 imagePositionY 進行顯示
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
@@ -256,11 +258,22 @@ const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: 
             </div>
             <div className="flex-1 bg-white p-3 pb-4 rounded-sm shadow-md border border-gray-100 rotate-1 transition-transform hover:rotate-0 active:scale-[0.98] cursor-pointer relative overflow-hidden group/card">
                 <div {...provided.dragHandleProps} className="absolute top-2 left-2 z-20 text-white/80 opacity-0 group-hover/card:opacity-100 transition-opacity p-1 bg-black/20 backdrop-blur-sm rounded-full" onClick={(e) => e.stopPropagation()}><GripVertical className="w-4 h-4" /></div>
-                <div className="aspect-video bg-gray-100 mb-3 rounded-sm overflow-hidden relative border border-gray-100">
-                    {act.expenseImage ? <img src={act.expenseImage} alt="Receipt" className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots"><Camera className="w-8 h-8 opacity-30 mb-1" /><span className="text-[10px] font-bold opacity-30">無照片</span></div>}
+                
+                {/* 照片顯示區塊 */}
+                <div className="h-40 w-full bg-gray-100 mb-3 rounded-sm overflow-hidden relative border border-gray-100">
+                    {act.expenseImage ? 
+                        <img 
+                            src={act.expenseImage} 
+                            alt="Receipt" 
+                            className="w-full h-full object-cover" 
+                            style={{ objectPosition: `center ${act.imagePositionY ?? 50}%` }} // [關鍵] 讀取裁切位置
+                        /> : 
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 pattern-dots"><Camera className="w-8 h-8 opacity-30 mb-1" /><span className="text-[10px] font-bold opacity-30">無照片</span></div>
+                    }
                     {/* 右上角顯示付款人 */}
                     <div className={`absolute top-2 right-2 ${avatarColor} text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg border border-white transform rotate-6`}>{payerName} 付款</div>
                 </div>
+
                 <div className="flex justify-between items-end px-1">
                     <div className="flex-1 min-w-0 pr-2">
                         <div className="font-handwriting font-bold text-gray-800 text-lg leading-none mb-1 truncate">{act.title || category?.label || '新項目'}</div>
@@ -320,11 +333,17 @@ const ActivityDetailModal: React.FC<{
     const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
     const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false); 
     
+    // [新增] 圖片拖曳位置狀態
+    const [imagePositionY, setImagePositionY] = useState(act.imagePositionY ?? 50);
+    const [isDraggingImage, setIsDraggingImage] = useState(false);
+    const imageDragStartY = useRef(0);
+    const imageStartPos = useRef(50);
+    const imageContainerRef = useRef<HTMLDivElement>(null);
+
     // Stealth Toolbar State
     const [showLocationField, setShowLocationField] = useState(!!act.location);
     const [showNoteField, setShowNoteField] = useState(!!act.description);
 
-    // [Unified Mode Check] All non-system types use "Receipt Mode"
     const isSystem = isSystemType(edited.type);
     const isReceiptMode = !isSystem; 
     const isTransport = edited.type === 'transport'; 
@@ -338,8 +357,43 @@ const ActivityDetailModal: React.FC<{
         }
     }, []);
 
+    // 儲存圖片位置變更
+    useEffect(() => {
+        setEdited(prev => ({ ...prev, imagePositionY }));
+    }, [imagePositionY]);
+
     const handleChange = (field: keyof Activity, value: any) => {
         setEdited(prev => ({ ...prev, [field]: value }));
+    };
+
+    // [新增] 圖片拖曳邏輯
+    const handleImageMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+        if (!isEditing) return;
+        setIsDraggingImage(true);
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        imageDragStartY.current = clientY;
+        imageStartPos.current = imagePositionY;
+    };
+
+    const handleImageMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
+        if (!isDraggingImage || !imageContainerRef.current) return;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        const deltaY = clientY - imageDragStartY.current;
+        const containerHeight = imageContainerRef.current.clientHeight;
+        
+        // 靈敏度調整：移動像素對應百分比
+        const percentChange = (deltaY / containerHeight) * 100 * 1.5; 
+        
+        // 拖曳方向與直覺一致：往下拖 -> 顯示上面 -> %數減少 (0% = top)
+        // 往上拖 -> 顯示下面 -> %數增加 (100% = bottom)
+        let newPos = imageStartPos.current - percentChange;
+        newPos = Math.max(0, Math.min(100, newPos)); // Clamp between 0 and 100
+        
+        setImagePositionY(newPos);
+    };
+
+    const handleImageMouseUp = () => {
+        setIsDraggingImage(false);
     };
 
     const handleTransportDetailChange = (field: string, value: string) => {
@@ -455,29 +509,58 @@ const ActivityDetailModal: React.FC<{
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[#FAFAFA]">
+                <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-[#FAFAFA]" onMouseUp={handleImageMouseUp} onTouchEnd={handleImageMouseUp}>
                     
                     {/* --- RECEIPT STYLE UI (For ALL consumption types) --- */}
                     {isReceiptMode ? (
                         <div className="space-y-4">
-                            {/* 1. Hero Photo (Always Top) */}
-                            <div className="relative w-full aspect-video bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 hover:bg-[#45846D]/5">
+                            {/* 1. Hero Photo (Interactive Crop) */}
+                            <div 
+                                ref={imageContainerRef}
+                                className={`relative w-full h-48 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 hover:bg-[#45846D]/5 ${isEditing ? 'cursor-ns-resize' : ''}`}
+                                onMouseDown={handleImageMouseDown}
+                                onMouseMove={handleImageMouseMove}
+                                onTouchStart={handleImageMouseDown}
+                                onTouchMove={handleImageMouseMove}
+                            >
                                 {edited.expenseImage ? (
                                     <>
-                                        <img src={edited.expenseImage} className="w-full h-full object-cover" />
-                                        <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-full text-white cursor-pointer hover:bg-black/70 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}><ZoomIn className="w-4 h-4" /></div>
-                                        {isEditing && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold cursor-pointer">更換照片</div>}
+                                        <img 
+                                            src={edited.expenseImage} 
+                                            className="w-full h-full object-cover pointer-events-none select-none" 
+                                            style={{ objectPosition: `center ${imagePositionY}%` }}
+                                        />
+                                        {!isEditing && <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-full text-white cursor-pointer hover:bg-black/70 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}><ZoomIn className="w-4 h-4" /></div>}
+                                        
+                                        {/* Overlay Hint for Editing */}
+                                        {isEditing && (
+                                            <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="bg-black/60 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md shadow-lg pointer-events-none">
+                                                    <MoveVertical className="w-3 h-3" /> 拖曳調整位置
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Change Photo Button (Bottom Right) */}
+                                        {isEditing && (
+                                            <div className="absolute bottom-2 right-2">
+                                                <label className="bg-white/90 hover:bg-white text-[#1D1D1B] text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm cursor-pointer border border-gray-200 flex items-center gap-1.5 transition-all active:scale-95">
+                                                    <Camera className="w-3.5 h-3.5" /> 更換
+                                                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                                </label>
+                                            </div>
+                                        )}
                                     </>
                                 ) : (
                                     isEditing ? (
-                                        <div className="text-gray-400 flex flex-col items-center p-4 text-center">
+                                        <label className="text-gray-400 flex flex-col items-center p-4 text-center cursor-pointer w-full h-full justify-center">
                                             <Camera className="w-10 h-10 opacity-20 mb-2" />
                                             <span className="text-sm font-bold text-[#45846D]">上傳收據 / 照片</span>
                                             <span className="text-[10px] opacity-60 mt-1">點擊上傳</span>
-                                        </div>
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                        </label>
                                     ) : <div className="text-gray-300 text-xs py-4">無照片</div>
                                 )}
-                                {isEditing && <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />}
                             </div>
 
                             {/* 2. Info Row (Time & Category) */}
@@ -638,7 +721,7 @@ const ActivityDetailModal: React.FC<{
                             </div>
                         </div>
                     ) : (
-                        // --- SYSTEM LAYOUT (System features only: Transport Connector, Note, Process...) ---
+                        // --- SYSTEM LAYOUT ---
                         <div className="space-y-4">
                             {!isNote && (
                                 <div className="flex gap-4">
@@ -1112,7 +1195,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         } else if (type === 'note') {
             newAct = { time: nextTime, title: '新備註', type: 'note', description: '點擊編輯內容', cost: 0 };
         } else if (type === 'expense') {
-            // [正規寫法] layout 是合法屬性，直接賦值
             newAct = { 
                 time: nextTime, 
                 title: '新支出', 
@@ -1158,27 +1240,32 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const headerBgClass = firstType === 'flight' ? 'bg-[#2C5E4B]' : firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
 
     return (
-        <div className="bg-[#E4E2DD] h-[100dvh] w-full flex flex-col relative animate-in slide-in-from-right duration-300">
-            {/* Header: Boarding Pass Style (Enhanced) */}
-            <div className={`flex-shrink-0 h-72 relative group z-10 shadow-lg overflow-hidden ${headerBgClass}`}>
-                <button onClick={onBack} className="absolute top-6 left-5 w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white z-50 hover:bg-white/20"><ArrowLeft className="w-6 h-6" /></button>
-                <div className="absolute top-6 right-5 flex gap-3 z-50">
-                    <button onClick={() => setIsEditSettingsOpen(true)} className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20"><PenTool className="w-5 h-5" /></button>
-                    <button onClick={handleShare} className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/20"><Share className="w-5 h-5" /></button>
-                    <button onClick={onDelete} className="w-10 h-10 bg-red-500/80 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-600"><Trash2 className="w-5 h-5" /></button>
-                </div>
+        <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
+            
+            {/* 1. Header Container (Relative container for absolute nav) */}
+            <div className={`relative h-72 w-full ${headerBgClass}`}>
                 
-                {/* Background Logic */}
+                {/* 1.1 Nav Buttons (Now Absolute, scrolls with header) */}
+                <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
+                    <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
+                    <div className="flex gap-3 pointer-events-auto">
+                        <button onClick={() => setIsEditSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><PenTool className="w-5 h-5" /></button>
+                        <button onClick={handleShare} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Share className="w-5 h-5" /></button>
+                        <button onClick={onDelete} className="w-10 h-10 bg-red-500/80 hover:bg-red-600 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Trash2 className="w-5 h-5" /></button>
+                    </div>
+                </div>
+
+                {/* 1.2 Background Logic */}
                 {(firstType !== 'flight' && firstType !== 'train') && (
                     <>
-                        <img src={trip.coverImage} className="w-full h-full object-cover opacity-60" alt="Cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#1D1D1B] via-[#1D1D1B]/40 to-transparent" />
+                        <img src={trip.coverImage} className="w-full h-full object-cover opacity-80" alt="Cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#1D1D1B] via-transparent to-transparent" />
                     </>
                 )}
                 
-                {/* Boarding Pass Content */}
+                {/* 1.3 Header Content */}
                 <div className="absolute inset-0 p-6 flex flex-col justify-end z-20 pt-20">
-                    <div className="absolute top-20 left-6 right-6">
+                    <div className="absolute top-20 left-6 right-6 pointer-events-none">
                         <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
                             <div>
                                 <span className="text-[10px] font-bold text-white/50 tracking-[0.2em] block mb-1 uppercase">FROM</span>
@@ -1194,7 +1281,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </div>
 
-                    <div className="mt-auto">
+                    <div className="mt-auto relative z-30">
                         <div className="mb-3">
                             <input type="text" value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onBlur={handleTitleBlur} className="text-4xl font-bold bg-transparent border-none outline-none text-white placeholder-white/50 w-full p-0 m-0 focus:ring-0 font-serif tracking-wide" />
                         </div>
@@ -1212,101 +1299,103 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 
                 <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-24 right-6 w-10 h-10 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all z-20"><Camera className="w-5 h-5" /></button>
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
-                
-                {showSettings && (
-                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
-                        <div className="absolute inset-0 bg-[#1D1D1B]/80 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
-                        <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl">
-                            <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-[#1D1D1B]">選擇幣別</h3><button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button></div>
-                            <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
-                                {(Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[]).map(cur => (
-                                    <button 
-                                        key={cur} 
-                                        onClick={() => handleCurrencyChange(cur)} 
-                                        className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium ${currencyCode === cur ? 'bg-[#45846D] text-white' : 'bg-gray-50'}`}
-                                    >
-                                        <span>{CURRENCY_LABELS[cur] || cur}</span>
-                                        <span className="font-mono">{CURRENCY_SYMBOLS[cur]}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
 
-            {/* List / Map Toggle */}
+            {/* 3. Sticky Content Control Bar */}
             {!showSettings && (
-                <>
-                    <div className="flex-shrink-0 px-5 pt-4 pb-2 bg-[#E4E2DD] z-10 border-b border-gray-200/50">
-                        <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
-                            <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
-                            <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
-                        </div>
+                <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
+                    <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
+                        <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
+                        <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
                     </div>
+                </div>
+            )}
 
-                    <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe w-full scroll-smooth no-scrollbar">
-                        {showExpenses && <ExpenseDashboard trip={trip} />}
-                        <DragDropContext onDragEnd={onDragEnd}>
-                            <div className="py-4 space-y-10">
-                                {trip.days.map((day: TripDay, dayIndex: number) => (
-                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
-                                        <div className="flex justify-between items-center mb-4 -mt-1">
-                                            <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                            {/* Top Plus Button for Day Start */}
-                                            <button 
-                                                onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
-                                                className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
-                                            >
-                                                <Plus className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                        {viewMode === 'list' ? (
-                                            <Droppable droppableId={`day-${dayIndex + 1}`}>
-                                                {(provided) => (
-                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                        {day.activities.map((act: Activity, index: number) => (
-                                                            <div key={`${day.day}-${index}`}>
-                                                                <Draggable draggableId={`${day.day}-${index}`} index={index}>
-                                                                    {(provided, snapshot) => {
-                                                                        // [版型分流核心]
-                                                                        // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
-                                                                        if (isSystemType(act.type)) {
-                                                                            if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                            if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                            return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                        }
-                                                                        
-                                                                        // 2. 拍立得版型 (layout='polaroid') -> 強調照片與金額 (如: 快速記帳產生的卡片)
-                                                                        if (act.layout === 'polaroid') {
-                                                                            return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
-                                                                        }
-                                                                        
-                                                                        // 3. 預設版型 (List) -> 一般行程 (美食/景點/購物...)
-                                                                        return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
-                                                                    }}
-                                                                </Draggable>
-                                                                {/* Ghost Insert Button (Between Items) */}
-                                                                <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
-                                                            </div>
-                                                        ))}
-                                                        {provided.placeholder}
-                                                    </div>
-                                                )}
-                                            </Droppable>
-                                        ) : (
-                                            <RouteVisualization day={day} destination={trip.destination} />
-                                        )}
+            {/* 4. Scrollable Content Area */}
+            {!showSettings && (
+                <div className="px-5 pb-safe w-full">
+                    {showExpenses && <ExpenseDashboard trip={trip} />}
+                    <DragDropContext onDragEnd={onDragEnd}>
+                        <div className="py-4 space-y-10">
+                            {trip.days.map((day: TripDay, dayIndex: number) => (
+                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
+                                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
+                                    <div className="flex justify-between items-center mb-4 -mt-1">
+                                        <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
+                                        {/* Top Plus Button for Day Start */}
+                                        <button 
+                                            onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
+                                            className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                        </button>
                                     </div>
-                                ))}
-                                <div className="h-24"></div>
-                            </div>
-                        </DragDropContext>
-                    </div>
-                </>
+                                    {viewMode === 'list' ? (
+                                        <Droppable droppableId={`day-${dayIndex + 1}`}>
+                                            {(provided) => (
+                                                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
+                                                    {day.activities.map((act: Activity, index: number) => (
+                                                        <div key={`${day.day}-${index}`}>
+                                                            <Draggable draggableId={`${day.day}-${index}`} index={index}>
+                                                                {(provided, snapshot) => {
+                                                                    // [版型分流核心]
+                                                                    // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
+                                                                    if (isSystemType(act.type)) {
+                                                                        if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                        if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                        return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                    }
+                                                                    
+                                                                    // 2. 拍立得版型 (layout='polaroid') -> 強調照片與金額 (如: 快速記帳產生的卡片)
+                                                                    if (act.layout === 'polaroid') {
+                                                                        return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
+                                                                    }
+                                                                    
+                                                                    // 3. 預設版型 (List) -> 一般行程 (美食/景點/購物...)
+                                                                    return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
+                                                                }}
+                                                            </Draggable>
+                                                            {/* Ghost Insert Button (Between Items) */}
+                                                            <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
+                                                        </div>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                </div>
+                                            )}
+                                        </Droppable>
+                                    ) : (
+                                        <RouteVisualization day={day} destination={trip.destination} />
+                                    )}
+                                </div>
+                            ))}
+                            <div className="h-24"></div>
+                        </div>
+                    </DragDropContext>
+                </div>
             )}
             
+            {showSettings && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="absolute inset-0 bg-[#1D1D1B]/80 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+                    <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl">
+                        <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-[#1D1D1B]">選擇幣別</h3><button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button></div>
+                        <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
+                            {(Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[]).map(cur => (
+                                <button 
+                                    key={cur} 
+                                    onClick={() => handleCurrencyChange(cur)} 
+                                    className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium ${currencyCode === cur ? 'bg-[#45846D] text-white' : 'bg-gray-50'}`}
+                                >
+                                    <span>{CURRENCY_LABELS[cur] || cur}</span>
+                                    <span className="font-mono">{CURRENCY_SYMBOLS[cur]}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modals & Overlays */}
             {isAddModalOpen && (
                 <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />
             )}

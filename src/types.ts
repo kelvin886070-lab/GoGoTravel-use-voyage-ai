@@ -47,12 +47,12 @@ export interface Member {
 // 3. 行程與活動 (核心結構)
 // ==========================================
 
-// [新增] 卡片版型定義
+// 卡片版型定義
 // list: 條列式 (一般行程預設)
 // polaroid: 拍立得樣式 (快速記帳/強調回憶用)
 export type ActivityLayout = 'list' | 'polaroid';
 
-// [新增] 活動類別定義 (包含一般消費與系統功能)
+// 活動類別定義 (包含一般消費與系統功能)
 export type ActivityType = 
   // 一般消費類
   | 'food' | 'shopping' | 'sightseeing' | 'hotel' | 'gift' | 'bar' | 'activity' 
@@ -64,7 +64,7 @@ export type ActivityType =
   // 容錯用 (避免舊資料報錯)
   | string;
 
-// [新增] 交通模式定義
+// 交通模式定義
 export type TransportMode = 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight';
 
 // 交通詳細資訊
@@ -92,12 +92,12 @@ export interface Activity {
   description: string;
   type: ActivityType; // 使用定義好的型別
   
-  // [新增] 視覺呈現設定 (重要修改)
+  // 視覺呈現設定
   layout?: ActivityLayout; 
 
   category?: string; 
   location?: string; 
-  cost?: string | number; // 建議統一轉為 number，但保留 string 相容性
+  cost?: string | number; 
   
   // 交通資訊
   transportDetail?: TransportDetail; 
@@ -107,6 +107,10 @@ export interface Activity {
   splitWith?: string[];  // (舊版欄位，保留相容)
   expenseImage?: string; // Base64 圖片
   
+  // [新增] 圖片裁切位置
+  // 儲存 object-position 的 Y 軸百分比 (0-100)，用於調整照片顯示區域
+  imagePositionY?: number;
+
   // 消費明細列表
   items?: ExpenseItem[]; 
 }
