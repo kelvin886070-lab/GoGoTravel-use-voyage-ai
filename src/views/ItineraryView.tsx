@@ -127,7 +127,7 @@ const LocationLink: React.FC<{ location?: string }> = ({ location }) => {
     );
 };
 
-// [優化] iOS 風格輕量級編輯 Modal (RWD 防爆版)
+// iOS 風格輕量級編輯 Modal (RWD 防爆版)
 const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: () => void, children: React.ReactNode }> = ({ title, onClose, onSave, children }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -220,8 +220,9 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
     );
 };
 
+// [修正] GhostInsertButton: 極致微型化 (h-2, -my-1)
 const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-    <div className="h-6 -my-3 relative group z-10 flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); onClick(); }}>
+    <div className="h-2 -my-1 relative group z-10 flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); onClick(); }}>
         <div className="absolute inset-0 bg-transparent" />
         <div className="w-[2px] h-full bg-[#45846D] opacity-0 group-hover:opacity-100 transition-opacity absolute left-[26px]" />
         <div className="w-6 h-6 rounded-full bg-[#45846D] text-white flex items-center justify-center shadow-md transform scale-0 group-hover:scale-100 transition-all absolute left-[15px]">
@@ -230,7 +231,7 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// [修改] 2. End of Day Indicator (智慧判斷文字：FINISH 或 END)
+// End of Day Indicator (智慧判斷文字：FINISH 或 END)
 const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => {
     return (
         <div className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700 opacity-80">
@@ -288,13 +289,13 @@ const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => {
 };
 
 // ============================================================================
-// 4. List Items
+// 4. List Items (全面縮減 Padding py-1 或 py-0.5)
 // ============================================================================
 
 const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     return (
-        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center py-2 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] self-stretch relative"><div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div></div>
             <div className="flex-1 flex items-center">
                 <div className="bg-slate-100 border border-slate-200 rounded-full px-4 py-2 flex items-center gap-3 shadow-sm active:scale-95 transition-transform cursor-pointer hover:bg-slate-200">
@@ -318,7 +319,7 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
         return <Bus className="w-4 h-4" />;
     };
     return (
-        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center gap-3 py-0.5 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] self-stretch relative">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-300 left-1/2 -ml-[1px]"></div>
                 <div className="relative z-10 bg-gray-100 border-2 border-white text-gray-500 rounded-full p-1.5 shadow-sm mt-2">{getIcon()}</div>
@@ -345,7 +346,7 @@ const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, pro
 
 const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any }> = ({ act, onClick, provided, snapshot }) => {
     return (
-        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-0.5 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] pt-2"><StickyNote className="w-4 h-4 text-yellow-400" /></div>
             <div className="flex-1 bg-yellow-50 rounded-xl p-3 border border-yellow-100 flex items-center justify-between gap-3 active:scale-[0.98] transition-transform cursor-pointer">
                 <div className="min-w-0"><h4 className="font-bold text-yellow-800 text-sm truncate">{act.title || '備註'}</h4><p className="text-xs text-yellow-600/80 truncate">{act.description || '點擊編輯內容...'}</p></div>
@@ -363,7 +364,7 @@ const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: 
     const category = CATEGORIES.find(c => c.id === act.type) || CATEGORIES.find(c => c.id === 'expense');
 
     return (
-        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-2 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`} onClick={onClick}>
+        <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-1 group ${snapshot.isDragging ? 'z-50 scale-[1.02]' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] self-stretch relative pt-2">
                 <div className="absolute top-0 bottom-0 w-[2px] border-r-2 border-dashed border-gray-200 left-1/2 -ml-[1px] -z-10"></div>
                 {/* 根據類別顯示不同的左側圖示 */}
@@ -1115,7 +1116,7 @@ const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ d
         }
         return { stops: _stops, mapUrl: _mapUrl };
     }, [day.activities, destination]);
-    return (<div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-2"><div className="h-24 bg-[#45846D]/5 flex items-center justify-center relative"><Map className="w-8 h-8 text-[#45846D] opacity-50" /></div><div className="p-5">{stops.length===0?<div className="text-center text-gray-400 text-sm">暫無地點</div>:<><div className="space-y-0 mb-6 pl-2">{stops.map((s, i) => (<div key={i} className="flex gap-4"><div className="flex flex-col items-center w-4"><div className="w-3 h-3 rounded-full bg-[#45846D]"></div>{i!==stops.length-1&&<div className="w-[2px] flex-1 bg-gray-100"></div>}</div><p className="text-sm pb-5">{s}</p></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-[#45846D] text-white font-bold py-3.5 rounded-2xl">開啟導航</a></>}</div></div>);
+    return (<div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-6"><div className="h-24 bg-[#45846D]/5 flex items-center justify-center relative"><Map className="w-8 h-8 text-[#45846D] opacity-50" /></div><div className="p-5">{stops.length===0?<div className="text-center text-gray-400 text-sm">暫無地點</div>:<><div className="space-y-0 mb-6 pl-2">{stops.map((s, i) => (<div key={i} className="flex gap-4"><div className="flex flex-col items-center w-4"><div className="w-3 h-3 rounded-full bg-[#45846D]"></div>{i!==stops.length-1&&<div className="w-[2px] flex-1 bg-gray-100"></div>}</div><p className="text-sm pb-5">{s}</p></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-[#45846D] text-white font-bold py-3.5 rounded-2xl">開啟導航</a></>}</div></div>);
 };
 
 // ============================================================================
@@ -1463,8 +1464,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 {/* 1.1 Nav Buttons (極致簡化：只留左上返回與右上設定) */}
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
-                    {/* [修正] 設定按鈕移至右上角 */}
-                    <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
+                    {/* [修正] 設定按鈕移至右上角，與更換背景按鈕並排 */}
+                    <div className="flex gap-3 pointer-events-auto">
+                        <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Camera className="w-5 h-5" /></button>
+                        <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
+                    </div>
                 </div>
 
                 {/* 1.2 Background Logic */}
@@ -1476,7 +1480,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 )}
                 
                 {/* 1.3 Header Content */}
-                <div className="absolute inset-0 p-6 flex flex-col justify-end z-20 pt-20">
+                <div className="absolute inset-0 px-6 pt-20 pb-3 flex flex-col justify-end z-20">
                     <div className="absolute top-20 left-6 right-6 pointer-events-none">
                         <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
                             <div>
@@ -1527,7 +1531,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     </div>
                 </div>
                 
-                <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-24 right-6 w-10 h-10 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all z-20"><Camera className="w-5 h-5" /></button>
+                {/* [修正] 移除原本在底部的相機按鈕 (已移至上方) */}
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
             </div>
 
@@ -1554,7 +1558,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 )}
 
                 <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="py-4 space-y-10">
+                    <div className="py-4 space-y-0">
                         {trip.days.map((day: TripDay, dayIndex: number) => {
                             const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
                             const activities = day.activities;
@@ -1565,22 +1569,24 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                             const isTripEnd = dayIndex === trip.days.length - 1;
                             
                             return (
-                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
+                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 mb-6">
                                     <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
                                     <div className="flex justify-between items-center mb-4 -mt-1">
                                         <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                        {/* Top Plus Button for Day Start */}
-                                        <button 
-                                            onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
-                                            className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
-                                        >
-                                            <Plus className="w-5 h-5" />
-                                        </button>
+                                        {/* Top Plus Button for Day Start (Only in List Mode) */}
+                                        {viewMode === 'list' && (
+                                            <button 
+                                                onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
+                                                className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                            </button>
+                                        )}
                                     </div>
                                     {viewMode === 'list' ? (
                                         <Droppable droppableId={`day-${dayIndex + 1}`}>
                                             {(provided) => (
-                                                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
+                                                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0 min-h-[50px]">
                                                     {/* 空狀態插圖 */}
                                                     {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
 
