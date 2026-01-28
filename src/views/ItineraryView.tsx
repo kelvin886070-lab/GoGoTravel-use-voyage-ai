@@ -127,11 +127,13 @@ const LocationLink: React.FC<{ location?: string }> = ({ location }) => {
     );
 };
 
-// [優化] iOS 風格輕量級編輯 Modal (無取消鈕，右上關閉，全寬儲存)
+// [修正] iOS 風格輕量級編輯 Modal (RWD 防爆版)
+// w-[85vw]: 手機上佔寬度85%，左右留邊
+// max-w-xs: 桌機上不超過 320px
 const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: () => void, children: React.ReactNode }> = ({ title, onClose, onSave, children }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-        <div className="bg-white w-full max-w-xs rounded-[32px] p-6 relative z-10 shadow-2xl animate-in zoom-in-95 scale-100">
+        <div className="bg-white w-[85vw] max-w-xs rounded-[32px] p-6 relative z-10 shadow-2xl animate-in zoom-in-95 scale-100">
             {/* Title Bar with Close Button */}
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-bold text-[#1D1D1B] flex-1 text-center pl-6">{title}</h3>
@@ -721,7 +723,7 @@ const ActivityDetailModal: React.FC<{
                                                         {members.map(m => {
                                                             const isAssigned = (item.assignedTo || []).includes(m.id);
                                                             if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
-                                                            return <button key={m.id} onClick={() => isEditing && toggleItemMember(item.id, m.id)} className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`} disabled={!isEditing}>{isAssigned ? <Check className="w-2.5 h-2.5" /> : m.name[0]}</button>
+                                                            return <button key={m.id} onClick={() => isEditing && toggleItemMember(item.id, m.id)} className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-400 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`} disabled={!isEditing}>{isAssigned ? <Check className="w-2.5 h-2.5" /> : m.name[0]}</button>
                                                         })}
                                                         {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>}
                                                     </div>
@@ -1016,12 +1018,13 @@ const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: string)
                 </div>
             ) : (
                 <>
-                    <div className="bg-gray-100 p-1.5 rounded-xl flex mb-6 relative gap-1">
-                        <div className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1.5' : 'left-[calc(50%+3px)]'}`} />
-                        <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                    {/* [修正] Toggle: 更扁 (p-1, py-1.5)，左右有空間 (px-6) */}
+                    <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative gap-1">
+                        <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+2px)]'}`} />
+                        <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-1.5 px-6 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
                             <BarChart3 className="w-3.5 h-3.5" /> 分析
                         </button>
-                        <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                        <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-1.5 px-6 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
                             <Scale className="w-3.5 h-3.5" /> 結算
                         </button>
                     </div>
@@ -1123,12 +1126,12 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 // 9. Modals: Trip Settings, Date Edit, Days Edit
 // ============================================================================
 
-// [新增] 1. 輕量級日期編輯器 (手機適配)
+// [修正] 1. 輕量級日期編輯器 (手機適配: input 改 p-3)
 const SimpleDateEditModal: React.FC<{ date: string, onClose: () => void, onSave: (newDate: string) => void }> = ({ date, onClose, onSave }) => {
     const [val, setVal] = useState(date);
     return (
         <LightweightModal title="修改開始日期" onClose={onClose} onSave={() => onSave(val)}>
-            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-4 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D] box-border" />
+            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-3 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D] box-border" />
         </LightweightModal>
     );
 };
