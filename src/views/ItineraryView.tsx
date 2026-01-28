@@ -127,21 +127,27 @@ const LocationLink: React.FC<{ location?: string }> = ({ location }) => {
     );
 };
 
-// iOS 風格輕量級編輯 Modal 容器
+// [優化] iOS 風格輕量級編輯 Modal (無取消鈕，右上關閉，全寬儲存)
 const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: () => void, children: React.ReactNode }> = ({ title, onClose, onSave, children }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
         <div className="bg-white w-full max-w-xs rounded-[32px] p-6 relative z-10 shadow-2xl animate-in zoom-in-95 scale-100">
-            <div className="text-center mb-6">
-                <h3 className="text-lg font-bold text-[#1D1D1B]">{title}</h3>
+            {/* Title Bar with Close Button */}
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-[#1D1D1B] flex-1 text-center pl-6">{title}</h3>
+                <button onClick={onClose} className="bg-gray-100 p-1.5 rounded-full text-gray-400 hover:bg-gray-200 transition-colors">
+                    <X className="w-4 h-4" />
+                </button>
             </div>
+            
             <div className="mb-6">
                 {children}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-                <button onClick={onClose} className="py-3 rounded-xl bg-gray-100 text-gray-500 font-bold text-sm">取消</button>
-                <button onClick={onSave} className="py-3 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-md active:scale-95 transition-transform">儲存</button>
-            </div>
+            
+            {/* Full Width Save Button */}
+            <button onClick={onSave} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2">
+                儲存變更
+            </button>
         </div>
     </div>
 );
@@ -332,6 +338,7 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
+// [拍立得版型] 適用於：純記帳、以及 layout='polaroid' 的活動
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
@@ -396,7 +403,7 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
                         {displayCost !== null && Number(displayCost) > 0 && <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded-md">{currencySymbol} {displayCost}</span>}
                     </div>
                     
-                    {/* [List View 不顯示地點連結，保持乾淨] */}
+                    {/* List View 保持乾淨，不顯示連結 */}
                     
                     {act.description && <p className="text-xs text-gray-500 mt-2 font-medium line-clamp-2 leading-relaxed">{act.description}</p>}
                 </div>
@@ -769,7 +776,7 @@ const ActivityDetailModal: React.FC<{
                                 {/* READ ONLY VIEW: Show text if exists */}
                                 {!isEditing && edited.location && (
                                     <div className="flex items-center gap-2 text-gray-500 text-xs px-2">
-                                        {/* [修改點] 在編輯模式下只顯示靜態文字，或可點擊的智慧連結 (這裡是 Modal 內，所以顯示連結) */}
+                                        {/* [修改點] 詳細資訊 Modal 中，地點改為可點擊連結 */}
                                         <LocationLink location={edited.location} />
                                     </div>
                                 )}
@@ -1009,12 +1016,12 @@ const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: string)
                 </div>
             ) : (
                 <>
-                    <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative">
-                        <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+4px)]'}`} />
-                        <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                    <div className="bg-gray-100 p-1.5 rounded-xl flex mb-6 relative gap-1">
+                        <div className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1.5' : 'left-[calc(50%+3px)]'}`} />
+                        <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
                             <BarChart3 className="w-3.5 h-3.5" /> 分析
                         </button>
-                        <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                        <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
                             <Scale className="w-3.5 h-3.5" /> 結算
                         </button>
                     </div>
@@ -1116,12 +1123,12 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 // 9. Modals: Trip Settings, Date Edit, Days Edit
 // ============================================================================
 
-// [新增] 1. 輕量級日期編輯器
+// [新增] 1. 輕量級日期編輯器 (手機適配)
 const SimpleDateEditModal: React.FC<{ date: string, onClose: () => void, onSave: (newDate: string) => void }> = ({ date, onClose, onSave }) => {
     const [val, setVal] = useState(date);
     return (
         <LightweightModal title="修改開始日期" onClose={onClose} onSave={() => onSave(val)}>
-            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-4 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D]" />
+            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-4 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D] box-border" />
         </LightweightModal>
     );
 };
@@ -1167,7 +1174,7 @@ const TripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdate: (
             <div className="bg-white w-full max-w-sm rounded-[32px] p-6 relative z-10 animate-in zoom-in-95 shadow-2xl max-h-[85vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-[#1D1D1B]">行程設定</h3>
-                    <button onClick={onClose}><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} className="bg-gray-100 p-1.5 rounded-full"><X className="w-4 h-4" /></button>
                 </div>
                 
                 <div className="space-y-6">
@@ -1430,9 +1437,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             {/* 1. Header Container */}
             <div className={`relative h-72 w-full ${headerBgClass}`}>
                 
-                {/* 1.1 Nav Buttons (極致簡化：只留左上返回) */}
+                {/* 1.1 Nav Buttons (極致簡化：只留左上返回與右上設定) */}
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
+                    {/* [修正] 設定按鈕移至右上角 */}
+                    <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
                 </div>
 
                 {/* 1.2 Background Logic */}
@@ -1461,40 +1470,35 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </div>
 
-                    {/* [修正] Travel Utility Bar: 膠囊工具列 */}
-                    <div className="mt-auto relative z-30 flex items-center justify-between">
-                        {/* 左側：編輯類 (點擊彈出輕量編輯) */}
-                        <div className="flex gap-2">
-                            <GlassCapsule onClick={() => setIsDateEditOpen(true)}>
+                    {/* [修正] Travel Utility Bar: 對稱式堆疊佈局 */}
+                    <div className="mt-auto relative z-30 flex items-end justify-between">
+                        {/* 左側堆疊：日期與天數 */}
+                        <div className="flex flex-col gap-2 items-start">
+                            <GlassCapsule onClick={() => setIsDateEditOpen(true)} className="text-[10px] sm:text-xs">
                                 <Calendar className="w-3.5 h-3.5" /> 
                                 {trip.startDate}
                             </GlassCapsule>
-                            <GlassCapsule onClick={() => setIsDaysEditOpen(true)}>
+                            <GlassCapsule onClick={() => setIsDaysEditOpen(true)} className="text-[10px] sm:text-xs">
                                 {trip.days.length} DAYS
                             </GlassCapsule>
                         </div>
 
-                        {/* 右側：功能操作 (點擊變綠) */}
-                        <div className="flex gap-2">
-                            {/* 憑證按鈕 */}
+                        {/* 右側堆疊：憑證與錢包 */}
+                        <div className="flex flex-col gap-2 items-end">
                             <GlassCapsule 
                                 isActive={showVault} 
                                 onClick={() => { setShowVault(!showVault); setShowExpenses(false); }}
+                                className="text-[10px] sm:text-xs"
                             >
                                 <Ticket className="w-3.5 h-3.5" /> 憑證
                             </GlassCapsule>
 
-                            {/* 錢包按鈕 */}
                             <GlassCapsule 
                                 isActive={showExpenses} 
                                 onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }}
+                                className="text-[10px] sm:text-xs"
                             >
                                 <Wallet className="w-3.5 h-3.5" /> {currencyCode}
-                            </GlassCapsule>
-
-                            {/* 設定按鈕 (控制中心) */}
-                            <GlassCapsule onClick={() => setIsSettingsOpen(true)}>
-                                <Settings className="w-3.5 h-3.5" />
                             </GlassCapsule>
                         </div>
                     </div>
