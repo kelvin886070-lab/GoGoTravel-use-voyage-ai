@@ -8,7 +8,7 @@ import {
     Check, Loader2, ZoomIn, Receipt,
     ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Copy, BarChart3, Scale, Image as ImageIcon,
     Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical, Navigation,
-    Globe, Bell, FileDown, LogOut
+    Globe, Bell, FileDown, LogOut, Flag
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -127,9 +127,7 @@ const LocationLink: React.FC<{ location?: string }> = ({ location }) => {
     );
 };
 
-// [修正] iOS 風格輕量級編輯 Modal (RWD 防爆版)
-// w-[85vw]: 手機上佔寬度85%，左右留邊
-// max-w-xs: 桌機上不超過 320px
+// [優化] iOS 風格輕量級編輯 Modal (RWD 防爆版)
 const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: () => void, children: React.ReactNode }> = ({ title, onClose, onSave, children }) => (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -142,12 +140,12 @@ const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: (
                 </button>
             </div>
             
-            <div className="mb-6">
+            <div className="mb-6 space-y-4">
                 {children}
             </div>
             
-            {/* Full Width Save Button */}
-            <button onClick={onSave} className="w-full py-3.5 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2">
+            {/* Full Width Save Button (h-14 to match input) */}
+            <button onClick={onSave} className="w-full h-14 rounded-2xl bg-[#45846D] text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2">
                 儲存變更
             </button>
         </div>
@@ -231,6 +229,23 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
         </div>
     </div>
 );
+
+// [修改] 2. End of Day Indicator (智慧判斷文字：FINISH 或 END)
+const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => {
+    return (
+        <div className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700 opacity-80">
+            <div className="w-[55px] flex justify-center relative">
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <div className="w-full h-px bg-[#45846D]/20"></div>
+                </div>
+                <div className="relative z-10 bg-[#45846D] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-md tracking-wider flex items-center gap-1">
+                    <Flag className="w-2.5 h-2.5 fill-current" /> {isTripEnd ? 'END' : 'FINISH'}
+                </div>
+            </div>
+            <div className="flex-1 h-px bg-gradient-to-r from-[#45846D]/40 via-[#45846D]/20 to-transparent border-t border-dashed border-[#45846D]/0"></div>
+        </div>
+    );
+}
 
 const CurrentTimeIndicator: React.FC = () => {
     const ref = useRef<HTMLDivElement>(null);
@@ -1018,9 +1033,9 @@ const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: string)
                 </div>
             ) : (
                 <>
-                    {/* [修正] Toggle: 更扁 (p-1, py-1.5)，左右有空間 (px-6) */}
-                    <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative gap-1">
-                        <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+2px)]'}`} />
+                    {/* [修正] Toggle: 懸浮呼吸感設計 (p-1.5, inset-1.5) */}
+                    <div className="bg-gray-100 p-1.5 rounded-xl flex mb-6 relative gap-1">
+                        <div className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1.5' : 'left-[calc(50%+3px)]'}`} />
                         <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-1.5 px-6 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
                             <BarChart3 className="w-3.5 h-3.5" /> 分析
                         </button>
@@ -1126,12 +1141,17 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 // 9. Modals: Trip Settings, Date Edit, Days Edit
 // ============================================================================
 
-// [修正] 1. 輕量級日期編輯器 (手機適配: input 改 p-3)
+// [修正] 1. 輕量級日期編輯器 (Input & Button 強制等高 h-14, 移除原生樣式)
 const SimpleDateEditModal: React.FC<{ date: string, onClose: () => void, onSave: (newDate: string) => void }> = ({ date, onClose, onSave }) => {
     const [val, setVal] = useState(date);
     return (
         <LightweightModal title="修改開始日期" onClose={onClose} onSave={() => onSave(val)}>
-            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-3 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D] box-border" />
+            <input 
+                type="date" 
+                value={val} 
+                onChange={(e) => setVal(e.target.value)} 
+                className="w-full h-14 bg-gray-50 p-0 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D] box-border appearance-none border-none" 
+            />
         </LightweightModal>
     );
 };
@@ -1141,7 +1161,7 @@ const SimpleDaysEditModal: React.FC<{ days: number, onClose: () => void, onSave:
     const [val, setVal] = useState(days);
     return (
         <LightweightModal title="修改天數" onClose={onClose} onSave={() => onSave(val)}>
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-4 h-14">
                 <button onClick={() => setVal(Math.max(1, val - 1))} className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">-</button>
                 <span className="text-3xl font-black text-[#1D1D1B] w-12 text-center">{val}</span>
                 <button onClick={() => setVal(val + 1)} className="w-10 h-10 rounded-full bg-[#1D1D1B] flex items-center justify-center font-bold text-white">+</button>
@@ -1538,6 +1558,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         {trip.days.map((day: TripDay, dayIndex: number) => {
                             const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
                             const activities = day.activities;
+                            // [新增] 判斷今天行程是否已結束
+                            const lastActivityTime = activities.length > 0 ? activities[activities.length - 1].time : '00:00';
+                            const isEndOfDay = isCurrentDay && currentTime > lastActivityTime && activities.length > 0;
+                            // [新增] 判斷是否為旅程最後一天
+                            const isTripEnd = dayIndex === trip.days.length - 1;
                             
                             return (
                                 <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
@@ -1561,11 +1586,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
 
                                                     {/* 渲染活動列表 */}
                                                     {activities.map((act: Activity, index: number) => {
+                                                        // 判斷是否顯示 NOW (插入在兩個行程之間)
                                                         const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
                                                         
                                                         return (
                                                             <React.Fragment key={`${day.day}-${index}`}>
-                                                                {/* 現在時刻線 */}
+                                                                {/* 現在時刻線 (NOW) */}
                                                                 {isNextActivity && <CurrentTimeIndicator />}
                                                                 
                                                                 <Draggable draggableId={`${day.day}-${index}`} index={index}>
@@ -1592,8 +1618,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                         );
                                                     })}
                                                     
-                                                    {/* 如果是今天，且已經晚於所有活動時間，顯示紅線在最後 */}
-                                                    {isCurrentDay && activities.length > 0 && currentTime >= activities[activities.length - 1].time && <CurrentTimeIndicator />}
+                                                    {/* [新增] 如果是今天且時間已晚，顯示 FINISH 或 END */}
+                                                    {isEndOfDay && <EndOfDayIndicator isTripEnd={isTripEnd} />}
                                                     
                                                     {provided.placeholder}
                                                 </div>
