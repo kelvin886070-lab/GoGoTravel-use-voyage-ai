@@ -7,7 +7,8 @@ import {
     StickyNote, Banknote, Sparkles, UserCheck, 
     Check, Loader2, ZoomIn, Receipt,
     ScanLine, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Copy, BarChart3, Scale, Image as ImageIcon,
-    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical, Navigation
+    Ticket, Pill, Coffee, MapPin as MapPinIcon, FileText, MoveVertical, Navigation,
+    Globe, Bell, FileDown, LogOut
 } from 'lucide-react';
 import type { Trip, TripDay, Activity, Member, ExpenseItem } from '../types';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
@@ -16,7 +17,7 @@ import { getCurrencyRate, suggestNextSpot } from '../services/gemini';
 import { recalculateTimeline } from '../services/timeline';
 
 // ============================================================================
-// 1. Constants & Types (Single Source of Truth)
+// 1. Constants & Types
 // ============================================================================
 
 const CURRENCY_SYMBOLS = {
@@ -83,16 +84,67 @@ const isSystemType = (type: string) => {
     return cat ? !!cat.isSystem : false;
 };
 
-// 簡單的日期加法 helper
-const addDays = (dateStr: string, days: number): string => {
-    const date = new Date(dateStr);
-    date.setDate(date.getDate() + days);
-    return date.toISOString().split('T')[0];
-};
-
 // ============================================================================
 // 3. UI Components
 // ============================================================================
+
+// 毛玻璃按鈕基礎樣式
+const GlassCapsule: React.FC<{ 
+    onClick?: () => void; 
+    isActive?: boolean; 
+    children: React.ReactNode;
+    className?: string;
+}> = ({ onClick, isActive, children, className = '' }) => {
+    const activeClass = isActive 
+        ? 'bg-[#45846D] text-white border-transparent shadow-md transform scale-105' 
+        : 'bg-black/30 backdrop-blur-md border-white/20 text-white hover:bg-black/40'; 
+
+    return (
+        <button 
+            onClick={onClick} 
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border active:scale-95 ${activeClass} ${className}`}
+        >
+            {children}
+        </button>
+    );
+};
+
+// 顯示地點超連結的元件 (用於 Detail Modal)
+const LocationLink: React.FC<{ location?: string }> = ({ location }) => {
+    if (!location) return null;
+    return (
+        <a 
+            href={`http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(location)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()} 
+            className="flex items-center gap-1 text-sm font-bold text-[#45846D] hover:underline mt-1 w-fit group py-1"
+        >
+            <MapPinIcon className="w-4 h-4 fill-current" />
+            <span className="truncate max-w-[250px]">{location}</span>
+            <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+        </a>
+    );
+};
+
+// iOS 風格輕量級編輯 Modal 容器
+const LightweightModal: React.FC<{ title: string, onClose: () => void, onSave: () => void, children: React.ReactNode }> = ({ title, onClose, onSave, children }) => (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+        <div className="bg-white w-full max-w-xs rounded-[32px] p-6 relative z-10 shadow-2xl animate-in zoom-in-95 scale-100">
+            <div className="text-center mb-6">
+                <h3 className="text-lg font-bold text-[#1D1D1B]">{title}</h3>
+            </div>
+            <div className="mb-6">
+                {children}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <button onClick={onClose} className="py-3 rounded-xl bg-gray-100 text-gray-500 font-bold text-sm">取消</button>
+                <button onClick={onSave} className="py-3 rounded-xl bg-[#45846D] text-white font-bold text-sm shadow-md active:scale-95 transition-transform">儲存</button>
+            </div>
+        </div>
+    </div>
+);
 
 const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) => void, onClose: () => void }> = ({ value, onChange, onClose }) => {
     const [hour, setHour] = useState(parseInt(value.split(':')[0] || '9'));
@@ -172,36 +224,29 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// [新增] 1. 現在時刻線元件 (高質感設計)
 const CurrentTimeIndicator: React.FC = () => {
-    // 讓這個元件 mount 時自動捲動到視野中
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
         setTimeout(() => {
             ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 500); // 延遲一點點確保頁面 render 完畢
+        }, 500); 
     }, []);
 
     return (
         <div ref={ref} className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700">
-            {/* 左側：時間軸上的定位點 */}
             <div className="w-[55px] flex justify-center relative">
                 <div className="absolute inset-0 flex items-center justify-center">
                    <div className="w-full h-px bg-rose-200"></div>
                 </div>
-                {/* 質感膠囊 */}
                 <div className="relative z-10 bg-rose-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg ring-2 ring-white tracking-wider flex items-center gap-1">
                     <Navigation className="w-2.5 h-2.5 fill-current" /> NOW
                 </div>
             </div>
-            
-            {/* 右側：貫穿的虛線 */}
             <div className="flex-1 h-px bg-gradient-to-r from-rose-400 via-rose-300 to-transparent border-t border-dashed border-rose-300/0"></div>
         </div>
     );
 };
 
-// [新增] 2. 空狀態插圖元件 (具備 Droppable 佔位符)
 const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => {
     return (
         <div 
@@ -214,8 +259,6 @@ const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => {
             </div>
             <p className="text-sm font-bold text-gray-500 mb-1">這天還是空的</p>
             <p className="text-xs opacity-60">從側邊欄加入行程，或把別天的行程拖曳過來吧！</p>
-            
-            {/* 隱藏的 placeholder，確保拖曳功能正常運作 */}
             <div className="hidden">{provided.placeholder}</div>
         </div>
     );
@@ -289,7 +332,6 @@ const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: any, sn
     );
 };
 
-// [拍立得版型] 適用於：純記帳、以及 layout='polaroid' 的活動
 const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: any, snapshot: any, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
@@ -353,6 +395,9 @@ const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: any
                         {category ? <Tag type={act.type} /> : <Tag type="other" />}
                         {displayCost !== null && Number(displayCost) > 0 && <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded-md">{currencySymbol} {displayCost}</span>}
                     </div>
+                    
+                    {/* [List View 不顯示地點連結，保持乾淨] */}
+                    
                     {act.description && <p className="text-xs text-gray-500 mt-2 font-medium line-clamp-2 leading-relaxed">{act.description}</p>}
                 </div>
                 <div {...provided.dragHandleProps} className="flex flex-col justify-between items-end pl-1" onClick={(e) => e.stopPropagation()}><div className="text-gray-300 p-1"><GripVertical className="w-5 h-5" /></div></div>
@@ -724,7 +769,8 @@ const ActivityDetailModal: React.FC<{
                                 {/* READ ONLY VIEW: Show text if exists */}
                                 {!isEditing && edited.location && (
                                     <div className="flex items-center gap-2 text-gray-500 text-xs px-2">
-                                        <MapPinIcon className="w-3 h-3" /> {edited.location}
+                                        {/* [修改點] 在編輯模式下只顯示靜態文字，或可點擊的智慧連結 (這裡是 Modal 內，所以顯示連結) */}
+                                        <LocationLink location={edited.location} />
                                     </div>
                                 )}
                                 {!isEditing && edited.description && (
@@ -764,7 +810,7 @@ const ActivityDetailModal: React.FC<{
                             </div>
                         </div>
                     ) : (
-                        // --- SYSTEM LAYOUT (System features only: Transport Connector, Note, Process...) ---
+                        // --- SYSTEM LAYOUT ---
                         <div className="space-y-4">
                             {!isNote && (
                                 <div className="flex gap-4">
@@ -852,14 +898,15 @@ const ActivityDetailModal: React.FC<{
 };
 
 // ============================================================================
-// 6. Expense Dashboard
+// 6. Expense Dashboard (with Currency Flip)
 // ============================================================================
 
-const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
+const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: string) => void }> = ({ trip, onCurrencyChange }) => {
     const currencyCode = trip.currency || 'TWD';
     const currencySymbol = CURRENCY_SYMBOLS[currencyCode as CurrencyCode] || '$';
     const [convertedTotal, setConvertedTotal] = useState<string | null>(null);
     const [isConverting, setIsConverting] = useState(false);
+    const [isSelectingCurrency, setIsSelectingCurrency] = useState(false); // [新增] 幣別選擇狀態
     const [tab, setTab] = useState<'analysis' | 'settlement'>('analysis');
     
     const stats = useMemo(() => {
@@ -925,76 +972,105 @@ const ExpenseDashboard: React.FC<{ trip: Trip }> = ({ trip }) => {
     };
 
     return (
-        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 mb-6">
+        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 mb-6 relative overflow-hidden transition-all duration-300">
             <div className="flex justify-between mb-4">
                 <div>
-                    <p className="text-xs text-gray-600 font-bold uppercase">總花費 ({currencyCode})</p>
+                    <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-600 font-bold uppercase">總花費 ({currencyCode})</p>
+                        {/* [新增] 幣別切換按鈕 (地球) */}
+                        <button 
+                            onClick={() => setIsSelectingCurrency(!isSelectingCurrency)}
+                            className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#45846D] transition-colors"
+                        >
+                            <Globe className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                     <h3 className="text-4xl font-black text-[#1D1D1B] mt-1 tracking-tight"><span className="text-xl font-bold text-gray-400 mr-1">{currencySymbol}</span>{stats.total.toLocaleString()}</h3>
                     <div className="h-5 mt-1">{isConverting ? <span className="text-xs text-gray-400 animate-pulse">計算中...</span> : convertedTotal && <span className="text-sm font-bold text-[#45846D] bg-[#45846D]/10 px-2 py-0.5 rounded-lg">{convertedTotal}</span>}</div>
                 </div>
                 <button onClick={handleConvert} className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"><RefreshCw className="w-5 h-5" /></button>
             </div>
 
-            <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative">
-                <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+4px)]'}`} />
-                <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
-                    <BarChart3 className="w-3.5 h-3.5" /> 分析
-                </button>
-                <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
-                    <Scale className="w-3.5 h-3.5" /> 結算
-                </button>
-            </div>
-            
-            {tab === 'analysis' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{CATEGORIES.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.id] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.id} style={{width:`${p}%`}} className={c.chartClass.split(' ')[0]} /> : null; })}</div>
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-                        {CATEGORIES.map(cat => {
-                            if (!stats.presentCategories.has(cat.id)) return null;
-                            const amount = stats.byCategory[cat.id] || 0;
-                            return (
-                                <div key={cat.id} className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-1.5">
-                                        <div className={`w-2 h-2 rounded-full ${cat.chartClass.split(' ')[0]}`} />
-                                        <span className="text-gray-600 font-medium">{cat.label}</span>
-                                    </div>
-                                    <span className="font-bold text-[#1D1D1B]">{currencySymbol}{amount.toLocaleString()}</span>
-                                </div>
-                            );
-                        })}
+            {/* 切換顯示：幣別選擇列表 vs 分析圖表 */}
+            {isSelectingCurrency ? (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 bg-gray-50 rounded-2xl p-2 max-h-[200px] overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-2">
+                        {(Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[]).map(cur => (
+                            <button 
+                                key={cur} 
+                                onClick={() => { if(onCurrencyChange) onCurrencyChange(cur); setIsSelectingCurrency(false); }} 
+                                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${currencyCode === cur ? 'bg-[#45846D] text-white shadow-md' : 'bg-white hover:bg-gray-100'}`}
+                            >
+                                <span className="text-xs font-bold">{cur}</span>
+                                <span className="text-[10px] opacity-70">{CURRENCY_SYMBOLS[cur]}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
             ) : (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-3">
-                    {Object.entries(settlement).length > 0 ? (
-                        <>
-                            {Object.entries(settlement).map(([mid, amount]) => {
-                                const m = trip.members?.find(m => m.id === mid);
-                                if (!m || Math.round(amount) === 0) return null;
-                                const isReceiving = amount > 0;
-                                return (
-                                    <div key={mid} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm ${getMemberAvatarColor(m.name)}`}>{m.name[0]}</div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold text-gray-800">{m.name}</span>
-                                                <span className="text-[10px] text-gray-400">{isReceiving ? '應付給你' : '你應付他'}</span>
+                <>
+                    <div className="bg-gray-100 p-1 rounded-xl flex mb-6 relative">
+                        <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${tab === 'analysis' ? 'left-1' : 'left-[calc(50%+4px)]'}`} />
+                        <button onClick={() => setTab('analysis')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'analysis' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                            <BarChart3 className="w-3.5 h-3.5" /> 分析
+                        </button>
+                        <button onClick={() => setTab('settlement')} className={`flex-1 relative z-10 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === 'settlement' ? 'text-[#1D1D1B]' : 'text-gray-400'}`}>
+                            <Scale className="w-3.5 h-3.5" /> 結算
+                        </button>
+                    </div>
+                    
+                    {tab === 'analysis' ? (
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">{CATEGORIES.map(c => { const p = stats.total > 0 ? (stats.byCategory[c.id] || 0) / stats.total * 100 : 0; return p > 0 ? <div key={c.id} style={{width:`${p}%`}} className={c.chartClass.split(' ')[0]} /> : null; })}</div>
+                            <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                                {CATEGORIES.map(cat => {
+                                    if (!stats.presentCategories.has(cat.id)) return null;
+                                    const amount = stats.byCategory[cat.id] || 0;
+                                    return (
+                                        <div key={cat.id} className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={`w-2 h-2 rounded-full ${cat.chartClass.split(' ')[0]}`} />
+                                                <span className="text-gray-600 font-medium">{cat.label}</span>
                                             </div>
+                                            <span className="font-bold text-[#1D1D1B]">{currencySymbol}{amount.toLocaleString()}</span>
                                         </div>
-                                        <div className={`text-lg font-black font-mono ${isReceiving ? 'text-green-500' : 'text-red-500'}`}>
-                                            {isReceiving ? '+' : '-'}{currencySymbol}{Math.abs(Math.round(amount))}
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                            <button onClick={copySettlement} className="w-full py-3 mt-2 flex items-center justify-center gap-2 text-xs font-bold text-[#45846D] bg-[#45846D]/10 rounded-xl hover:bg-[#45846D]/20 transition-colors">
-                                <Copy className="w-3.5 h-3.5" /> 複製結算明細
-                            </button>
-                        </>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     ) : (
-                        <div className="text-center py-8 text-gray-300 text-xs font-bold">目前沒有需要結算的帳目 🎉</div>
+                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-3">
+                            {Object.entries(settlement).length > 0 ? (
+                                <>
+                                    {Object.entries(settlement).map(([mid, amount]) => {
+                                        const m = trip.members?.find(m => m.id === mid);
+                                        if (!m || Math.round(amount) === 0) return null;
+                                        const isReceiving = amount > 0;
+                                        return (
+                                            <div key={mid} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm ${getMemberAvatarColor(m.name)}`}>{m.name[0]}</div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-bold text-gray-800">{m.name}</span>
+                                                        <span className="text-[10px] text-gray-400">{isReceiving ? '應付給你' : '你應付他'}</span>
+                                                    </div>
+                                                </div>
+                                                <div className={`text-lg font-black font-mono ${isReceiving ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {isReceiving ? '+' : '-'}{currencySymbol}{Math.abs(Math.round(amount))}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                    <button onClick={copySettlement} className="w-full py-3 mt-2 flex items-center justify-center gap-2 text-xs font-bold text-[#45846D] bg-[#45846D]/10 rounded-xl hover:bg-[#45846D]/20 transition-colors">
+                                        <Copy className="w-3.5 h-3.5" /> 複製結算明細
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="text-center py-8 text-gray-300 text-xs font-bold">目前沒有需要結算的帳目 🎉</div>
+                            )}
+                        </div>
                     )}
-                </div>
+                </>
             )}
         </div>
     );
@@ -1037,82 +1113,84 @@ const AddActivityModal: React.FC<{ day: number; onClose: () => void; onAdd: (act
 };
 
 // ============================================================================
-// 9. Edit Trip Settings Modal
+// 9. Modals: Trip Settings, Date Edit, Days Edit
 // ============================================================================
 
-const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdate: (t: Trip) => void }> = ({ trip, onClose, onUpdate }) => {
+// [新增] 1. 輕量級日期編輯器
+const SimpleDateEditModal: React.FC<{ date: string, onClose: () => void, onSave: (newDate: string) => void }> = ({ date, onClose, onSave }) => {
+    const [val, setVal] = useState(date);
+    return (
+        <LightweightModal title="修改開始日期" onClose={onClose} onSave={() => onSave(val)}>
+            <input type="date" value={val} onChange={(e) => setVal(e.target.value)} className="w-full bg-gray-50 p-4 rounded-2xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-[#45846D]" />
+        </LightweightModal>
+    );
+};
+
+// [新增] 2. 輕量級天數編輯器
+const SimpleDaysEditModal: React.FC<{ days: number, onClose: () => void, onSave: (newDays: number) => void }> = ({ days, onClose, onSave }) => {
+    const [val, setVal] = useState(days);
+    return (
+        <LightweightModal title="修改天數" onClose={onClose} onSave={() => onSave(val)}>
+            <div className="flex items-center justify-center gap-4">
+                <button onClick={() => setVal(Math.max(1, val - 1))} className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">-</button>
+                <span className="text-3xl font-black text-[#1D1D1B] w-12 text-center">{val}</span>
+                <button onClick={() => setVal(val + 1)} className="w-10 h-10 rounded-full bg-[#1D1D1B] flex items-center justify-center font-bold text-white">+</button>
+            </div>
+        </LightweightModal>
+    );
+};
+
+// [新增] 3. 全域行程設定 (Control Center)
+const TripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdate: (t: Trip) => void; onDelete: () => void }> = ({ trip, onClose, onUpdate, onDelete }) => {
     const [dest, setDest] = useState(trip.destination);
-    const [start, setStart] = useState(trip.startDate);
-    const [daysCount, setDaysCount] = useState(trip.days.length);
     const [members, setMembers] = useState<Member[]>(trip.members || []);
     const [newMemberName, setNewMemberName] = useState('');
+    
+    // Toggles (Mock state)
+    const [alertEnabled, setAlertEnabled] = useState(true);
+    const [notifyEnabled, setNotifyEnabled] = useState(false);
 
     const handleSave = () => { 
-        const s = new Date(start); 
-        const e = new Date(s);
-        e.setDate(s.getDate() + (daysCount - 1)); 
-        let newDays = [...trip.days]; 
-        if (daysCount > trip.days.length) { 
-            for (let i = trip.days.length + 1; i <= daysCount; i++) newDays.push({ day: i, activities: [] });
-        } else {
-            newDays = newDays.slice(0, daysCount); 
-        }
-        onUpdate({ 
-            ...trip, 
-            destination: dest, 
-            startDate: start, 
-            endDate: e.toISOString().split('T')[0], 
-            days: newDays,
-            members: members
-        }); 
+        onUpdate({ ...trip, destination: dest, members }); 
         onClose(); 
     };
 
     const addMember = () => {
         if (!newMemberName.trim()) return;
-        const newMember: Member = {
-            id: Date.now().toString(),
-            name: newMemberName.trim()
-        };
-        setMembers([...members, newMember]);
+        setMembers([...members, { id: Date.now().toString(), name: newMemberName.trim() }]);
         setNewMemberName('');
     };
 
-    const removeMember = (id: string) => {
-        setMembers(members.filter(m => m.id !== id));
-    };
-
     return (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center sm:p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white w-full max-w-sm sm:rounded-[32px] rounded-t-[32px] p-6 relative z-10 animate-in slide-in-from-bottom">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 relative z-10 animate-in zoom-in-95 shadow-2xl max-h-[85vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-[#1D1D1B]">編輯行程設定</h3>
+                    <h3 className="text-xl font-bold text-[#1D1D1B]">行程設定</h3>
                     <button onClick={onClose}><X className="w-5 h-5" /></button>
                 </div>
                 
-                <div className="space-y-5 overflow-y-auto max-h-[70vh]">
-                    <div className="space-y-4">
-                        <div><label className="text-xs font-bold text-gray-400">目的地</label><IOSInput value={dest} onChange={e => setDest(e.target.value)} /></div>
-                        <div><label className="text-xs font-bold text-gray-400">開始日期</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full bg-[#F5F5F4] p-4 rounded-2xl font-bold" /></div>
-                        <div><label className="text-xs font-bold text-gray-400">天數</label><IOSInput type="number" value={daysCount} onChange={e => setDaysCount(Number(e.target.value))} /></div>
+                <div className="space-y-6">
+                    {/* 1. 目的地 */}
+                    <div>
+                        <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">目的地名稱</label>
+                        <IOSInput value={dest} onChange={e => setDest(e.target.value)} />
                     </div>
 
-                    <div className="h-px bg-gray-100" />
-
+                    {/* 2. 旅伴 */}
                     <div>
                         <label className="text-xs font-bold text-gray-400 mb-2 block uppercase">旅伴成員</label>
                         <div className="flex flex-wrap gap-2 mb-3">
                             {members.map(m => (
                                 <div key={m.id} className="bg-gray-100 pl-3 pr-2 py-1.5 rounded-full flex items-center gap-2">
                                     <span className="text-xs font-bold">{m.name}</span>
-                                    <button onClick={() => removeMember(m.id)} className="bg-white rounded-full p-0.5 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                                    <button onClick={() => setMembers(members.filter(x => x.id !== m.id))} className="bg-white rounded-full p-0.5 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
                                 </div>
                             ))}
                         </div>
                         <div className="flex gap-2">
                             <input 
-                                placeholder="輸入名字 (如: Amy)" 
+                                placeholder="輸入名字..." 
                                 className="flex-1 bg-[#F5F5F4] rounded-xl px-4 py-3 text-sm outline-none font-bold"
                                 value={newMemberName}
                                 onChange={e => setNewMemberName(e.target.value)}
@@ -1122,11 +1200,44 @@ const EditTripSettingsModal: React.FC<{ trip: Trip; onClose: () => void; onUpdat
                         </div>
                     </div>
 
-                    <button 
-                        onClick={handleSave} 
-                        className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-95 transition-transform shadow-md"
-                    >
-                        儲存變更
+                    <div className="h-px bg-gray-100" />
+
+                    {/* 3. Toggles */}
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-green-100 text-green-600 rounded-full"><Bell className="w-4 h-4" /></div>
+                                <span className="font-bold text-sm">出發提醒</span>
+                            </div>
+                            <button onClick={() => setAlertEnabled(!alertEnabled)} className={`w-12 h-7 rounded-full p-1 transition-colors ${alertEnabled ? 'bg-[#45846D]' : 'bg-gray-200'}`}>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform ${alertEnabled ? 'translate-x-5' : ''}`} />
+                            </button>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 text-blue-600 rounded-full"><Share className="w-4 h-4" /></div>
+                                <span className="font-bold text-sm">行程通知</span>
+                            </div>
+                            <button onClick={() => setNotifyEnabled(!notifyEnabled)} className={`w-12 h-7 rounded-full p-1 transition-colors ${notifyEnabled ? 'bg-[#45846D]' : 'bg-gray-200'}`}>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform ${notifyEnabled ? 'translate-x-5' : ''}`} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-gray-100" />
+
+                    {/* 4. Actions */}
+                    <div className="space-y-3">
+                        <button className="w-full py-3 rounded-xl border-2 border-gray-100 text-gray-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-50">
+                            <FileDown className="w-4 h-4" /> 匯出行程表
+                        </button>
+                        <button onClick={() => { if(confirm('確定刪除此行程？此動作無法復原。')) onDelete(); }} className="w-full py-3 rounded-xl bg-red-50 text-red-500 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100">
+                            <LogOut className="w-4 h-4" /> 刪除行程
+                        </button>
+                    </div>
+
+                    <button onClick={handleSave} className="w-full py-4 rounded-2xl bg-[#1D1D1B] text-white font-bold text-sm shadow-lg active:scale-95 transition-transform mt-4">
+                        儲存設定
                     </button>
                 </div>
             </div>
@@ -1148,11 +1259,16 @@ interface ItineraryViewProps {
 export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isEditSettingsOpen, setIsEditSettingsOpen] = useState(false); 
+    
+    // [Modals State]
+    const [isDateEditOpen, setIsDateEditOpen] = useState(false);
+    const [isDaysEditOpen, setIsDaysEditOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
-    const [editingTitle, setEditingTitle] = useState(trip.destination);
     const [showExpenses, setShowExpenses] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
+    const [showVault, setShowVault] = useState(false);
+    
     // Plus Menu State
     const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
     const [menuTargetIndex, setMenuTargetIndex] = useState<{dayIdx: number, actIdx: number} | null>(null);
@@ -1171,10 +1287,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const flightDisplayDest = trip.destination || 'DEST';
     const firstType = trip.days[0]?.activities[0]?.type || 'other';
 
-    // [新增] 現在時刻的邏輯計算
-    // 假設行程從今天開始，或者從 trip.startDate 開始
-    // 在這裡我們簡單模擬「今天是行程的第幾天」
-    // 真實應用中應使用 new Date() 和 trip.startDate 比較
+    // 現在時刻的邏輯計算
     const today = new Date().toISOString().split('T')[0];
     const currentDayIndex = trip.days.findIndex(d => {
         const tripStart = new Date(trip.startDate);
@@ -1182,8 +1295,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         currentTripDate.setDate(tripStart.getDate() + (d.day - 1));
         return currentTripDate.toISOString().split('T')[0] === today;
     });
-    
-    // 找出目前時間應該插在哪個活動之間
     const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
     
     // Initialize default member (Me) if empty
@@ -1196,12 +1307,28 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         }
     }, []);
 
-    useEffect(() => { setEditingTitle(trip.destination); }, [trip.destination]);
-    const handleTitleBlur = () => { if (editingTitle !== trip.destination) onUpdateTrip({ ...trip, destination: editingTitle }); };
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file); } };
-    const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); setShowSettings(false); };
+    const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); }; // 簡化邏輯
     const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
     
+    // [Handlers for New Modals]
+    const handleDateUpdate = (newDate: string) => {
+        // 更新日期並重新計算每天的日期 (簡易邏輯：假設只需更新 startDate)
+        onUpdateTrip({ ...trip, startDate: newDate });
+        setIsDateEditOpen(false);
+    };
+
+    const handleDaysUpdate = (newDaysCount: number) => {
+        let newDays = [...trip.days]; 
+        if (newDaysCount > trip.days.length) { 
+            for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
+        } else {
+            newDays = newDays.slice(0, newDaysCount); 
+        }
+        onUpdateTrip({ ...trip, days: newDays });
+        setIsDaysEditOpen(false);
+    };
+
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
         const sourceDayIndex = parseInt(result.source.droppableId.replace('day-', '')) - 1;
@@ -1303,14 +1430,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             {/* 1. Header Container */}
             <div className={`relative h-72 w-full ${headerBgClass}`}>
                 
-                {/* 1.1 Nav Buttons (Scrolls with header) */}
+                {/* 1.1 Nav Buttons (極致簡化：只留左上返回) */}
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
-                    <div className="flex gap-3 pointer-events-auto">
-                        <button onClick={() => setIsEditSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><PenTool className="w-5 h-5" /></button>
-                        <button onClick={handleShare} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Share className="w-5 h-5" /></button>
-                        <button onClick={onDelete} className="w-10 h-10 bg-red-500/80 hover:bg-red-600 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Trash2 className="w-5 h-5" /></button>
-                    </div>
                 </div>
 
                 {/* 1.2 Background Logic */}
@@ -1339,18 +1461,41 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </div>
 
-                    <div className="mt-auto relative z-30">
-                        <div className="mb-3">
-                            <input type="text" value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} onBlur={handleTitleBlur} className="text-4xl font-bold bg-transparent border-none outline-none text-white placeholder-white/50 w-full p-0 m-0 focus:ring-0 font-serif tracking-wide" />
+                    {/* [修正] Travel Utility Bar: 膠囊工具列 */}
+                    <div className="mt-auto relative z-30 flex items-center justify-between">
+                        {/* 左側：編輯類 (點擊彈出輕量編輯) */}
+                        <div className="flex gap-2">
+                            <GlassCapsule onClick={() => setIsDateEditOpen(true)}>
+                                <Calendar className="w-3.5 h-3.5" /> 
+                                {trip.startDate}
+                            </GlassCapsule>
+                            <GlassCapsule onClick={() => setIsDaysEditOpen(true)}>
+                                {trip.days.length} DAYS
+                            </GlassCapsule>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-white/80">
-                            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-md">
-                                <Calendar className="w-4 h-4" /> 
-                                <span className="text-sm font-mono font-bold tracking-wide">{trip.startDate}</span>
-                            </div>
-                            <div className="text-sm font-bold bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-md">{trip.days.length} DAYS</div>
-                            <button onClick={() => setShowExpenses(!showExpenses)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-[#45846D] text-white ml-auto hover:bg-[#3A705C] transition-colors"><Wallet className="w-4 h-4" /> {currencyCode}</button>
-                            <button onClick={() => setShowSettings(!showSettings)} className="bg-white/20 backdrop-blur-md p-1 rounded-full text-white border border-white/10"><Settings className="w-3 h-3" /></button>
+
+                        {/* 右側：功能操作 (點擊變綠) */}
+                        <div className="flex gap-2">
+                            {/* 憑證按鈕 */}
+                            <GlassCapsule 
+                                isActive={showVault} 
+                                onClick={() => { setShowVault(!showVault); setShowExpenses(false); }}
+                            >
+                                <Ticket className="w-3.5 h-3.5" /> 憑證
+                            </GlassCapsule>
+
+                            {/* 錢包按鈕 */}
+                            <GlassCapsule 
+                                isActive={showExpenses} 
+                                onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }}
+                            >
+                                <Wallet className="w-3.5 h-3.5" /> {currencyCode}
+                            </GlassCapsule>
+
+                            {/* 設定按鈕 (控制中心) */}
+                            <GlassCapsule onClick={() => setIsSettingsOpen(true)}>
+                                <Settings className="w-3.5 h-3.5" />
+                            </GlassCapsule>
                         </div>
                     </div>
                 </div>
@@ -1360,130 +1505,136 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             </div>
 
             {/* 3. Sticky Content Control Bar */}
-            {!showSettings && (
-                <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
-                    <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
-                        <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
-                        <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
-                    </div>
+            <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
+                <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
+                    <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
+                    <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
                 </div>
-            )}
+            </div>
 
             {/* 4. Scrollable Content Area */}
-            {!showSettings && (
-                <div className="px-5 pb-safe w-full">
-                    {showExpenses && <ExpenseDashboard trip={trip} />}
-                    <DragDropContext onDragEnd={onDragEnd}>
-                        <div className="py-4 space-y-10">
-                            {trip.days.map((day: TripDay, dayIndex: number) => {
-                                const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
-                                const activities = day.activities;
-                                
-                                return (
-                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
-                                        <div className="flex justify-between items-center mb-4 -mt-1">
-                                            <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                            {/* Top Plus Button for Day Start */}
-                                            <button 
-                                                onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
-                                                className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
-                                            >
-                                                <Plus className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                        {viewMode === 'list' ? (
-                                            <Droppable droppableId={`day-${dayIndex + 1}`}>
-                                                {(provided) => (
-                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
-                                                        {/* [新功能] 空狀態插圖 (如果是空的就顯示) */}
-                                                        {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
-
-                                                        {/* 渲染活動列表 */}
-                                                        {activities.map((act: Activity, index: number) => {
-                                                            const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
-                                                            
-                                                            return (
-                                                                <React.Fragment key={`${day.day}-${index}`}>
-                                                                    {/* [新功能] 現在時刻線 (插入在正確的時間位置) */}
-                                                                    {isNextActivity && <CurrentTimeIndicator />}
-                                                                    
-                                                                    <Draggable draggableId={`${day.day}-${index}`} index={index}>
-                                                                        {(provided, snapshot) => {
-                                                                            // [版型分流核心]
-                                                                            // 1. 系統功能卡片 (連接線/備註/程序) -> 使用特殊版型
-                                                                            if (isSystemType(act.type)) {
-                                                                                if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                                if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                                return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
-                                                                            }
-                                                                            
-                                                                            // 2. 拍立得版型 (layout='polaroid')
-                                                                            if (act.layout === 'polaroid') {
-                                                                                return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
-                                                                            }
-                                                                            
-                                                                            // 3. 預設版型 (List)
-                                                                            return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
-                                                                        }}
-                                                                    </Draggable>
-                                                                    {/* Ghost Insert Button (Between Items) */}
-                                                                    <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
-                                                                </React.Fragment>
-                                                            );
-                                                        })}
-                                                        
-                                                        {/* 如果是今天，且已經晚於所有活動時間，顯示紅線在最後 */}
-                                                        {isCurrentDay && activities.length > 0 && currentTime >= activities[activities.length - 1].time && <CurrentTimeIndicator />}
-                                                        
-                                                        {provided.placeholder}
-                                                    </div>
-                                                )}
-                                            </Droppable>
-                                        ) : (
-                                            <RouteVisualization day={day} destination={trip.destination} />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                            <div className="h-24"></div>
+            <div className="px-5 pb-safe w-full">
+                {/* [Dashboard Area] 切換顯示記帳或憑證 */}
+                {showExpenses && <ExpenseDashboard trip={trip} onCurrencyChange={handleCurrencyChange} />}
+                {showVault && (
+                    <div className="bg-white rounded-[32px] p-8 shadow-sm border border-gray-100 mb-6 text-center animate-in fade-in slide-in-from-top-4">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Ticket className="w-8 h-8 text-gray-400" />
                         </div>
-                    </DragDropContext>
-                </div>
-            )}
-            
-            {showSettings && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="absolute inset-0 bg-[#1D1D1B]/80 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
-                    <div className="bg-white w-full max-w-xs rounded-2xl p-4 relative z-10 shadow-2xl">
-                        <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-[#1D1D1B]">選擇幣別</h3><button onClick={() => setShowSettings(false)} className="p-1 bg-gray-100 rounded-full"><X className="w-5 h-5" /></button></div>
-                        <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
-                            {(Object.keys(CURRENCY_SYMBOLS) as CurrencyCode[]).map(cur => (
-                                <button 
-                                    key={cur} 
-                                    onClick={() => handleCurrencyChange(cur)} 
-                                    className={`w-full flex justify-between items-center px-4 py-3 rounded-xl text-sm font-medium ${currencyCode === cur ? 'bg-[#45846D] text-white' : 'bg-gray-50'}`}
-                                >
-                                    <span>{CURRENCY_LABELS[cur] || cur}</span>
-                                    <span className="font-mono">{CURRENCY_SYMBOLS[cur]}</span>
-                                </button>
-                            ))}
-                        </div>
+                        <h3 className="font-bold text-lg text-gray-800 mb-2">保管箱是空的</h3>
+                        <p className="text-gray-500 text-xs">這裡將顯示您置頂的護照、訂房憑證或電子機票。</p>
                     </div>
-                </div>
+                )}
+
+                <DragDropContext onDragEnd={onDragEnd}>
+                    <div className="py-4 space-y-10">
+                        {trip.days.map((day: TripDay, dayIndex: number) => {
+                            const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
+                            const activities = day.activities;
+                            
+                            return (
+                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20">
+                                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
+                                    <div className="flex justify-between items-center mb-4 -mt-1">
+                                        <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
+                                        {/* Top Plus Button for Day Start */}
+                                        <button 
+                                            onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
+                                            className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    {viewMode === 'list' ? (
+                                        <Droppable droppableId={`day-${dayIndex + 1}`}>
+                                            {(provided) => (
+                                                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3 min-h-[50px]">
+                                                    {/* 空狀態插圖 */}
+                                                    {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
+
+                                                    {/* 渲染活動列表 */}
+                                                    {activities.map((act: Activity, index: number) => {
+                                                        const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
+                                                        
+                                                        return (
+                                                            <React.Fragment key={`${day.day}-${index}`}>
+                                                                {/* 現在時刻線 */}
+                                                                {isNextActivity && <CurrentTimeIndicator />}
+                                                                
+                                                                <Draggable draggableId={`${day.day}-${index}`} index={index}>
+                                                                    {(provided, snapshot) => {
+                                                                        // [版型分流]
+                                                                        if (isSystemType(act.type)) {
+                                                                            if (act.type === 'transport') return <TransportConnectorItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                            if (act.type === 'note') return <NoteItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                            return <ProcessItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} />;
+                                                                        }
+                                                                        
+                                                                        // 2. 拍立得版型 (layout='polaroid')
+                                                                        if (act.layout === 'polaroid') {
+                                                                            return <ExpensePolaroid act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} members={trip.members} />;
+                                                                        }
+                                                                        
+                                                                        // 3. 預設版型 (List)
+                                                                        return <ActivityItem act={act} onClick={() => setSelectedActivity({ dayIdx: dayIndex, actIdx: index, activity: act, initialEdit: false })} provided={provided} snapshot={snapshot} currencySymbol={currencySymbol} />;
+                                                                    }}
+                                                                </Draggable>
+                                                                {/* Ghost Insert Button (Between Items) */}
+                                                                <GhostInsertButton onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: index }); setIsPlusMenuOpen(true); }} />
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                    
+                                                    {/* 如果是今天，且已經晚於所有活動時間，顯示紅線在最後 */}
+                                                    {isCurrentDay && activities.length > 0 && currentTime >= activities[activities.length - 1].time && <CurrentTimeIndicator />}
+                                                    
+                                                    {provided.placeholder}
+                                                </div>
+                                            )}
+                                        </Droppable>
+                                    ) : (
+                                        <RouteVisualization day={day} destination={trip.destination} />
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <div className="h-24"></div>
+                    </div>
+                </DragDropContext>
+            </div>
+            
+            {/* --- Modals 區塊 --- */}
+
+            {/* 1. 日期編輯 */}
+            {isDateEditOpen && (
+                <SimpleDateEditModal 
+                    date={trip.startDate} 
+                    onClose={() => setIsDateEditOpen(false)} 
+                    onSave={handleDateUpdate} 
+                />
             )}
 
-            {/* Modals & Overlays */}
+            {/* 2. 天數編輯 */}
+            {isDaysEditOpen && (
+                <SimpleDaysEditModal 
+                    days={trip.days.length} 
+                    onClose={() => setIsDaysEditOpen(false)} 
+                    onSave={handleDaysUpdate} 
+                />
+            )}
+
+            {/* 3. 全域設定 (行程控制中心) */}
+            {isSettingsOpen && (
+                <TripSettingsModal 
+                    trip={trip} 
+                    onClose={() => setIsSettingsOpen(false)} 
+                    onUpdate={(updatedTrip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }}
+                    onDelete={onDelete}
+                />
+            )}
+
             {isAddModalOpen && (
                 <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />
-            )}
-
-            {isEditSettingsOpen && (
-                <EditTripSettingsModal 
-                    trip={trip} 
-                    onClose={() => setIsEditSettingsOpen(false)} 
-                    onUpdate={(t) => { onUpdateTrip(t); setIsEditSettingsOpen(false); }} 
-                />
             )}
 
             {selectedActivity && (
