@@ -1112,19 +1112,83 @@ const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: string)
 
 const RouteVisualization: React.FC<{ day: TripDay; destination: string }> = ({ day, destination }) => {
     const { stops, mapUrl } = useMemo(() => {
-        const _stops = day.activities.filter(a => a.type !== 'transport' && a.type !== 'note' && a.type !== 'expense' && a.type !== 'process').filter(a => a.title || a.location).map(a => a.location || a.title);
+        const _stops = day.activities
+            .filter(a => a.type !== 'transport' && a.type !== 'note' && a.type !== 'expense' && a.type !== 'process')
+            .filter(a => a.title || a.location)
+            .map(a => ({ name: a.location || a.title || 'Unknown Spot', type: a.type }));
+        
         let _mapUrl = '';
         if (_stops.length === 0) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(destination)}`;
-        else if (_stops.length === 1) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(_stops[0])}`;
+        else if (_stops.length === 1) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(_stops[0].name)}`;
         else { 
-            const origin = encodeURIComponent(_stops[0]); 
-            const dest = encodeURIComponent(_stops[_stops.length - 1]); 
-            const waypoints = _stops.slice(1, -1).map(s => encodeURIComponent(s)).join('|'); 
+            const origin = encodeURIComponent(_stops[0].name); 
+            const dest = encodeURIComponent(_stops[_stops.length - 1].name); 
+            const waypoints = _stops.slice(1, -1).map(s => encodeURIComponent(s.name)).join('|'); 
             _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`; 
         }
         return { stops: _stops, mapUrl: _mapUrl };
     }, [day.activities, destination]);
-    return (<div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-6"><div className="h-24 bg-[#45846D]/5 flex items-center justify-center relative"><Map className="w-8 h-8 text-[#45846D] opacity-50" /></div><div className="p-5">{stops.length===0?<div className="text-center text-gray-400 text-sm">暫無地點</div>:<><div className="space-y-0 mb-6 pl-2">{stops.map((s, i) => (<div key={i} className="flex gap-4"><div className="flex flex-col items-center w-4"><div className="w-3 h-3 rounded-full bg-[#45846D]"></div>{i!==stops.length-1&&<div className="w-[2px] flex-1 bg-gray-100"></div>}</div><p className="text-sm pb-5">{s}</p></div>))}</div><a href={mapUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full bg-[#45846D] text-white font-bold py-3.5 rounded-2xl">開啟導航</a></>}</div></div>);
+
+    return (
+        <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-6">
+            {/* Compact Header */}
+            <div className="h-10 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between px-4">
+                <div className="flex items-center gap-2">
+                    <Map className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Route Preview</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#45846D]" />
+                    <span className="text-[10px] font-bold text-[#45846D]">{stops.length} Stops</span>
+                </div>
+            </div>
+
+            {/* Metro Style Body */}
+            <div className="p-5 py-6 relative">
+                {stops.length === 0 ? (
+                    <div className="text-center text-gray-300 text-xs py-4">暫無行程地點</div>
+                ) : (
+                    <div className="relative">
+                        {/* Connecting Line */}
+                        <div className="absolute top-3 bottom-3 left-[15px] w-[2px] bg-gray-100 rounded-full" />
+
+                        <div className="space-y-5">
+                            {stops.map((stop, i) => {
+                                const cat = CATEGORIES.find(c => c.id === stop.type) || CATEGORIES.find(c => c.id === 'sightseeing');
+                                const Icon = cat?.icon || MapPin;
+                                
+                                return (
+                                    <div key={i} className="flex items-center gap-4 relative z-10">
+                                        {/* Icon Node */}
+                                        <div className="w-8 h-8 rounded-full border-[3px] border-white bg-white shadow-sm flex items-center justify-center shrink-0">
+                                            <div className={`w-full h-full rounded-full flex items-center justify-center ${cat?.tagClass.replace('border-', '')} bg-opacity-20`}>
+                                                <Icon className={`w-3.5 h-3.5`} />
+                                            </div>
+                                        </div>
+                                        {/* Text */}
+                                        <span className="text-sm font-bold text-gray-700 truncate">{stop.name}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Compact Footer Button */}
+            <div className="px-5 pb-5 pt-0">
+                <a
+                    href={mapUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 w-full bg-[#1D1D1B] text-white font-bold py-3 rounded-xl text-xs hover:bg-[#45846D] transition-colors shadow-lg active:scale-[0.98]"
+                >
+                    <Navigation className="w-3.5 h-3.5" />
+                    開啟導航
+                </a>
+            </div>
+        </div>
+    );
 };
 
 // ============================================================================
@@ -1565,34 +1629,27 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                     </div>
                 )}
 
-                <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="py-4 space-y-0">
-                        {trip.days.map((day: TripDay, dayIndex: number) => {
-                            const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
-                            const activities = day.activities;
-                            // [新增] 判斷今天行程是否已結束
-                            const lastActivityTime = activities.length > 0 ? activities[activities.length - 1].time : '00:00';
-                            const isEndOfDay = isCurrentDay && currentTime > lastActivityTime && activities.length > 0;
-                            // [新增] 判斷是否為旅程最後一天
-                            const isTripEnd = dayIndex === trip.days.length - 1;
-                            
-                            return (
-                                <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 mb-6">
-                                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
-                                    {/* [修正] Map Mode Header Spacing Logic */}
-                                    <div className={`flex justify-between items-center -mt-1 ${viewMode === 'map' ? 'mb-6' : 'mb-4'}`}>
-                                        <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                        {/* Top Plus Button for Day Start (Only in List Mode) */}
-                                        {viewMode === 'list' && (
-                                            <button 
-                                                onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} 
-                                                className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"
-                                            >
-                                                <Plus className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                    </div>
-                                    {viewMode === 'list' ? (
+                {/* --- 核心渲染邏輯分流：列表 vs 地圖 --- */}
+                {viewMode === 'list' ? (
+                    <DragDropContext onDragEnd={onDragEnd}>
+                        <div className="py-4 space-y-0">
+                            {trip.days.map((day: TripDay, dayIndex: number) => {
+                                const isCurrentDay = dayIndex === currentDayIndex; // 判斷是否為今天
+                                const activities = day.activities;
+                                // [新增] 判斷今天行程是否已結束
+                                const lastActivityTime = activities.length > 0 ? activities[activities.length - 1].time : '00:00';
+                                const isEndOfDay = isCurrentDay && currentTime > lastActivityTime && activities.length > 0;
+                                // [新增] 判斷是否為旅程最後一天
+                                const isTripEnd = dayIndex === trip.days.length - 1;
+                                
+                                return (
+                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 mb-6">
+                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
+                                        <div className="flex justify-between items-center mb-4 -mt-1">
+                                            <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
+                                            <button onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"><Plus className="w-5 h-5" /></button>
+                                        </div>
+                                        
                                         <Droppable droppableId={`day-${dayIndex + 1}`}>
                                             {(provided) => (
                                                 <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0 min-h-[50px]">
@@ -1640,66 +1697,30 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                                 </div>
                                             )}
                                         </Droppable>
-                                    ) : (
-                                        <RouteVisualization day={day} destination={trip.destination} />
-                                    )}
-                                </div>
-                            );
-                        })}
-                        <div className="h-24"></div>
+                                    </div>
+                                );
+                            })}
+                            <div className="h-24"></div>
+                        </div>
+                    </DragDropContext>
+                ) : (
+                    // --- 地圖模式 (全新卡片設計) ---
+                    <div className="space-y-6 pb-24 mt-6">
+                        {trip.days.map((day) => (
+                            <RouteVisualization key={day.day} day={day} destination={trip.destination} />
+                        ))}
                     </div>
-                </DragDropContext>
+                )}
             </div>
             
-            {/* --- Modals 區塊 --- */}
-
-            {/* 1. 日期編輯 */}
-            {isDateEditOpen && (
-                <SimpleDateEditModal 
-                    date={trip.startDate} 
-                    onClose={() => setIsDateEditOpen(false)} 
-                    onSave={handleDateUpdate} 
-                />
-            )}
-
-            {/* 2. 天數編輯 */}
-            {isDaysEditOpen && (
-                <SimpleDaysEditModal 
-                    days={trip.days.length} 
-                    onClose={() => setIsDaysEditOpen(false)} 
-                    onSave={handleDaysUpdate} 
-                />
-            )}
-
-            {/* 3. 全域設定 (行程控制中心) */}
-            {isSettingsOpen && (
-                <TripSettingsModal 
-                    trip={trip} 
-                    onClose={() => setIsSettingsOpen(false)} 
-                    onUpdate={(updatedTrip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }}
-                    onDelete={onDelete}
-                />
-            )}
-
-            {isAddModalOpen && (
-                <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />
-            )}
-
-            {selectedActivity && (
-                <ActivityDetailModal 
-                    act={selectedActivity.activity}
-                    onClose={() => setSelectedActivity(null)}
-                    onSave={handleUpdateActivity}
-                    onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)}
-                    members={trip.members}
-                    initialEdit={selectedActivity.initialEdit}
-                    currencySymbol={currencySymbol}
-                />
-            )}
-
+            {/* Modals */}
+            {isDateEditOpen && <SimpleDateEditModal date={trip.startDate} onClose={() => setIsDateEditOpen(false)} onSave={handleDateUpdate} />}
+            {isDaysEditOpen && <SimpleDaysEditModal days={trip.days.length} onClose={() => setIsDaysEditOpen(false)} onSave={handleDaysUpdate} />}
+            {isSettingsOpen && <TripSettingsModal trip={trip} onClose={() => setIsSettingsOpen(false)} onUpdate={(updatedTrip: Trip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }} onDelete={onDelete} />}
+            {isAddModalOpen && <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />}
+            {selectedActivity && <ActivityDetailModal act={selectedActivity.activity} onClose={() => setSelectedActivity(null)} onSave={handleUpdateActivity} onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)} members={trip.members} initialEdit={selectedActivity.initialEdit} currencySymbol={currencySymbol} />}
             <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} />
             
-            {/* Speed Dial Menu Overlay */}
             {isPlusMenuOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/20 backdrop-blur-sm" onClick={() => setIsPlusMenuOpen(false)} />
