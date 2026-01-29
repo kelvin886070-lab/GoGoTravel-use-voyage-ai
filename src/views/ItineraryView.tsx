@@ -220,7 +220,7 @@ const Tag: React.FC<{ type: string }> = ({ type }) => {
     );
 };
 
-// [修正] GhostInsertButton: 極致微型化 (h-2, -my-1)
+// GhostInsertButton: 極致微型化
 const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     <div className="h-2 -my-1 relative group z-10 flex items-center justify-center cursor-pointer" onClick={(e) => { e.stopPropagation(); onClick(); }}>
         <div className="absolute inset-0 bg-transparent" />
@@ -231,7 +231,7 @@ const GhostInsertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// End of Day Indicator (智慧判斷文字：FINISH 或 END)
+// End of Day Indicator
 const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => {
     return (
         <div className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700 opacity-80">
@@ -722,26 +722,34 @@ const ActivityDetailModal: React.FC<{
                                     
                                     {edited.items && edited.items.length > 0 ? (
                                         edited.items.map((item, idx) => (
-                                            <div key={item.id} className="flex flex-col gap-2 border-b border-dashed border-gray-50 pb-2 last:border-0 last:pb-0">
-                                                {/* Top Row: Name & Cost */}
-                                                <div className="flex justify-between items-center">
+                                            <div key={item.id} className="flex flex-col gap-1 border-b border-dashed border-gray-50 pb-2 last:border-0 last:pb-0">
+                                                {/* [修正] Input Row: Name & Cost */}
+                                                <div className="flex justify-between items-center gap-2">
                                                     {isEditing ? <input ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null} className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full placeholder-gray-300 text-sm" value={item.name} placeholder="品項名稱" onChange={(e) => updateItem(item.id, 'name', e.target.value)} /> : <span className="font-bold text-[#1D1D1B] text-sm">{item.name || '未命名'}</span>}
                                                     <div className="flex items-center gap-2">
-                                                        {isEditing ? <input type="number" className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right text-sm" value={item.amount} placeholder="0" onChange={(e) => updateItem(item.id, 'amount', Number(e.target.value))} /> : <span className="font-bold text-[#1D1D1B] text-right text-sm">{item.amount}</span>}
-                                                        {isEditing && <button onClick={() => deleteItem(item.id)} className="text-gray-200 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                                                        {isEditing ? <input type="number" className="w-16 bg-transparent border-none outline-none font-bold text-[#1D1D1B] text-right text-sm" value={item.amount === 0 ? '' : item.amount} placeholder="0" onChange={(e) => updateItem(item.id, 'amount', e.target.value === '' ? 0 : Number(e.target.value))} /> : <span className="font-bold text-[#1D1D1B] text-right text-sm">{item.amount}</span>}
                                                     </div>
                                                 </div>
                                                 
-                                                {/* Bottom Row: Splitting Avatars (Only visible in Edit Mode or if specific split exists) */}
+                                                {/* [修正] Second Row: Delete Button (Left) & Split Avatars (Right) */}
                                                 {(isEditing || (item.assignedTo && item.assignedTo.length > 0)) && (
-                                                    <div className="flex justify-end items-center gap-1">
-                                                        {isEditing && <button onClick={() => toggleItemMember(item.id)} className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>ALL</button>}
-                                                        {members.map(m => {
-                                                            const isAssigned = (item.assignedTo || []).includes(m.id);
-                                                            if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
-                                                            return <button key={m.id} onClick={() => isEditing && toggleItemMember(item.id, m.id)} className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-400 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`} disabled={!isEditing}>{isAssigned ? <Check className="w-2.5 h-2.5" /> : m.name[0]}</button>
-                                                        })}
-                                                        {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>}
+                                                    <div className="flex justify-between items-center mt-1">
+                                                        {/* 垃圾桶搬家到這裡 */}
+                                                        {isEditing ? (
+                                                            <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 p-1 transition-colors">
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        ) : <div />}
+
+                                                        <div className="flex justify-end items-center gap-1">
+                                                            {isEditing && <button onClick={() => toggleItemMember(item.id)} className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${(!item.assignedTo || item.assignedTo.length === 0) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>ALL</button>}
+                                                            {members.map(m => {
+                                                                const isAssigned = (item.assignedTo || []).includes(m.id);
+                                                                if (!isEditing && !isAssigned && item.assignedTo && item.assignedTo.length > 0) return null;
+                                                                return <button key={m.id} onClick={() => isEditing && toggleItemMember(item.id, m.id)} className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border transition-all duration-200 ${isAssigned ? `${getMemberAvatarColor(m.name)} text-white border-transparent shadow-sm ${isEditing ? 'active:scale-90 scale-110' : ''}` : 'bg-gray-100 text-gray-300 border-transparent hover:bg-gray-200'} ${!isEditing && !isAssigned ? 'hidden' : ''}`} disabled={!isEditing}>{isAssigned ? <Check className="w-2.5 h-2.5" /> : m.name[0]}</button>
+                                                            })}
+                                                            {!isEditing && (!item.assignedTo || item.assignedTo.length === 0) && <span className="text-[9px] font-bold text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded ml-1">ALL</span>}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -1571,7 +1579,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                             return (
                                 <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 mb-6">
                                     <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
-                                    <div className="flex justify-between items-center mb-4 -mt-1">
+                                    {/* [修正] Map Mode Header Spacing Logic */}
+                                    <div className={`flex justify-between items-center -mt-1 ${viewMode === 'map' ? 'mb-6' : 'mb-4'}`}>
                                         <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
                                         {/* Top Plus Button for Day Start (Only in List Mode) */}
                                         {viewMode === 'list' && (
