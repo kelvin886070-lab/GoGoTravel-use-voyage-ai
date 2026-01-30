@@ -8,7 +8,7 @@ import { VaultView } from './views/VaultView';
 import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
-import { ItineraryView } from './views/ItineraryView';
+import ItineraryView from './views/ItineraryView/ItineraryView';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
