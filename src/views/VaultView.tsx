@@ -1,23 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Folder, FileText, Plus, Trash2, Image as ImageIcon, File as FileIcon, CheckCircle, Circle, Package, Shirt, Briefcase, Bath, Smartphone, CheckCircle2, ArrowLeft, RotateCcw, XCircle, Pin, GripVertical, Upload, HardDrive, Cloud, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+    Folder, FileText, Plus, Trash2, Image as ImageIcon, File as FileIcon, 
+    CheckCircle, Circle, Package, Shirt, Briefcase, Bath, Smartphone, 
+    CheckCircle2, ArrowLeft, RotateCcw, XCircle, Pin, GripVertical, 
+    Upload, HardDrive, Cloud, Loader2, DownloadCloud, MoreVertical 
+} from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, ChecklistItem, ChecklistCategory, VaultFolder, VaultFile } from '../types';
 import { supabase } from '../services/supabase';
 
+// [Updated] 定義介面：接收從 App.tsx 傳下來的真實資料與刷新函式
 interface VaultViewProps {
     deletedTrips?: Trip[];
+    folders: VaultFolder[];
+    files: VaultFile[];
+    onRefresh: () => void;
     onRestoreTrip?: (id: string) => void;
     onPermanentDeleteTrip?: (id: string) => void;
 }
 
-const DEFAULT_FOLDERS_CONFIG = [
-    { name: '機票憑證', isPinned: true },
-    { name: '住宿憑證', isPinned: true },
-    { name: '保險單', isPinned: true },
-    { name: '行程參考圖', isPinned: true },
-];
-
-export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onRestoreTrip, onPermanentDeleteTrip }) => {
+export const VaultView: React.FC<VaultViewProps> = ({ 
+    deletedTrips = [], 
+    folders, 
+    files, 
+    onRefresh, 
+    onRestoreTrip, 
+    onPermanentDeleteTrip 
+}) => {
     const [activeTab, setActiveTab] = useState<'checklist' | 'files'>('checklist');
 
     return (
@@ -50,6 +59,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
                 ) : (
                     <FileManagerSection 
                         deletedTrips={deletedTrips} 
+                        folders={folders}
+                        files={files}
+                        onRefresh={onRefresh}
                         onRestoreTrip={onRestoreTrip} 
                         onPermanentDeleteTrip={onPermanentDeleteTrip} 
                     />
@@ -59,7 +71,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ deletedTrips = [], onResto
     );
 };
 
-// --- PackingListSection ---
+// --- PackingListSection (保持不變) ---
 const PackingListSection: React.FC = () => { 
     const defaultItems: ChecklistItem[] = [ 
         { id: '1', text: '護照', checked: false, category: 'documents' }, 
@@ -152,97 +164,44 @@ const PackingListSection: React.FC = () => {
 };
 
 // --------------------------------------------------------------------------
-//  文件管理區塊
+//  文件管理區塊 (重構後：使用外部資料源)
 // --------------------------------------------------------------------------
 const FileManagerSection: React.FC<{ 
-    deletedTrips: Trip[], 
+    deletedTrips: Trip[],
+    folders: VaultFolder[],
+    files: VaultFile[],
+    onRefresh: () => void,
     onRestoreTrip?: (id: string) => void, 
     onPermanentDeleteTrip?: (id: string) => void 
-}> = ({ deletedTrips, onRestoreTrip, onPermanentDeleteTrip }) => {
+}> = ({ deletedTrips, folders, files, onRefresh, onRestoreTrip, onPermanentDeleteTrip }) => {
     
     const [currentPath, setCurrentPath] = useState<string | null>(null);
     const [viewingTrash, setViewingTrash] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
-    const [folders, setFolders] = useState<VaultFolder[]>([]);
-    const [files, setFiles] = useState<VaultFile[]>([]);
-    const isInitializingRef = useRef(false);
-    const fetchData = async () => {
-        const user = (await supabase.auth.getUser()).data.user;
-        if (!user) return;
+    
+    // [Fixed] 本地快照 (用於 UI 拖曳操作，並與 Props 同步)
+    const [localFolders, setLocalFolders] = useState<VaultFolder[]>(folders);
+    const [localFiles, setLocalFiles] = useState<VaultFile[]>(files);
 
-        const { data: folderData } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
-        if (folderData && folderData.length === 0) {
-            
-            if (isInitializingRef.current) return;
-            isInitializingRef.current = true;
-
-            const defaultFolders = DEFAULT_FOLDERS_CONFIG.map(f => ({
-                user_id: user.id,
-                name: f.name,
-                parent_id: null,
-                is_pinned: f.isPinned,
-                is_deleted: false
-            }));
-            
-            const { error } = await supabase.from('vault_folders').insert(defaultFolders);
-            if (!error) {
-                const { data: newFolders } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
-                if (newFolders) {
-                    setFolders(newFolders.map((row: any) => ({
-                        id: row.id,
-                        name: row.name,
-                        parentId: row.parent_id || null,
-                        isPinned: !!row.is_pinned,
-                        isDeleted: !!row.is_deleted
-                    })));
-                }
-                return;
-            } else {
-                console.error("初始化資料夾失敗", error);
-                isInitializingRef.current = false;
-            }
-
-        } else if (folderData) {
-            setFolders(folderData.map((row: any) => ({
-                id: row.id,
-                name: row.name,
-                parentId: row.parent_id || null,
-                isPinned: !!row.is_pinned,
-                isDeleted: !!row.is_deleted
-            })));
-        }
-
-        const { data: fileData } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
-        if (fileData) {
-            setFiles(fileData.map((row: any) => ({
-                id: row.id,
-                name: row.name,
-                type: row.type as any,
-                size: row.size,
-                date: new Date(row.created_at).toLocaleDateString(),
-                parentId: row.parent_id || null,
-                data: row.file_path,
-                isDeleted: !!row.is_deleted, 
-                isPinned: !!row.is_pinned
-            })));
-        }
-    };
-
-    useEffect(() => { fetchData(); }, []);
+    // 當外部資料 (Props) 更新時，同步到本地狀態
+    useEffect(() => {
+        setLocalFolders(folders);
+        setLocalFiles(files);
+    }, [folders, files]);
 
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
 
-    const allActiveFiles = files.filter(f => !f.isDeleted);
-    const activeFolders = folders.filter(f => !f.isDeleted && f.parentId === currentPath);
+    const allActiveFiles = localFiles.filter(f => !f.isDeleted);
+    const activeFolders = localFolders.filter(f => !f.isDeleted && f.parentId === currentPath);
     const currentFiles = allActiveFiles.filter(f => f.parentId === currentPath);
-    const deletedFolders = folders.filter(f => f.isDeleted);
-    const deletedFiles = files.filter(f => f.isDeleted);
+    const deletedFolders = localFolders.filter(f => f.isDeleted);
+    const deletedFiles = localFiles.filter(f => f.isDeleted);
     const pinnedFiles = currentFiles.filter(f => f.isPinned);
     const unpinnedFiles = currentFiles.filter(f => !f.isPinned);
     
     const sortedFolders = [...activeFolders].sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
-    const currentFolderName = currentPath ? folders.find(f => f.id === currentPath)?.name : '我的文件';
+    const currentFolderName = currentPath ? localFolders.find(f => f.id === currentPath)?.name : '我的文件';
 
     const handleCreateFolder = async () => {
         if(!newFolderName.trim()) return;
@@ -262,7 +221,7 @@ const FileManagerSection: React.FC<{
 
             setNewFolderName('');
             setIsCreatingFolder(false);
-            fetchData();
+            onRefresh(); // 通知 App.tsx 更新
         } catch (e) {
             console.error(e);
             alert("建立資料夾失敗");
@@ -274,25 +233,35 @@ const FileManagerSection: React.FC<{
         const items = Array.from(sortedFolders);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
-        const otherFolders = folders.filter(f => f.isDeleted || f.parentId !== currentPath);
-        setFolders([...otherFolders, ...items]);
+        // 注意：這裡只做視覺排序，若要持久化順序需增加 DB 欄位
+        // 暫時僅更新本地視圖
+        const otherFolders = localFolders.filter(f => f.isDeleted || f.parentId !== currentPath);
+        setLocalFolders([...otherFolders, ...items]);
     };
+
     const updateFolderStatus = async (id: string, updates: any) => {
-        setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        // 樂觀更新 (Optimistic Update)
+        setLocalFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        
         const dbUpdates: any = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
         if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
+        
         const { error } = await supabase.from('vault_folders').update(dbUpdates).eq('id', id);
         if(error) {
             console.error(error);
-            fetchData();
+            onRefresh(); // 出錯時回滾
+        } else {
+            onRefresh(); // 成功後確認同步
         }
     };
+
     const toggleFolderPin = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        const folder = folders.find(f => f.id === id);
+        const folder = localFolders.find(f => f.id === id);
         if(folder) updateFolderStatus(id, { isPinned: !folder.isPinned });
     };
+
     const handleDeleteFolder = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if(confirm("確定將此資料夾移至垃圾桶？")) {
@@ -306,8 +275,10 @@ const FileManagerSection: React.FC<{
 
     const handlePermanentDeleteFolder = async (id: string) => {
         if(confirm("確定要永久刪除此資料夾？此動作無法復原。")) {
-            setFolders(prev => prev.filter(f => f.id !== id));
+            // Optimistic
+            setLocalFolders(prev => prev.filter(f => f.id !== id));
             await supabase.from('vault_folders').delete().eq('id', id);
+            onRefresh();
         }
     }
 
@@ -335,38 +306,65 @@ const FileManagerSection: React.FC<{
                 file_path: filePath,
                 parent_id: currentPath,
                 is_deleted: false,
-                is_pinned: false
+                is_pinned: false,
+                // 預設為一般文件，後續可讓使用者修改 category
+                category: 'other' 
             };
             const { error: dbError } = await supabase.from('vault_files').insert(newFileRec);
             if (dbError) throw dbError;
-            await fetchData();
+            
+            onRefresh(); // 通知更新
             alert("上傳成功！");
         } catch (error: any) { alert("上傳失敗：" + error.message); } finally { setIsUploading(false);
         }
     };
 
     const handleOpenFile = async (file: VaultFile) => {
-        if (!file.data) return;
+        // 如果 App.tsx 已經生成了有效的 Signed URL (在 file.data 裡)，直接用
+        if (file.data && file.data.startsWith('http')) {
+            window.open(file.data, '_blank');
+            return;
+        }
+
+        // 如果沒有 (可能是過期了，或是剛上傳完)，我們現場申請一個
+        if (!file.file_path) return;
+        
         try {
-            const { data } = supabase.storage.from('vault').getPublicUrl(file.data);
-            if (data) window.open(data.publicUrl, '_blank');
-        } catch (e) { console.error(e); }
+            const { data, error } = await supabase
+                .storage
+                .from('vault')
+                .createSignedUrl(file.file_path, 60 * 60); // 1小時有效
+
+            if (error) throw error;
+            if (data) window.open(data.signedUrl, '_blank');
+        } catch (e) { 
+            console.error("無法開啟檔案", e);
+            alert("無法開啟檔案：權限不足或檔案不存在");
+        }
     };
+
     const updateFileStatus = async (id: string, updates: any) => {
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        setLocalFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        
         const dbUpdates: any = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
         if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
+        
         const { error } = await supabase.from('vault_files').update(dbUpdates).eq('id', id);
-        if (error) fetchData();
+        if (error) {
+            onRefresh(); // Rollback
+        } else {
+            onRefresh(); // Sync
+        }
     };
+
     const handlePermanentDeleteFile = async (id: string, filePath?: string) => {
         if(confirm("確定要永久刪除？無法復原。")) {
-            setFiles(prev => prev.filter(f => f.id !== id));
+            setLocalFiles(prev => prev.filter(f => f.id !== id));
             const { error } = await supabase.from('vault_files').delete().eq('id', id);
-            if (error) { alert("刪除失敗"); return;
-            }
+            if (error) { alert("刪除失敗"); onRefresh(); return; }
             if (filePath) await supabase.storage.from('vault').remove([filePath]);
+            onRefresh();
         }
     }
 
@@ -672,7 +670,6 @@ const FileManagerSection: React.FC<{
                         className="flex-1 bg-white border border-transparent rounded-xl px-3 py-2 text-sm outline-none"
                         placeholder="資料夾名稱"
                         value={newFolderName}
-                        // 修正：將這裡的箭頭函式合併為一行，避免語法錯誤
                         onChange={(e) => setNewFolderName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
                     />

@@ -1,6 +1,20 @@
+/* 1. 引入 Google Fonts (Noto Serif TC: 標題用, Roboto Mono: 日期數據用) */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Roboto+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 2. 強制覆蓋 Tailwind 的預設字體設定 */
+/* 讓 font-serif 直接對應到我們剛引入的 Noto Serif TC */
+.font-serif {
+  font-family: 'Noto Serif TC', serif !important;
+}
+
+/* 讓 font-mono 直接對應到 Roboto Mono */
+.font-mono {
+  font-family: 'Roboto Mono', monospace !important;
+}
 
 /* iOS Base Styles */
 body {
@@ -9,24 +23,13 @@ body {
   color: #1D1D1B;
   
   -webkit-tap-highlight-color: transparent;
-  -webkit-tap-highlight-color: transparent;
   
-  /* 修正 1: 暫時註解掉這行。
-     雖然它可以防止整個頁面被下拉重新整理 (Pull-to-refresh)，
-     但在某些 iOS 版本中，它可能會導致內部的捲動容器判定失效而「卡住」。
-     我們先將其移除，確保捲動功能最優先。
-  */
-  /* overscroll-behavior-y: none; */ 
-
   /* Handle Safe Areas for iOS */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* 修正 2: 關鍵修正！
-   強制所有設定為可捲動的區域 (.overflow-y-auto) 在 iOS 上都有「原生慣性捲動」效果。
-   沒有這行的話，手指離開螢幕捲動就會馬上停止，操作體驗會非常卡。
-*/
+/* 強制 iOS 原生慣性捲動 */
 .overflow-y-auto {
   -webkit-overflow-scrolling: touch;
 }

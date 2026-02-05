@@ -1,4 +1,3 @@
-//詳細內容編輯與記帳彈窗 - 最複雜的一個
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Trash2, Edit3, X, ZoomIn, Clock, ChevronDown, Camera, Save, 
@@ -6,7 +5,8 @@ import {
 } from 'lucide-react';
 import { IOSInput } from '../../../components/UI';
 import { TimePickerWheel } from '../../../components/common/TimePickerWheel';
-import { LocationLink } from '../../../components/common/LocationLink';
+// [Fix] 移除舊的 LocationLink，改用直接渲染正確的 URL
+// import { LocationLink } from '../../../components/common/LocationLink';
 import { CATEGORIES, getMemberName, getMemberAvatarColor, isSystemType, Tag } from '../shared';
 import type { Activity, Member, ExpenseItem } from '../../../types';
 
@@ -298,7 +298,7 @@ export const ActivityDetailModal: React.FC<{
                                     {edited.items && edited.items.length > 0 ? (
                                         edited.items.map((item, idx) => (
                                             <div key={item.id} className="flex flex-col gap-1 border-b border-dashed border-gray-50 pb-2 last:border-0 last:pb-0">
-                                                {/* [修正] Input Row: Name & Cost */}
+                                                {/* Input Row: Name & Cost */}
                                                 <div className="flex justify-between items-center gap-2">
                                                     {isEditing ? <input ref={idx === (edited.items?.length || 0) - 1 ? newItemInputRef : null} className="bg-transparent border-none outline-none font-bold text-[#1D1D1B] w-full placeholder-gray-300 text-sm" value={item.name} placeholder="品項名稱" onChange={(e) => updateItem(item.id, 'name', e.target.value)} /> : <span className="font-bold text-[#1D1D1B] text-sm">{item.name || '未命名'}</span>}
                                                     <div className="flex items-center gap-2">
@@ -306,10 +306,9 @@ export const ActivityDetailModal: React.FC<{
                                                     </div>
                                                 </div>
                                                 
-                                                {/* [修正] Second Row: Delete Button (Left) & Split Avatars (Right) */}
+                                                {/* Second Row: Delete Button (Left) & Split Avatars (Right) */}
                                                 {(isEditing || (item.assignedTo && item.assignedTo.length > 0)) && (
                                                     <div className="flex justify-between items-center mt-1">
-                                                        {/* 垃圾桶搬家到這裡 */}
                                                         {isEditing ? (
                                                             <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 p-1 transition-colors">
                                                                 <Trash2 className="w-4 h-4" />
@@ -377,7 +376,17 @@ export const ActivityDetailModal: React.FC<{
                                 {/* READ ONLY VIEW: Show text if exists */}
                                 {!isEditing && edited.location && (
                                     <div className="flex items-center gap-2 text-gray-500 text-xs px-2">
-                                        <LocationLink location={edited.location} />
+                                        {/* [Fix] Google Maps Official URL Scheme */}
+                                        <a 
+                                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(edited.location)}`}
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 hover:text-[#45846D] transition-colors"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <MapPinIcon className="w-3.5 h-3.5" />
+                                            <span className="underline decoration-dotted underline-offset-2">{edited.location}</span>
+                                        </a>
                                     </div>
                                 )}
                                 {!isEditing && edited.description && (

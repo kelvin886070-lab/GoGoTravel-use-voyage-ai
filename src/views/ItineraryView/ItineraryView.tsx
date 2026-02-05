@@ -1,42 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-    ArrowLeft, List, Map, Plus, Settings, Camera, 
+    ArrowLeft, List, Map, Plus, Settings, 
     Train, Plane, Calendar, Ticket, Wallet, 
-    MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, LogOut, FileDown 
+    MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
+    Briefcase, PlusCircle, Share, Bell, CheckCircle2, Camera // 保留 Camera 給預覽用，雖然 UI 移除了
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-
-// Types & Services
-import type { Trip, TripDay, Activity } from '../../types'; 
+import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User } from '../../types'; 
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
 
-// Components (Common)
 import { GlassCapsule } from '../../components/common/GlassCapsule';
-import { IOSInput } from '../../components/UI'; 
-import { IOSShareSheet } from '../../components/UI'; 
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
 import { CURRENCY_SYMBOLS, isSystemType } from './shared';
 
-// Modularized Components
 import { ExpenseDashboard } from './components/ExpenseDashboard';
 import { DayRouteCard } from './components/DayRouteCard';
+import { VaultCard } from './components/VaultCard'; 
 
-// List Items
 import { ActivityItem } from './items/ActivityItem';
 import { ProcessItem } from './items/ProcessItem';
 import { TransportConnectorItem } from './items/TransportConnectorItem';
 import { NoteItem } from './items/NoteItem';
 import { ExpensePolaroid } from './items/ExpensePolaroid';
-
-// Modals
 import { SimpleDateEditModal } from './modals/SimpleDateEditModal';
 import { SimpleDaysEditModal } from './modals/SimpleDaysEditModal';
 import { AddActivityModal } from './modals/AddActivityModal';
 import { TripSettingsModal } from './modals/TripSettingsModal';
 import { ActivityDetailModal } from './modals/ActivityDetailModal';
+import { DocumentPickerModal } from './modals/DocumentPickerModal';
+import { DocumentEditModal } from './modals/DocumentEditModal';
 
-// --- Local Indicators ---
+import { IOSInput } from '../../components/UI'; 
+import { IOSShareSheet } from '../../components/UI';
 
 const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => (
     <div className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700 opacity-80">
@@ -78,19 +74,47 @@ const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => (
 
 interface ItineraryViewProps { 
     trip: Trip;
+    folders?: VaultFolder[];
+    files?: VaultFile[];
+    documents?: Document[]; 
+    user?: User; // [New] 接收 User 資料
+    
     onBack: () => void;
     onDelete: () => void; 
     onUpdateTrip: (t: Trip) => void;
+    onRefreshVault?: () => void; 
+    onLocalFileUpdate?: (file: Partial<VaultFile>) => void;
 }
 
-export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDelete, onUpdateTrip }) => {
-    // 狀態變數放在最上層，修正了 viewMode 讀取不到的問題
+export const ItineraryView: React.FC<ItineraryViewProps> = ({ 
+    trip, 
+    folders = [], 
+    files = [], 
+    documents = [], 
+    user,
+    onBack, 
+    onDelete, 
+    onUpdateTrip,
+    onRefreshVault,
+    onLocalFileUpdate
+}) => {
+    // 確保 User 存在 (Fallback)
+    const currentUser: User = user || {
+        id: 'me',
+        name: '我',
+        avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kelvin',
+        joinedDate: new Date().toISOString()
+    };
+
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isDateEditOpen, setIsDateEditOpen] = useState(false);
     const [isDaysEditOpen, setIsDaysEditOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isDocPickerOpen, setIsDocPickerOpen] = useState(false);
+    const [editingDoc, setEditingDoc] = useState<(Document & { folderName?: string }) | null>(null);
+
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showVault, setShowVault] = useState(false);
@@ -100,11 +124,32 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity, initialEdit: boolean } | null>(null);
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null); // 保留 ref 給封面更換用 (雖然現在移到 Settings 了)
 
     const currencyCode = trip.currency || 'TWD';
-    
-    // Dynamic Header Info
+    const linkedDocs = useMemo(() => {
+        if (!trip.linkedDocumentIds || trip.linkedDocumentIds.length === 0) return [];
+        
+        const foundFiles = files.filter(f => trip.linkedDocumentIds?.includes(f.id));
+        
+        return foundFiles.map(f => {
+            const parentFolder = folders.find(folder => folder.id === f.parentId);
+            const folderName = parentFolder ? parentFolder.name : '一般文件';
+
+            return {
+                id: f.id,
+                title: f.name,
+                type: f.category || (f.type === 'pdf' ? 'other' : 'other'), 
+                fileUrl: f.data,
+                createdAt: f.date,
+                isOffline: false, 
+                documentNumber: f.documentNumber,
+                notes: f.notes,
+                folderName: folderName, 
+            } as (Document & { folderName: string });
+        });
+    }, [trip.linkedDocumentIds, files, folders]);
+
     const flightDisplayOrigin = trip.origin || 'ORIGIN';
     const flightDisplayDest = trip.destination || 'DEST';
     const firstType = trip.days[0]?.activities[0]?.type || 'other';
@@ -128,12 +173,32 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file); } };
     const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); };
     const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
-    
     const handleDateUpdate = (newDate: string) => { onUpdateTrip({ ...trip, startDate: newDate }); setIsDateEditOpen(false); };
     const handleDaysUpdate = (newDaysCount: number) => {
-        let newDays = [...trip.days]; 
-        if (newDaysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] }); } else { newDays = newDays.slice(0, newDaysCount); }
-        onUpdateTrip({ ...trip, days: newDays }); setIsDaysEditOpen(false);
+        let newDays = [...trip.days];
+        if (newDaysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
+        } else { newDays = newDays.slice(0, newDaysCount); }
+        onUpdateTrip({ ...trip, days: newDays });
+        setIsDaysEditOpen(false);
+    };
+
+    const handleLinkDocuments = (selectedIds: string[]) => {
+        onUpdateTrip({ ...trip, linkedDocumentIds: selectedIds });
+        setIsDocPickerOpen(false);
+    };
+
+    const handleUnlinkDocument = (docId: string) => {
+        if(confirm('確定要從此行程移除這份文件連結嗎？(檔案仍會保留在保管箱中)')) {
+            const newIds = (trip.linkedDocumentIds || []).filter(id => id !== docId);
+            onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
+        }
+    };
+    
+    // 處理文件編輯後的刷新
+    const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
+        if (onLocalFileUpdate) {
+            onLocalFileUpdate(updatedDoc);
+        }
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -147,7 +212,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         if (sourceDayIndex !== destDayIndex) newTrip.days[sourceDayIndex] = recalculateTimeline(newTrip.days[sourceDayIndex]);
         onUpdateTrip(newTrip);
     };
-
     const handleAddActivity = (newActivity: Activity) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const dayIdx = activeDayForAdd - 1;
@@ -157,7 +221,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         onUpdateTrip(newTrip);
         setIsAddModalOpen(false);
     };
-
     const handleQuickAdd = async (type: 'activity' | 'transport' | 'note' | 'expense' | 'ai') => {
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
@@ -165,11 +228,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         if (type === 'activity') { setActiveDayForAdd(dayIdx + 1); setIsAddModalOpen(true); return; }
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        const insertIdx = actIdx + 1; 
+        const insertIdx = actIdx + 1;
         const prevAct = newTrip.days[dayIdx].activities[actIdx];
         const nextTime = prevAct ? prevAct.time : '09:00';
         let newAct: Activity | null = null;
-
         if (type === 'ai') {
             setAiLoading(true);
             const spot = await suggestNextSpot(prevAct?.location || trip.destination, nextTime, 'food, sightseeing');
@@ -180,7 +242,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         } else if (type === 'note') {
             newAct = { time: nextTime, title: '新備註', type: 'note', description: '點擊編輯內容', cost: 0 };
         } else if (type === 'expense') {
-            newAct = { time: nextTime, title: '新支出', type: 'expense', description: '', cost: 0, payer: trip.members?.[0]?.id, layout: 'polaroid' }; 
+            newAct = { time: nextTime, title: '新支出', type: 'expense', description: '', cost: 0, payer: trip.members?.[0]?.id, layout: 'polaroid' };
         }
 
         if (newAct) {
@@ -190,7 +252,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
             if (['note', 'expense', 'transport'].includes(type)) { setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true }); }
         }
     };
-
     const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         newTrip.days[dayIndex].activities.splice(activityIndex, 1);
@@ -208,15 +269,36 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
         setSelectedActivity(null);
     }
 
+    // Helper: 計算每週的日期資訊
+    const getDateInfo = (startDate: string, dayOffset: number) => {
+        if (!startDate) return { dateStr: '--.--', weekDay: '---', isToday: false };
+        const [y, m, d] = startDate.split('-').map(Number);
+        
+        // 使用本地時間構造，防止時區跑掉
+        const date = new Date(y, m - 1, d);
+        date.setDate(date.getDate() + dayOffset);
+
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const weekDay = date.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        // 嚴格比對今天
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const isToday = date.getTime() === today.getTime();
+
+        return { dateStr: `${mm}.${dd}`, weekDay, isToday };
+    };
+
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
             
-            {/* 1. Header Container */}
             <div className={`relative h-72 w-full ${headerBgClass}`}>
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
                     <div className="flex gap-3 pointer-events-auto">
-                        <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Camera className="w-5 h-5" /></button>
+                        {/* [Modified] 移除 Camera，改為 Share (呼叫 handleShare) */}
+                        <button onClick={handleShare} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Share className="w-5 h-5" /></button>
                         <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
                     </div>
                 </div>
@@ -239,11 +321,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
 
                     <div className="mt-auto relative z-30 flex items-end justify-between">
                         <div className="flex flex-col gap-2 items-start">
+                            {/* 暫時維持原樣，待 Step 4 改為 Reminders Modal */}
                             <GlassCapsule onClick={() => setIsDateEditOpen(true)} className="text-[10px] sm:text-xs"><Calendar className="w-3.5 h-3.5" /> {trip.startDate}</GlassCapsule>
                             <GlassCapsule onClick={() => setIsDaysEditOpen(true)} className="text-[10px] sm:text-xs">{trip.days.length} DAYS</GlassCapsule>
                         </div>
                         <div className="flex flex-col gap-2 items-end">
-                            <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); }} className="text-[10px] sm:text-xs"><Ticket className="w-3.5 h-3.5" /> 憑證</GlassCapsule>
+                            <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); }} className="text-[10px] sm:text-xs"><Ticket className="w-3.5 h-3.5" /> 憑證 ({linkedDocs.length})</GlassCapsule>
                             <GlassCapsule isActive={showExpenses} onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }} className="text-[10px] sm:text-xs"><Wallet className="w-3.5 h-3.5" /> {currencyCode}</GlassCapsule>
                         </div>
                     </div>
@@ -251,7 +334,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
             </div>
 
-            {/* 3. Sticky Content Control Bar */}
             <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
                 <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
                     <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
@@ -259,19 +341,54 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 </div>
             </div>
 
-            {/* 4. Scrollable Content Area */}
             <div className="px-5 pb-safe w-full">
-                {/* [Dashboard Area] */}
                 {showExpenses && <ExpenseDashboard trip={trip} onCurrencyChange={handleCurrencyChange} />}
+                
                 {showVault && (
-                    <div className="bg-white rounded-[32px] p-8 shadow-sm border border-gray-100 mb-6 text-center animate-in fade-in slide-in-from-top-4">
-                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4"><Ticket className="w-8 h-8 text-gray-400" /></div>
-                        <h3 className="font-bold text-lg text-gray-800 mb-2">保管箱是空的</h3>
-                        <p className="text-gray-500 text-xs">這裡將顯示您置頂的護照、訂房憑證或電子機票。</p>
+                    <div className="mb-6 animate-in fade-in slide-in-from-top-4">
+                        {linkedDocs.length > 0 ? (
+                            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 -mx-5 px-5 snap-x">
+                                {linkedDocs.map(doc => (
+                                    <div key={doc.id} className="snap-center">
+                                        <VaultCard 
+                                            doc={doc} 
+                                            onRemove={() => handleUnlinkDocument(doc.id)}
+                                            onEdit={() => setEditingDoc(doc)}
+                                        />
+                                    </div>
+                                ))}
+                                <button 
+                                    onClick={() => setIsDocPickerOpen(true)}
+                                    className="flex flex-col items-center justify-center gap-2 min-w-[120px] bg-[#45846D]/5 rounded-3xl border-2 border-dashed border-[#45846D]/20 hover:bg-[#45846D]/10 transition-colors shrink-0 h-[190px]"
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-[#45846D] text-white flex items-center justify-center shadow-lg"><Plus className="w-5 h-5" /></div>
+                                    <span className="text-xs font-bold text-[#45846D]">連結更多</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative overflow-hidden rounded-[24px] p-6 text-center border border-white/60 bg-white/40 backdrop-blur-md shadow-sm">
+                                <div className="flex flex-col items-center justify-center gap-3">
+                                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-100">
+                                        <Briefcase className="w-6 h-6 text-[#1D1D1B]" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-base text-[#1D1D1B]">尚未加入憑證</h3>
+                                        <p className="text-gray-500 text-[11px] leading-relaxed max-w-[200px] mx-auto">
+                                            建議加入：護照、機票、訂房確認信
+                                        </p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setIsDocPickerOpen(true)}
+                                        className="mt-2 px-5 py-3 bg-[#1D1D1B] text-white rounded-xl text-xs font-bold shadow-lg shadow-gray-200 active:scale-95 transition-all flex items-center gap-2 hover:bg-black hover:shadow-xl"
+                                    >
+                                        <PlusCircle className="w-3.5 h-3.5" /> 從保管箱挑選文件
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* --- 核心渲染邏輯分流：列表 vs 地圖 --- */}
                 {viewMode === 'list' ? (
                     <DragDropContext onDragEnd={onDragEnd}>
                         <div className="py-4 space-y-0">
@@ -282,20 +399,50 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                                 const isEndOfDay = isCurrentDay && currentTime > lastActivityTime && activities.length > 0;
                                 const isTripEnd = dayIndex === trip.days.length - 1;
                                 
+                                // 取得日期資訊
+                                const dayInfo = getDateInfo(trip.startDate, dayIndex);
+
                                 return (
-                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 mb-6">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-[#45846D] border-4 border-[#E4E2DD] shadow-sm" />
+                                    /* 使用 pb-16 (64px) 強制撐開底部內距 */
+                                    <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 pb-16">
+                                        <div className={`absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-4 border-[#E4E2DD] shadow-sm transition-colors ${dayInfo.isToday ? 'bg-[#45846D] scale-110' : 'bg-gray-300'}`} />
                                         
-                                        {/* [修正] 直接使用固定的 mb-4，無需判斷 viewMode */}
-                                        <div className="flex justify-between items-center -mt-1 mb-4">
-                                            <h2 className="text-xl font-bold text-[#1D1D1B]">第 {day.day} 天</h2>
-                                            <button onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20"><Plus className="w-5 h-5" /></button>
+                                        {/* Magazine Style Timeline Header */}
+                                        <div className="flex justify-between items-end -mt-2 mb-6">
+                                            <div className="flex flex-col">
+                                                {/* 主標：02.03 */}
+                                                <span className={`text-4xl font-black font-serif tracking-tighter leading-none mb-1 ${dayInfo.isToday ? 'text-[#45846D]' : 'text-[#1D1D1B]'}`}>
+                                                    {dayInfo.dateStr}
+                                                </span>
+                                                
+                                                {/* 副標：Tue | DAY 1 | Today */}
+                                                <div className={`flex items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase ${dayInfo.isToday ? 'text-[#45846D]' : 'text-gray-400'}`}>
+                                                    <span>{dayInfo.weekDay}</span>
+                                                    <span className="opacity-30">|</span>
+                                                    <span>DAY {day.day}</span>
+                                                    
+                                                    {dayInfo.isToday && (
+                                                        <>
+                                                            <span className="opacity-30">|</span>
+                                                            <span className="flex items-center gap-1.5 text-[#45846D]">
+                                                                <span className="relative flex h-1.5 w-1.5">
+                                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#45846D] opacity-75"></span>
+                                                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#45846D]"></span>
+                                                                </span>
+                                                                TODAY
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20 mb-1"><Plus className="w-5 h-5" /></button>
                                         </div>
 
                                         <Droppable droppableId={`day-${dayIndex + 1}`}>
                                             {(provided) => (
                                                 <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0 min-h-[50px]">
                                                     {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
+                                                    
                                                     {activities.map((act: Activity, index: number) => {
                                                         const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
                                                         return (
@@ -330,7 +477,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                         </div>
                     </DragDropContext>
                 ) : (
-                    // --- 地圖模式 (全新卡片設計 - 使用 DayRouteCard) ---
                     <div className="space-y-6 pb-24 mt-6">
                         {trip.days.map((day) => (
                             <DayRouteCard key={day.day} day={day} startDate={trip.startDate} destination={trip.destination} />
@@ -339,16 +485,34 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({ trip, onBack, onDe
                 )}
             </div>
             
-            {/* --- Modals --- */}
             {isDateEditOpen && <SimpleDateEditModal date={trip.startDate} onClose={() => setIsDateEditOpen(false)} onSave={handleDateUpdate} />}
             {isDaysEditOpen && <SimpleDaysEditModal days={trip.days.length} onClose={() => setIsDaysEditOpen(false)} onSave={handleDaysUpdate} />}
-            {isSettingsOpen && <TripSettingsModal trip={trip} onClose={() => setIsSettingsOpen(false)} onUpdate={(updatedTrip: Trip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }} onDelete={onDelete} />}
+            {isSettingsOpen && <TripSettingsModal trip={trip} user={currentUser} onClose={() => setIsSettingsOpen(false)} onUpdate={(updatedTrip: Trip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }} onDelete={onDelete} />}
             {isAddModalOpen && <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />}
             {selectedActivity && <ActivityDetailModal act={selectedActivity.activity} onClose={() => setSelectedActivity(null)} onSave={handleUpdateActivity} onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)} members={trip.members} initialEdit={selectedActivity.initialEdit} currencySymbol={currencyCode === 'TWD' ? 'NT$' : '$'} />}
             
+            {isDocPickerOpen && (
+                <DocumentPickerModal 
+                    documents={documents} 
+                    folders={folders}     
+                    files={files}         
+                    initialSelectedIds={trip.linkedDocumentIds || []}
+                    onClose={() => setIsDocPickerOpen(false)}
+                    onSave={handleLinkDocuments}
+                />
+            )}
+            
+            {editingDoc && (
+                <DocumentEditModal
+                    doc={editingDoc}
+                    folders={folders}
+                    onClose={() => setEditingDoc(null)}
+                    onSave={handleDocumentSave}
+                />
+            )}
+            
             <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} />
             
-            {/* Speed Dial Menu */}
             {isPlusMenuOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/20 backdrop-blur-sm" onClick={() => setIsPlusMenuOpen(false)} />

@@ -1,18 +1,138 @@
-//地圖卡片
-import React, { useMemo, useState } from 'react';
-import { Map, Navigation, MapPin, Copy, Check, CloudSun } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Map, Navigation, MapPin, Copy, Check, CloudSun, Hourglass, CalendarCheck, Cloud, Sun, CloudRain, Loader2 } from 'lucide-react';
 import type { TripDay } from '../../../types';
 import { CATEGORIES } from '../shared';
+import { getWeatherForecast } from '../../../services/gemini';
 
+// 簡單的天氣圖示對應
+const getWeatherIcon = (condition: string = '') => {
+    if (condition.includes('雨')) return <CloudRain className="w-3 h-3 text-blue-500" />;
+    if (condition.includes('雲') || condition.includes('陰')) return <Cloud className="w-3 h-3 text-gray-400" />;
+    if (condition.includes('晴')) return <Sun className="w-3 h-3 text-orange-400" />;
+    return <CloudSun className="w-3 h-3 text-blue-400" />;
+};
+
+type WeatherStatus = 
+    | { type: 'loading' }
+    | { type: 'past' }
+    | { type: 'current'; temp: string; condition: string }
+    | { type: 'countdown'; days: number };
+
+// --- 子元件: 天氣/倒數膠囊 ---
+const WeatherPill: React.FC<{ status: WeatherStatus }> = ({ status }) => {
+    if (status.type === 'loading') {
+        return (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-gray-50 rounded-full border border-gray-100 animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+            </div>
+        );
+    }
+
+    if (status.type === 'past') {
+        return (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-gray-50 rounded-full border border-gray-100 opacity-50">
+                <CalendarCheck className="w-3 h-3 text-gray-400" />
+                <span className="text-[9px] font-bold text-gray-500">已結束</span>
+            </div>
+        );
+    }
+
+    if (status.type === 'countdown') {
+        return (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-50 rounded-full border border-orange-100">
+                <Hourglass className="w-3 h-3 text-orange-500" />
+                <span className="text-[9px] font-bold text-orange-600">
+                    {status.days === 0 ? '就是今天' : `倒數 ${status.days} 天`}
+                </span>
+            </div>
+        );
+    }
+
+    if (status.type === 'current') {
+        return (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 rounded-full border border-blue-100">
+                {getWeatherIcon(status.condition)}
+                <span className="text-[9px] font-bold text-blue-600">
+                    {status.temp}
+                </span>
+            </div>
+        );
+    }
+
+    return null;
+};
+
+// --- 主元件 ---
 export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destination: string }> = ({ day, startDate, destination }) => {
-    // 計算該天的日期字串 (Format: 10/24)
-    const dateStr = useMemo(() => {
+    
+    // 1. 計算該天的日期
+    const currentDayDate = useMemo(() => {
         const dateObj = new Date(startDate);
         dateObj.setDate(dateObj.getDate() + (day.day - 1));
-        return dateObj.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+        return dateObj;
     }, [startDate, day.day]);
 
-    // 單點操作按鈕元件 (Copy & Map)
+    const dateStr = useMemo(() => {
+        return currentDayDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+    }, [currentDayDate]);
+
+    // 2. 天氣狀態管理
+    const [weatherStatus, setWeatherStatus] = useState<WeatherStatus>({ type: 'loading' });
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchW = async () => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const targetDate = new Date(currentDayDate);
+            targetDate.setHours(0, 0, 0, 0);
+
+            const diffTime = targetDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            // A. 過去行程
+            if (diffDays < 0) {
+                if (isMounted) setWeatherStatus({ type: 'past' });
+                return;
+            }
+
+            // B. 未來行程 (超過 3 天)：顯示倒數
+            if (diffDays > 3) {
+                if (isMounted) setWeatherStatus({ type: 'countdown', days: diffDays });
+                return;
+            }
+
+            // C. 近期行程 (0 ~ 3 天)：嘗試抓取 API
+            try {
+                if (isMounted) setWeatherStatus({ type: 'loading' });
+                
+                // 呼叫您原本的 API
+                const res = await getWeatherForecast(destination);
+                
+                if (isMounted) {
+                    if (res && res.temperature) {
+                        setWeatherStatus({ 
+                            type: 'current', 
+                            temp: res.temperature,
+                            condition: res.condition || '晴'
+                        });
+                    } else {
+                        // 如果 API 沒資料，回退顯示倒數
+                        setWeatherStatus({ type: 'countdown', days: diffDays });
+                    }
+                }
+            } catch (e) {
+                console.error("Weather fetch failed", e);
+                if (isMounted) setWeatherStatus({ type: 'countdown', days: diffDays });
+            }
+        };
+
+        fetchW();
+        return () => { isMounted = false; };
+    }, [destination, currentDayDate]);
+
+    // 單點操作按鈕
     const ActionButtons = ({ name }: { name: string }) => {
         const [copied, setCopied] = useState(false);
         const handleCopy = (e: React.MouseEvent) => {
@@ -23,23 +143,15 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
         };
         const handleMap = (e: React.MouseEvent) => {
             e.stopPropagation();
-            window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`, '_blank');
+            window.open(`http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(name)}`, '_blank');
         };
 
         return (
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-                <button 
-                    onClick={handleCopy} 
-                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#45846D] transition-colors"
-                    title="複製名稱"
-                >
+                <button onClick={handleCopy} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#45846D] transition-colors">
                     {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
-                <button 
-                    onClick={handleMap} 
-                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#45846D] transition-colors"
-                    title="開啟地圖"
-                >
+                <button onClick={handleMap} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-[#45846D] transition-colors">
                     <MapPin className="w-3.5 h-3.5" />
                 </button>
             </div>
@@ -53,20 +165,27 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
             .map(a => ({ name: a.location || a.title || 'Unknown Spot', type: a.type }));
         
         let _mapUrl = '';
-        if (_stops.length === 0) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(destination)}`;
-        else if (_stops.length === 1) _mapUrl = `http://googleusercontent.com/maps.google.com/search?api=1&query=${encodeURIComponent(_stops[0].name)}`;
-        else { 
+        if (_stops.length === 0) {
+            _mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(destination)}`;
+        } else if (_stops.length === 1) {
+            _mapUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(_stops[0].name)}`;
+        } else { 
             const origin = encodeURIComponent(_stops[0].name); 
             const dest = encodeURIComponent(_stops[_stops.length - 1].name); 
-            const waypoints = _stops.slice(1, -1).map(s => encodeURIComponent(s.name)).join('|'); 
-            _mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=transit`; 
+            const middleStops = _stops.slice(1, -1);
+            if (middleStops.length > 0) {
+                const waypoints = middleStops.map(s => encodeURIComponent(s.name)).join('|');
+                _mapUrl = `http://googleusercontent.com/maps.google.com/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=driving`;
+            } else {
+                _mapUrl = `http://googleusercontent.com/maps.google.com/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
+            }
         }
         return { stops: _stops, mapUrl: _mapUrl };
     }, [day.activities, destination]);
 
     return (
         <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mt-6">
-            {/* Compact Header with Day & Weather */}
+            {/* Header */}
             <div className="h-12 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between px-5">
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 text-[#1D1D1B]">
@@ -74,11 +193,8 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
                         <span className="text-xs font-black tracking-wide">DAY {day.day.toString().padStart(2, '0')}</span>
                         <span className="text-[10px] font-bold text-gray-400">• {dateStr}</span>
                     </div>
-                    {/* Mock Weather Icon */}
-                    <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 rounded-full border border-blue-100">
-                        <CloudSun className="w-3 h-3 text-blue-500" />
-                        <span className="text-[9px] font-bold text-blue-600">24°C</span>
-                    </div>
+                    {/* 天氣/倒數顯示區 */}
+                    <WeatherPill status={weatherStatus} />
                 </div>
                 <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#45846D]" />
@@ -86,15 +202,13 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
                 </div>
             </div>
 
-            {/* Metro Style Body */}
+            {/* Body */}
             <div className="p-5 py-6 relative">
                 {stops.length === 0 ? (
                     <div className="text-center text-gray-300 text-xs py-4">暫無行程地點</div>
                 ) : (
                     <div className="relative">
-                        {/* Connecting Line */}
                         <div className="absolute top-3 bottom-3 left-[15px] w-[2px] bg-gray-100 rounded-full" />
-
                         <div className="space-y-5">
                             {stops.map((stop, i) => {
                                 const cat = CATEGORIES.find(c => c.id === stop.type) || CATEGORIES.find(c => c.id === 'sightseeing');
@@ -102,15 +216,12 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
                                 
                                 return (
                                     <div key={i} className="flex items-center gap-4 relative z-10 group min-h-[32px]">
-                                        {/* Icon Node */}
                                         <div className="w-8 h-8 rounded-full border-[3px] border-white bg-white shadow-sm flex items-center justify-center shrink-0">
                                             <div className={`w-full h-full rounded-full flex items-center justify-center ${cat?.tagClass.replace('border-', '')} bg-opacity-20`}>
                                                 <Icon className={`w-3.5 h-3.5`} />
                                             </div>
                                         </div>
-                                        {/* Text */}
                                         <span className="text-sm font-bold text-gray-700 truncate flex-1">{stop.name}</span>
-                                        {/* Hover Actions */}
                                         <ActionButtons name={stop.name} />
                                     </div>
                                 );
@@ -120,7 +231,7 @@ export const DayRouteCard: React.FC<{ day: TripDay; startDate: string; destinati
                 )}
             </div>
 
-            {/* Compact Footer Button */}
+            {/* Footer */}
             <div className="px-5 pb-5 pt-0">
                 <a
                     href={mapUrl}

@@ -48,26 +48,18 @@ export interface Member {
 // ==========================================
 
 // 卡片版型定義
-// list: 條列式 (一般行程預設)
-// polaroid: 拍立得樣式 (快速記帳/強調回憶用)
 export type ActivityLayout = 'list' | 'polaroid';
 
-// 活動類別定義 (包含一般消費與系統功能)
+// 活動類別定義
 export type ActivityType = 
-  // 一般消費類
   | 'food' | 'shopping' | 'sightseeing' | 'hotel' | 'gift' | 'bar' | 'activity' 
   | 'tickets' | 'snacks' | 'health' | 'cafe' | 'relax' | 'culture' | 'other'
-  // 記帳專用
   | 'expense' | 'commute'
-  // 系統功能類
   | 'transport' | 'flight' | 'note' | 'process'
-  // 容錯用 (避免舊資料報錯)
   | string;
 
-// 交通模式定義
 export type TransportMode = 'bus' | 'train' | 'subway' | 'walk' | 'taxi' | 'car' | 'tram' | 'flight';
 
-// 交通詳細資訊
 export interface TransportDetail {
   mode: TransportMode;
   duration: string;      
@@ -76,75 +68,79 @@ export interface TransportDetail {
   instruction?: string;  
 }
 
-// 記帳明細項目 (單一品項)
 export interface ExpenseItem {
   id: string;
-  name: string;       // 品項名稱
-  amount: number;     // 金額
-  assignedTo?: string[]; // 指定分攤成員 ID (空值代表全員平分)
+  name: string;       
+  amount: number;     
+  assignedTo?: string[]; 
 }
 
-// 行程活動單元
 export interface Activity {
   id?: string;
   time: string;
   title: string;
   description: string;
-  type: ActivityType; // 使用定義好的型別
-  
-  // 視覺呈現設定
+  type: ActivityType; 
   layout?: ActivityLayout; 
-
   category?: string; 
   location?: string; 
   cost?: string | number; 
-  
-  // 交通資訊
   transportDetail?: TransportDetail; 
-
-  // 記帳與分帳
-  payer?: string;        // 付款人 Member ID
-  splitWith?: string[];  // (舊版欄位，保留相容)
-  expenseImage?: string; // Base64 圖片
-  
-  // [新增] 圖片裁切位置
-  // 儲存 object-position 的 Y 軸百分比 (0-100)，用於調整照片顯示區域
+  payer?: string;        
+  splitWith?: string[];  
+  expenseImage?: string; 
   imagePositionY?: number;
-
-  // 消費明細列表
   items?: ExpenseItem[]; 
 }
 
 export interface TripDay {
   day: number;
-  date?: string; // 可選：具體日期
+  date?: string; 
   activities: Activity[];
+}
+
+// [New] 提醒事項介面 (用於行程 Header 的小鈴鐺功能)
+export interface Reminder {
+  id: string;
+  text: string;
+  time?: string; // 選填，例如 "14:00"
+  isCompleted: boolean;
 }
 
 export interface Trip {
   id: string;
   destination: string;
   origin?: string; 
-  
   focusArea?: string; 
+  
+  // 主要交通方式
+  transportMode?: 'flight' | 'train' | 'time';
+
+  // 當地交通方式
   localTransportMode?: 'public' | 'car' | 'taxi'; 
+  
+  // 行程規劃狀態 (配合設計思路 B 的邏輯預留)
+  planningStatus?: 'draft' | 'booked' | 'ready';
+
+  // [New] 提醒事項列表 (儲存使用者的待辦清單)
+  reminders?: Reminder[];
 
   startDate: string;
   endDate: string;
   coverImage: string;
   days: TripDay[];
   isDeleted?: boolean;
-  currency?: string; // e.g., 'JPY', 'TWD'
-
-  // 成員名單
-  members?: Member[]; 
+  currency?: string; 
+  members?: Member[];
+  
+  // 連結的憑證 ID 列表 (對應 VaultFile 的 id)
+  linkedDocumentIds?: string[];
 }
 
 // ==========================================
 // 4. 其他功能 (檢查表/保管箱/API)
 // ==========================================
 
-// 檢查表
 export type ChecklistCategory = 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
 
 export interface ChecklistItem {
@@ -154,7 +150,6 @@ export interface ChecklistItem {
   category: ChecklistCategory;
 }
 
-// 保管箱
 export interface VaultFolder {
   id: string;
   name: string;
@@ -163,20 +158,35 @@ export interface VaultFolder {
   isDeleted: boolean;
 }
 
+// 升級版 VaultFile：整合了檔案屬性與業務屬性
 export interface VaultFile {
   id: string;
   name: string;
-  type: 'image' | 'pdf' | 'other';
+  type: 'image' | 'pdf' | 'other'; 
   size: string;
   date: string;
   parentId: string | null;
-  data?: string;
-  file_path?: string;
+  data?: string; // Public URL
+  file_path?: string; // Storage path
   isDeleted: boolean;
   isPinned: boolean;
+  category?: 'passport' | 'hotel' | 'flight' | 'other'; 
+  documentNumber?: string;
+  notes?: string;
 }
 
-// 小工具 API
+// [Deprecated] 舊的全域文件定義 
+export interface Document {
+    id: string;
+    title: string;
+    type: 'passport' | 'hotel' | 'flight' | 'other';
+    fileUrl?: string; 
+    createdAt: string;
+    isOffline?: boolean;
+    documentNumber?: string; 
+    notes?: string;          
+}
+
 export interface WeatherInfo {
   location: string;
   temperature: string;
