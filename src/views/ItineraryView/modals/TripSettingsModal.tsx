@@ -2,9 +2,8 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
     X, Camera, Calendar, MapPin, 
     Bell, Trash2, Plus, Minus, 
-    Check, Users, Plane, Crop, MoveVertical
+    Check, Users, Crop, MoveVertical,Save
 } from 'lucide-react';
-import { IOSButton } from '../../../components/UI';
 import type { Trip, Member, User } from '../../../types';
 
 interface TripSettingsModalProps {
@@ -21,10 +20,10 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
     const [startDate, setStartDate] = useState(trip.startDate);
     const [endDate, setEndDate] = useState(trip.endDate);
     const [coverImage, setCoverImage] = useState(trip.coverImage);
-    const [imagePositionY, setImagePositionY] = useState(50); // 預設置中
+    const [imagePositionY, setImagePositionY] = useState(50); 
     
     // UI States
-    const [isRepositioning, setIsRepositioning] = useState(false); // [New] 防誤觸鎖定模式
+    const [isRepositioning, setIsRepositioning] = useState(false);
     
     // Members Logic
     const [members, setMembers] = useState<Member[]>(trip.members || []);
@@ -36,6 +35,8 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const startDateRef = useRef<HTMLInputElement>(null); // [新增]
+    const endDateRef = useRef<HTMLInputElement>(null);
     const isDraggingRef = useRef(false);
     const startYRef = useRef(0);
 
@@ -48,15 +49,15 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
         return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     }, [startDate, endDate]);
 
-    // --- Helper: Format Date for Display (YYYY / MM / DD) ---
-    const formatDateDisplay = (dateStr: string) => {
-        if (!dateStr) return '---- / -- / --';
-        const date = new Date(dateStr);
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y} / ${m} / ${d}`;
+    // --- Helper: Date Formatter ---
+    const getDateParts = (dateStr: string) => {
+        if (!dateStr) return { y: '----', md: '--.--' };
+        const [y, m, d] = dateStr.split('-');
+        return { y, md: `${m}.${d}` };
     };
+
+    const startParts = getDateParts(startDate);
+    const endParts = getDateParts(endDate);
 
     // --- Handlers: Image ---
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,15 +66,15 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
             const reader = new FileReader();
             reader.onloadend = () => {
                 setCoverImage(reader.result as string);
-                setIsRepositioning(true); // 上傳後自動進入調整模式
+                setIsRepositioning(true);
             };
             reader.readAsDataURL(file);
         }
     };
 
-    // --- Handlers: Drag to Reposition ---
+    // --- Handlers: Drag ---
     const handleMouseDown = (e: React.MouseEvent) => {
-        if (!isRepositioning) return; // [Lock] 只有在調整模式下才允許拖曳
+        if (!isRepositioning) return;
         isDraggingRef.current = true;
         startYRef.current = e.clientY;
     };
@@ -141,13 +142,11 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                     </button>
                 </div>
 
-                {/* Scrollable Content */}
+                {/* Content Area */}
                 <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4">
                     
-                    {/* === BLOCK A: Cover Identity (Height Adjusted & Lock Mode) === */}
+                    {/* === BLOCK A: Cover Identity === */}
                     <div className="w-full h-52 bg-white rounded-[24px] overflow-hidden relative group shadow-sm border border-white select-none">
-                        
-                        {/* Image Layer */}
                         <div 
                             className={`absolute inset-0 ${isRepositioning ? 'cursor-ns-resize active:cursor-grabbing' : ''}`}
                             onMouseDown={handleMouseDown}
@@ -162,8 +161,6 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                                 style={{ objectPosition: `center ${imagePositionY}%` }} 
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
-                            
-                            {/* Repositioning Grid Overlay */}
                             {isRepositioning && (
                                 <div className="absolute inset-0 border-2 border-white/30 pointer-events-none animate-in fade-in">
                                     <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20" />
@@ -175,7 +172,6 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                             )}
                         </div>
 
-                        {/* Controls Overlay (Only visible when NOT repositioning) */}
                         {!isRepositioning && (
                             <div className="absolute bottom-5 left-5 right-5 text-white z-10 pointer-events-none animate-in fade-in">
                                 <div className="pointer-events-auto">
@@ -192,43 +188,26 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                             </div>
                         )}
 
-                        {/* Action Buttons (Top Right) */}
                         <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
                             {isRepositioning ? (
-                                <button 
-                                    onClick={() => setIsRepositioning(false)}
-                                    className="px-3 py-1.5 bg-[#45846D] text-white text-xs font-bold rounded-full shadow-lg hover:bg-[#3A705C] transition-colors flex items-center gap-1"
-                                >
-                                    <Check className="w-3 h-3" /> 完成
-                                </button>
+                                <button onClick={() => setIsRepositioning(false)} className="px-3 py-1.5 bg-[#45846D] text-white text-xs font-bold rounded-full shadow-lg hover:bg-[#3A705C] transition-colors flex items-center gap-1"><Check className="w-3 h-3" /> 完成</button>
                             ) : (
                                 <>
-                                    <button 
-                                        onClick={() => setIsRepositioning(true)}
-                                        className="w-8 h-8 bg-black/30 backdrop-blur-md rounded-full text-white flex items-center justify-center border border-white/20 hover:bg-black/50 transition-colors"
-                                        title="調整位置"
-                                    >
-                                        <Crop className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button 
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="w-8 h-8 bg-black/30 backdrop-blur-md rounded-full text-white flex items-center justify-center border border-white/20 hover:bg-black/50 transition-colors"
-                                        title="更換圖片"
-                                    >
-                                        <Camera className="w-3.5 h-3.5" />
-                                    </button>
+                                    <button onClick={() => setIsRepositioning(true)} className="w-8 h-8 bg-black/30 backdrop-blur-md rounded-full text-white flex items-center justify-center border border-white/20 hover:bg-black/50 transition-colors"><Crop className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => fileInputRef.current?.click()} className="w-8 h-8 bg-black/30 backdrop-blur-md rounded-full text-white flex items-center justify-center border border-white/20 hover:bg-black/50 transition-colors"><Camera className="w-3.5 h-3.5" /></button>
                                 </>
                             )}
                         </div>
                         <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                     </div>
 
-                    {/* === BLOCK B: Date Ticket (The Phantom Input) === */}
+                    {/* === BLOCK B: Date Ticket (Clean Text Only) === */}
                     <div className="bg-white rounded-[24px] p-5 shadow-sm border border-white relative overflow-hidden">
                         {/* Decorative Notches */}
                         <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-[#F2F2F2] rounded-full" />
                         <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-[#F2F2F2] rounded-full" />
                         
+                        {/* Header Label */}
                         <div className="flex justify-between items-center mb-4 px-1">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                                 <Calendar className="w-3 h-3" /> Date Period
@@ -238,158 +217,167 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                             </span>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2">
-                            {/* Start Date */}
-                            <div className="flex-1 relative group cursor-pointer">
-                                <span className="block text-[9px] font-bold text-gray-400 mb-1 tracking-wider uppercase text-left pl-1">DEPART</span>
-                                <div className="relative bg-gray-50 rounded-xl px-3 py-2 border border-transparent group-hover:border-[#45846D]/30 transition-colors">
-                                    {/* Display Layer (Pretty) */}
-                                    <span className="block text-sm font-bold font-mono text-[#1D1D1B] tracking-tight text-center">
-                                        {formatDateDisplay(startDate)}
+                        <div className="flex items-center justify-between gap-4 px-1">
+                            
+                            {/* --- DEPART ZONE (Left) --- */}
+                            <div 
+                                className="flex-1 cursor-pointer group flex flex-col items-start"
+                                onClick={() => startDateRef.current?.showPicker()}
+                            >
+                                <span className="text-[9px] font-bold text-gray-400 mb-1 block tracking-wider uppercase">DEPART</span>
+                                {/* Date Text Only (Icon Removed) */}
+                                <div className="flex flex-col items-start w-full">
+                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">
+                                        {startParts.md}
                                     </span>
-                                    {/* Trigger Layer (Phantom) */}
-                                    <input 
-                                        type="date" 
-                                        value={startDate}
-                                        onChange={(e) => {
-                                            setStartDate(e.target.value);
-                                            if(e.target.value > endDate) setEndDate(e.target.value);
-                                        }}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
+                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">
+                                        {startParts.y}
+                                    </span>
                                 </div>
+                                {/* Hidden Input (Force Triggered) */}
+                                <input 
+                                    ref={startDateRef}
+                                    type="date" 
+                                    value={startDate} 
+                                    onChange={(e) => { 
+                                        setStartDate(e.target.value); 
+                                        if(e.target.value > endDate) setEndDate(e.target.value); 
+                                    }} 
+                                    className="hidden" 
+                                />
                             </div>
 
-                            {/* Divider Icon */}
-                            <div className="flex flex-col items-center justify-center pt-4 opacity-20 px-1">
-                                <Plane className="w-4 h-4 text-[#1D1D1B] rotate-90" />
+                            {/* Divider (Simple Dashed Line) */}
+                            <div className="w-px h-10 bg-gray-100 border-r border-dashed border-gray-300 mx-2" />
+
+                            {/* --- RETURN ZONE (Right) --- */}
+                            <div 
+                                className="flex-1 cursor-pointer group flex flex-col items-end"
+                                onClick={() => endDateRef.current?.showPicker()}
+                            >
+                                <span className="text-[9px] font-bold text-gray-400 mb-1 block tracking-wider uppercase">RETURN</span>
+                                {/* Date Text Only (Icon Removed) */}
+                                <div className="flex flex-col items-end w-full">
+                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">
+                                        {endParts.md}
+                                    </span>
+                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">
+                                        {endParts.y}
+                                    </span>
+                                </div>
+                                {/* Hidden Input */}
+                                <input 
+                                    ref={endDateRef}
+                                    type="date" 
+                                    value={endDate} 
+                                    min={startDate} 
+                                    onChange={(e) => setEndDate(e.target.value)} 
+                                    className="hidden"
+                                />
                             </div>
 
-                            {/* End Date */}
-                            <div className="flex-1 relative group cursor-pointer">
-                                <span className="block text-[9px] font-bold text-gray-400 mb-1 tracking-wider uppercase text-right pr-1">RETURN</span>
-                                <div className="relative bg-gray-50 rounded-xl px-3 py-2 border border-transparent group-hover:border-[#45846D]/30 transition-colors">
-                                    {/* Display Layer */}
-                                    <span className="block text-sm font-bold font-mono text-[#1D1D1B] tracking-tight text-center">
-                                        {formatDateDisplay(endDate)}
-                                    </span>
-                                    {/* Trigger Layer */}
-                                    <input 
-                                        type="date" 
-                                        value={endDate}
-                                        min={startDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
-                                </div>
-                            </div>
                         </div>
                     </div>
-
-                    {/* === BLOCK C: Travelers (Visible Remove Button) === */}
-                    <div className="bg-white rounded-[24px] p-5 shadow-sm border border-white">
-                        <div className="flex justify-between items-center mb-4 px-1">
+                    {/* === BLOCK C: Travelers (White Card) === */}
+                    <div className="bg-white rounded-[24px] p-3 shadow-sm border border-white">
+                        <div className="flex justify-between items-center mb-2 px-2">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                                 <Users className="w-3 h-3" /> The Squad
                             </label>
                             <span className="text-[10px] font-bold text-gray-300">{members.length} People</span>
                         </div>
                         
-                        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-1 px-1">
-                            {/* Add Button */}
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1">
                             <button 
                                 onClick={() => setIsAddingMember(true)}
-                                className="w-12 h-12 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-[#45846D] hover:text-[#45846D] hover:bg-[#45846D]/5 transition-all shrink-0 active:scale-95"
+                                className="w-10 h-10 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-[#45846D] hover:text-[#45846D] hover:bg-[#45846D]/5 transition-all shrink-0 active:scale-95"
                             >
-                                <Plus className="w-5 h-5" />
+                                <Plus className="w-4 h-4" />
                             </button>
-
-                            {/* Member Avatars */}
                             {members.map(member => {
                                 const isMe = (member.id === user.id) || (member.isHost) || (member.name === user.name);
                                 const displayAvatar = isMe ? user.avatar : member.avatar;
-
                                 return (
                                     <div key={member.id} className="relative shrink-0">
-                                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-gray-100 relative">
+                                        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-gray-100 relative">
                                             <img src={displayAvatar} alt={member.name} className="w-full h-full object-cover" />
                                             {member.isHost && <div className="absolute inset-0 border-2 border-[#45846D] rounded-full" />}
                                         </div>
-                                        
-                                        {/* Remove Button (Always Visible for Non-Host) */}
                                         {!member.isHost && (
                                             <button 
                                                 onClick={() => setMembers(members.filter(m => m.id !== member.id))}
-                                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md border border-white active:scale-90 transition-transform z-10"
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md border border-white active:scale-90 transition-transform z-10"
                                             >
-                                                <Minus className="w-3 h-3" />
+                                                <Minus className="w-2.5 h-2.5" />
                                             </button>
                                         )}
-                                        
-                                        <span className="text-[9px] font-bold text-gray-500 text-center block mt-1.5 truncate max-w-[50px]">
-                                            {isMe ? '我' : member.name}
-                                        </span>
                                     </div>
                                 );
                             })}
                         </div>
-
-                        {/* Quick Add Input (Inline) */}
                         {isAddingMember && (
-                            <div className="mt-4 flex items-center gap-2 animate-in fade-in slide-in-from-left-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+                            <div className="mt-2 flex items-center gap-2 animate-in fade-in slide-in-from-left-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
                                 <input 
                                     autoFocus
-                                    className="flex-1 bg-transparent text-xs font-bold px-3 py-2 outline-none text-[#1D1D1B] placeholder-gray-400"
-                                    placeholder="輸入新旅伴名字..."
+                                    className="flex-1 bg-transparent text-xs font-bold px-3 py-1.5 outline-none text-[#1D1D1B] placeholder-gray-400"
+                                    placeholder="名字..."
                                     value={newMemberName}
                                     onChange={e => setNewMemberName(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddMember()}
                                 />
-                                <button onClick={handleAddMember} className="p-2 bg-[#1D1D1B] text-white rounded-xl hover:bg-black active:scale-95 transition-transform shadow-sm">
-                                    <Check className="w-3.5 h-3.5" />
+                                <button onClick={handleAddMember} className="p-1.5 bg-[#1D1D1B] text-white rounded-lg hover:bg-black active:scale-95 transition-transform shadow-sm">
+                                    <Check className="w-3 h-3" />
                                 </button>
                             </div>
                         )}
                     </div>
+                    
+                    {/* Spacer */}
+                    <div className="h-2" />
 
-                    {/* === BLOCK D: Reminder Toggle === */}
+                   {/* === BLOCK D: Reminder (Transparent Bar) === */}
                     <button 
                         onClick={() => setReminderEnabled(!reminderEnabled)}
-                        className={`w-full p-5 rounded-[24px] border flex items-center justify-between transition-all group ${reminderEnabled ? 'bg-[#1D1D1B] border-[#1D1D1B] text-white shadow-md' : 'bg-white border-white text-gray-400 shadow-sm'}`}
+                        className="w-full h-16 px-5 rounded-[24px] flex items-center justify-between transition-all hover:bg-gray-50 active:scale-[0.99]"
                     >
-                        <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${reminderEnabled ? 'bg-white/20' : 'bg-gray-100'}`}>
-                                <Bell className="w-5 h-5" />
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-[#45846D]">
+                                <Bell className="w-4 h-4" />
                             </div>
-                            <div className="text-left">
-                                <span className="block text-sm font-bold">出發提醒</span>
-                                <span className={`text-[10px] ${reminderEnabled ? 'text-white/60' : 'text-gray-300'}`}>
-                                    {reminderEnabled ? '將在行程前一天通知' : '已關閉通知'}
-                                </span>
-                            </div>
+                            <span className="text-sm font-bold text-[#1D1D1B]">出發提醒</span>
                         </div>
-                        <div className={`w-12 h-7 rounded-full p-1 transition-colors duration-300 ${reminderEnabled ? 'bg-white/20' : 'bg-gray-200'}`}>
+                        <div className={`w-12 h-7 rounded-full p-1 transition-colors duration-300 ${reminderEnabled ? 'bg-[#45846D]' : 'bg-gray-200'}`}>
                             <div className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${reminderEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                         </div>
                     </button>
 
-                    {/* === BLOCK E: Danger Zone (Full Width Bar) === */}
-                    <div className="pt-4 pb-2">
-                        <button 
-                            onClick={() => {
-                                if(confirm('確定要刪除此行程嗎？此動作無法復原。')) onDelete();
-                            }}
-                            className="w-full py-4 rounded-[20px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-100 active:scale-95 transition-all"
-                        >
-                            <Trash2 className="w-4 h-4" /> 刪除整個行程
-                        </button>
+                    {/* [修正] 分隔線 (Divider) - 改用 gray-200 加深顏色確保可見 */}
+                    <div className="mx-5 my-2 h-px bg-gray-300" />
+
+                    {/* === BLOCK E: Delete (Text Only, No Icon) === */}
+                    <button 
+                        onClick={() => { if(confirm('確定要刪除此行程嗎？此動作無法復原。')) onDelete(); }}
+                        // 修改處：移除了 gap-2，保留 flex justify-center 讓文字置中
+                        className="w-full h-12 px-5 rounded-[24px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center hover:bg-red-100 active:scale-[0.99] transition-all"
+                    >
+                        {/* 修改處：已移除 Trash2 icon */}
+                        <span>刪除整個行程</span>
+                    </button>
+
                     </div>
 
-                </div>
-
-                {/* Footer Save (Sticky) */}
+                {/* === BLOCK F: Save Bar (Sticky Bottom, Black) === */}
                 <div className="p-4 pt-2 bg-[#F2F2F2] sticky bottom-0 z-20 border-t border-gray-200/50 backdrop-blur-sm">
-                    <IOSButton fullWidth onClick={handleSave}>儲存設定</IOSButton>
+                    <button 
+                        onClick={handleSave}
+                        className="h-12 w-full rounded-[24px] bg-[#1D1D1B] text-white flex items-center justify-center gap-2 shadow-lg hover:bg-black active:scale-[0.99] transition-transform"
+                    >
+                        {/* 1. 加入儲存圖示 (大小設為 w-4 h-4) */}
+                        <Save className="w-4 h-4" />
+                        
+                        {/* 2. 修改文字大小 (text-base -> text-sm) */}
+                        <span className="text-sm font-bold tracking-wide">儲存設定</span>
+                    </button>
                 </div>
             </div>
         </div>
