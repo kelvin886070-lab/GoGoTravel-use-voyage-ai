@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     ArrowLeft, List, Map, Plus, Settings, 
-    Train, Plane, Calendar, Ticket, Wallet, 
+    Train, Plane, Ticket, Wallet, 
     MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
-    Briefcase, PlusCircle, Share, Bell, CheckCircle2, Camera // 保留 Camera 給預覽用，雖然 UI 移除了
+    Briefcase, PlusCircle, Share, ListChecks 
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User } from '../../types'; 
@@ -12,7 +12,7 @@ import { recalculateTimeline } from '../../services/timeline';
 
 import { GlassCapsule } from '../../components/common/GlassCapsule';
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
-import { CURRENCY_SYMBOLS, isSystemType } from './shared';
+import { isSystemType } from './shared';
 
 import { ExpenseDashboard } from './components/ExpenseDashboard';
 import { DayRouteCard } from './components/DayRouteCard';
@@ -30,9 +30,19 @@ import { TripSettingsModal } from './modals/TripSettingsModal';
 import { ActivityDetailModal } from './modals/ActivityDetailModal';
 import { DocumentPickerModal } from './modals/DocumentPickerModal';
 import { DocumentEditModal } from './modals/DocumentEditModal';
+import { TripRemindersModal, type TodoItem } from './modals/TripRemindersModal'; 
 
-import { IOSInput } from '../../components/UI'; 
 import { IOSShareSheet } from '../../components/UI';
+
+// --- Default Checklist Data ---
+const DEFAULT_TODOS: TodoItem[] = [
+    { id: '1', text: '預訂來回機票', isCompleted: false },
+    { id: '2', text: '預訂住宿飯店', isCompleted: false },
+    { id: '3', text: '檢查護照效期 (需6個月以上)', isCompleted: false },
+    { id: '4', text: '購買旅遊保險', isCompleted: false },
+    { id: '5', text: '購買當地網卡 / 開通漫遊', isCompleted: false },
+    { id: '6', text: '線上預辦登機', isCompleted: false, time: '24:00' }, 
+];
 
 const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => (
     <div className="relative flex items-center gap-3 my-6 animate-in fade-in slide-in-from-left duration-700 opacity-80">
@@ -77,8 +87,7 @@ interface ItineraryViewProps {
     folders?: VaultFolder[];
     files?: VaultFile[];
     documents?: Document[]; 
-    user?: User; // [New] 接收 User 資料
-    
+    user?: User; 
     onBack: () => void;
     onDelete: () => void; 
     onUpdateTrip: (t: Trip) => void;
@@ -98,23 +107,27 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     onRefreshVault,
     onLocalFileUpdate
 }) => {
-    // 確保 User 存在 (Fallback)
+    // User Fallback
     const currentUser: User = user || {
         id: 'me',
         name: '我',
         avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kelvin',
         joinedDate: new Date().toISOString()
     };
-
-    const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     
+    // UI States
+    const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isDateEditOpen, setIsDateEditOpen] = useState(false);
     const [isDaysEditOpen, setIsDaysEditOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isDocPickerOpen, setIsDocPickerOpen] = useState(false);
+    const [isRemindersOpen, setIsRemindersOpen] = useState(false); 
     const [editingDoc, setEditingDoc] = useState<(Document & { folderName?: string }) | null>(null);
 
+    // Data States
+    const [todos, setTodos] = useState<TodoItem[]>(DEFAULT_TODOS); 
+    
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showVault, setShowVault] = useState(false);
@@ -124,18 +137,22 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity, initialEdit: boolean } | null>(null);
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
-    const fileInputRef = useRef<HTMLInputElement>(null); // 保留 ref 給封面更換用 (雖然現在移到 Settings 了)
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Notification Logic Ref
+    const notifiedRef = useRef<Set<string>>(new Set());
 
     const currencyCode = trip.currency || 'TWD';
+    
+    // Helpers
+    const incompleteTodosCount = todos.filter(t => !t.isCompleted).length;
+
     const linkedDocs = useMemo(() => {
         if (!trip.linkedDocumentIds || trip.linkedDocumentIds.length === 0) return [];
-        
         const foundFiles = files.filter(f => trip.linkedDocumentIds?.includes(f.id));
-        
         return foundFiles.map(f => {
             const parentFolder = folders.find(folder => folder.id === f.parentId);
             const folderName = parentFolder ? parentFolder.name : '一般文件';
-
             return {
                 id: f.id,
                 title: f.name,
@@ -170,10 +187,46 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     }, []);
 
+    // --- Notification Engine (背景通知監聽器) ---
+    useEffect(() => {
+        const checkNotifications = () => {
+            if (Notification.permission !== 'granted') return;
+
+            const now = new Date();
+            const currentYYYYMMDD = now.toISOString().split('T')[0];
+            const currentHHMM = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+            todos.forEach(todo => {
+                if (!todo.isCompleted && todo.date && todo.time) {
+                    if (todo.date === currentYYYYMMDD && todo.time === currentHHMM) {
+                        const notificationKey = `${todo.id}-${currentYYYYMMDD}-${currentHHMM}`;
+                        if (!notifiedRef.current.has(notificationKey)) {
+                            new Notification(`🔔 行前提醒：${todo.text}`, {
+                                body: `時間到了！記得處理您的待辦事項。`,
+                                icon: '/icon-192x192.png'
+                            });
+                            notifiedRef.current.add(notificationKey);
+                        }
+                    }
+                }
+            });
+        };
+        const intervalId = setInterval(checkNotifications, 15000);
+        return () => clearInterval(intervalId);
+    }, [todos]);
+
+    const requestNotificationPermission = () => {
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    };
+
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file); } };
     const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); };
     const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
+    
     const handleDateUpdate = (newDate: string) => { onUpdateTrip({ ...trip, startDate: newDate }); setIsDateEditOpen(false); };
+    
     const handleDaysUpdate = (newDaysCount: number) => {
         let newDays = [...trip.days];
         if (newDaysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
@@ -194,11 +247,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     };
     
-    // 處理文件編輯後的刷新
     const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
-        if (onLocalFileUpdate) {
-            onLocalFileUpdate(updatedDoc);
-        }
+        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc); }
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -212,6 +262,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         if (sourceDayIndex !== destDayIndex) newTrip.days[sourceDayIndex] = recalculateTimeline(newTrip.days[sourceDayIndex]);
         onUpdateTrip(newTrip);
     };
+
     const handleAddActivity = (newActivity: Activity) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const dayIdx = activeDayForAdd - 1;
@@ -221,6 +272,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         onUpdateTrip(newTrip);
         setIsAddModalOpen(false);
     };
+
     const handleQuickAdd = async (type: 'activity' | 'transport' | 'note' | 'expense' | 'ai') => {
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
@@ -252,6 +304,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             if (['note', 'expense', 'transport'].includes(type)) { setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true }); }
         }
     };
+
     const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         newTrip.days[dayIndex].activities.splice(activityIndex, 1);
@@ -269,24 +322,17 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setSelectedActivity(null);
     }
 
-    // Helper: 計算每週的日期資訊
     const getDateInfo = (startDate: string, dayOffset: number) => {
         if (!startDate) return { dateStr: '--.--', weekDay: '---', isToday: false };
         const [y, m, d] = startDate.split('-').map(Number);
-        
-        // 使用本地時間構造，防止時區跑掉
         const date = new Date(y, m - 1, d);
         date.setDate(date.getDate() + dayOffset);
-
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
         const weekDay = date.toLocaleDateString('en-US', { weekday: 'short' });
-        
-        // 嚴格比對今天
         const today = new Date();
         today.setHours(0,0,0,0);
         const isToday = date.getTime() === today.getTime();
-
         return { dateStr: `${mm}.${dd}`, weekDay, isToday };
     };
 
@@ -297,7 +343,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
                     <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
                     <div className="flex gap-3 pointer-events-auto">
-                        {/* [Modified] 移除 Camera，改為 Share (呼叫 handleShare) */}
                         <button onClick={handleShare} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Share className="w-5 h-5" /></button>
                         <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
                     </div>
@@ -312,7 +357,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 
                 <div className="absolute inset-0 px-6 pt-20 pb-3 flex flex-col justify-end z-20">
                     <div className="absolute top-20 left-6 right-6 pointer-events-none">
-                        <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
+                         <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
                             <div><span className="text-[10px] font-bold text-white/50 tracking-[0.2em] block mb-1 uppercase">FROM</span><span className="text-5xl font-black font-sans tracking-tight text-white uppercase">{flightDisplayOrigin}</span></div>
                             <div className="mb-2 opacity-80 animate-pulse">{firstType === 'train' ? <Train className="w-8 h-8 text-white" /> : <Plane className="w-8 h-8 text-white" />}</div>
                             <div className="text-right"><span className="text-[10px] font-bold text-white/50 tracking-[0.2em] block mb-1 uppercase">TO</span><span className="text-5xl font-black font-sans tracking-tight text-white uppercase">{flightDisplayDest}</span></div>
@@ -320,14 +365,35 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                     </div>
 
                     <div className="mt-auto relative z-30 flex items-end justify-between">
+                        {/* 左側資訊列 (Vertical Stack) */}
                         <div className="flex flex-col gap-2 items-start">
-                            {/* 暫時維持原樣，待 Step 4 改為 Reminders Modal */}
-                            <GlassCapsule onClick={() => setIsDateEditOpen(true)} className="text-[10px] sm:text-xs"><Calendar className="w-3.5 h-3.5" /> {trip.startDate}</GlassCapsule>
-                            <GlassCapsule onClick={() => setIsDaysEditOpen(true)} className="text-[10px] sm:text-xs">{trip.days.length} DAYS</GlassCapsule>
+                            {/* 1. 憑證按鈕 (TOP) */}
+                            <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); }} className="text-[10px] sm:text-xs">
+                                <Ticket className="w-3.5 h-3.5" /> 
+                                憑證 ({linkedDocs.length})
+                            </GlassCapsule>
+
+                            {/* 2. 行前提醒按鈕 (BOTTOM) */}
+                            <GlassCapsule onClick={() => { setIsRemindersOpen(true); requestNotificationPermission(); }} className="text-[10px] sm:text-xs relative">
+                                <ListChecks className="w-3.5 h-3.5" /> 
+                                行前提醒
+                                {incompleteTodosCount > 0 && (
+                                    <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white"></span>
+                                    </div>
+                                )}
+                            </GlassCapsule>
                         </div>
-                        <div className="flex flex-col gap-2 items-end">
-                            <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); }} className="text-[10px] sm:text-xs"><Ticket className="w-3.5 h-3.5" /> 憑證 ({linkedDocs.length})</GlassCapsule>
-                            <GlassCapsule isActive={showExpenses} onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }} className="text-[10px] sm:text-xs"><Wallet className="w-3.5 h-3.5" /> {currencyCode}</GlassCapsule>
+
+                        {/* 右側工具 (錢包) */}
+                        <div className="flex items-end">
+                            <button 
+                                onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm border border-white/10 backdrop-blur-md ${showExpenses ? 'bg-white text-[#1D1D1B]' : 'bg-black/20 text-white hover:bg-black/30'}`}
+                            >
+                                <Wallet className="w-5 h-5" />
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -350,11 +416,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 -mx-5 px-5 snap-x">
                                 {linkedDocs.map(doc => (
                                     <div key={doc.id} className="snap-center">
-                                        <VaultCard 
-                                            doc={doc} 
-                                            onRemove={() => handleUnlinkDocument(doc.id)}
-                                            onEdit={() => setEditingDoc(doc)}
-                                        />
+                                        <VaultCard doc={doc} onRemove={() => handleUnlinkDocument(doc.id)} onEdit={() => setEditingDoc(doc)} />
                                     </div>
                                 ))}
                                 <button 
@@ -373,9 +435,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                     </div>
                                     <div className="space-y-1">
                                         <h3 className="font-bold text-base text-[#1D1D1B]">尚未加入憑證</h3>
-                                        <p className="text-gray-500 text-[11px] leading-relaxed max-w-[200px] mx-auto">
-                                            建議加入：護照、機票、訂房確認信
-                                        </p>
+                                        <p className="text-gray-500 text-[11px] leading-relaxed max-w-[200px] mx-auto">建議加入：護照、機票、訂房確認信</p>
                                     </div>
                                     <button 
                                         onClick={() => setIsDocPickerOpen(true)}
@@ -398,36 +458,28 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 const lastActivityTime = activities.length > 0 ? activities[activities.length - 1].time : '00:00';
                                 const isEndOfDay = isCurrentDay && currentTime > lastActivityTime && activities.length > 0;
                                 const isTripEnd = dayIndex === trip.days.length - 1;
-                                
-                                // 取得日期資訊
                                 const dayInfo = getDateInfo(trip.startDate, dayIndex);
 
                                 return (
-                                    /* 使用 pb-16 (64px) 強制撐開底部內距 */
                                     <div key={day.day} className="relative pl-6 border-l-2 border-dashed border-[#45846D]/20 pb-16">
                                         <div className={`absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-4 border-[#E4E2DD] shadow-sm transition-colors ${dayInfo.isToday ? 'bg-[#45846D] scale-110' : 'bg-gray-300'}`} />
                                         
-                                        {/* Magazine Style Timeline Header */}
                                         <div className="flex justify-between items-end -mt-2 mb-6">
                                             <div className="flex flex-col">
-                                                {/* 主標：02.03 */}
                                                 <span className={`text-4xl font-black font-serif tracking-tighter leading-none mb-1 ${dayInfo.isToday ? 'text-[#45846D]' : 'text-[#1D1D1B]'}`}>
                                                     {dayInfo.dateStr}
                                                 </span>
-                                                
-                                                {/* 副標：Tue | DAY 1 | Today */}
                                                 <div className={`flex items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase ${dayInfo.isToday ? 'text-[#45846D]' : 'text-gray-400'}`}>
                                                     <span>{dayInfo.weekDay}</span>
                                                     <span className="opacity-30">|</span>
                                                     <span>DAY {day.day}</span>
-                                                    
                                                     {dayInfo.isToday && (
                                                         <>
                                                             <span className="opacity-30">|</span>
                                                             <span className="flex items-center gap-1.5 text-[#45846D]">
                                                                 <span className="relative flex h-1.5 w-1.5">
-                                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#45846D] opacity-75"></span>
-                                                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#45846D]"></span>
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#45846D] opacity-75"></span>
+                                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#45846D]"></span>
                                                                 </span>
                                                                 TODAY
                                                             </span>
@@ -442,7 +494,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                             {(provided) => (
                                                 <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0 min-h-[50px]">
                                                     {activities.length === 0 && <EmptyDayPlaceholder provided={provided} />}
-                                                    
                                                     {activities.map((act: Activity, index: number) => {
                                                         const isNextActivity = isCurrentDay && act.time > currentTime && (index === 0 || activities[index - 1].time <= currentTime);
                                                         return (
@@ -492,25 +543,20 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             {selectedActivity && <ActivityDetailModal act={selectedActivity.activity} onClose={() => setSelectedActivity(null)} onSave={handleUpdateActivity} onDelete={() => handleDeleteActivity(selectedActivity.dayIdx, selectedActivity.actIdx)} members={trip.members} initialEdit={selectedActivity.initialEdit} currencySymbol={currencyCode === 'TWD' ? 'NT$' : '$'} />}
             
             {isDocPickerOpen && (
-                <DocumentPickerModal 
-                    documents={documents} 
-                    folders={folders}     
-                    files={files}         
-                    initialSelectedIds={trip.linkedDocumentIds || []}
-                    onClose={() => setIsDocPickerOpen(false)}
-                    onSave={handleLinkDocuments}
-                />
+                <DocumentPickerModal documents={documents} folders={folders} files={files} initialSelectedIds={trip.linkedDocumentIds || []} onClose={() => setIsDocPickerOpen(false)} onSave={handleLinkDocuments} />
             )}
             
-            {editingDoc && (
-                <DocumentEditModal
-                    doc={editingDoc}
-                    folders={folders}
-                    onClose={() => setEditingDoc(null)}
-                    onSave={handleDocumentSave}
+            {editingDoc && <DocumentEditModal doc={editingDoc} folders={folders} onClose={() => setEditingDoc(null)} onSave={handleDocumentSave} />}
+            
+            {isRemindersOpen && (
+                <TripRemindersModal 
+                    todos={todos} 
+                    onUpdateTodos={setTodos} 
+                    startDate={trip.startDate}
+                    onClose={() => setIsRemindersOpen(false)} 
                 />
             )}
-            
+
             <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} />
             
             {isPlusMenuOpen && (
