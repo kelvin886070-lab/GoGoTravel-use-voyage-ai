@@ -100,7 +100,7 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                         <div className="flex items-center gap-2">
                             <h2 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">行前待辦</h2>
                             <span className="bg-[#45846D] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                {activeTodos.length}
+                                {activeTodos.length} 待完成
                             </span>
                         </div>
                         {/* 唯讀日期顯示 */}
@@ -257,7 +257,7 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                                     />
                                 </div>
 
-                                {/* Date & Time Row */}
+                                {/* Date & Time Row [Modified] */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
@@ -267,7 +267,8 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                                             type="date"
                                             value={editingTodo.date || ''}
                                             onChange={(e) => setEditingTodo({ ...editingTodo, date: e.target.value })}
-                                            className="w-full bg-gray-50 text-sm font-bold text-[#1D1D1B] p-3 rounded-2xl outline-none border border-transparent focus:bg-white focus:border-[#45846D]/30"
+                                            // 修正：bg-white + border border-gray-200，解決重疊與視覺不清問題
+                                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] p-3 rounded-2xl outline-none border border-gray-200 focus:border-[#45846D] transition-colors appearance-none"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -278,14 +279,16 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                                             type="time"
                                             value={editingTodo.time || ''}
                                             onChange={(e) => setEditingTodo({ ...editingTodo, time: e.target.value })}
-                                            className="w-full bg-gray-50 text-sm font-bold text-[#1D1D1B] p-3 rounded-2xl outline-none border border-transparent focus:bg-white focus:border-[#45846D]/30"
+                                            // 修正：bg-white + border border-gray-200
+                                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] p-3 rounded-2xl outline-none border border-gray-200 focus:border-[#45846D] transition-colors appearance-none"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Sheet Footer (Delete) - Added Padding Bottom */}
-                            <div className="p-4 bg-gray-50 border-t border-gray-100 mt-auto pb-8">
+                            {/* Sheet Footer (Delete) [Modified] */}
+                            {/* 修正：移除 bg-gray-50，改為 bg-white，保持底部純白 */}
+                            <div className="p-4 bg-white border-t border-gray-100 mt-auto pb-8">
                                 <button 
                                     onClick={() => deleteTodo(editingTodo.id)}
                                     className="w-full py-3 bg-white border border-red-100 text-red-500 rounded-xl text-sm font-bold shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
