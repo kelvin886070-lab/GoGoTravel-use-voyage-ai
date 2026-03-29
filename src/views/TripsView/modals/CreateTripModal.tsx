@@ -5,20 +5,21 @@ import {
     Coffee, Footprints, Zap, Book, MapPin, Scale, Landmark, Mountain, 
     Coins, ChevronDown, Sparkles, PlaneTakeoff, PlaneLanding, ArrowLeftRight,
     Loader2, Calendar, ArrowRight, History, Plus, Globe, Map, Check,
-    Sunrise, Sun, Moon, Home // [New] 導入 Home icon
+    Sunrise, Sun, Moon, Home 
 } from 'lucide-react';
 import { IOSButton, IOSInput } from '../../../components/UI';
 import { generateItinerary, lookupFlightInfo } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
 import type { Trip, TripDay } from '../../../types';
-import { INTEREST_DATA, CURRENCIES } from '../shared';
+import { INTEREST_DATA, CURRENCIES, DESTINATION_DICTIONARY } from '../shared';
+import type { DestinationNode } from '../shared';
 
 // ============================================================================
 // 動態主題設定 (Chameleon Theme Mechanism)
 // ============================================================================
 const themes = {
     international: {
-        hex: '#C2A878', // 香檳沙金 (Champagne Gold)
+        hex: '#C2A878', 
         bg: 'bg-[#C2A878]',
         text: 'text-[#C2A878]',
         border: 'border-[#C2A878]',
@@ -28,10 +29,13 @@ const themes = {
         focusRing: 'focus:ring-[#C2A878]/30', 
         hoverText: 'hover:text-[#C2A878]',
         hoverBorder: 'hover:border-[#C2A878]',
-        ring: 'ring-[#C2A878]'
+        ring: 'ring-[#C2A878]',
+        ghostButton: 'border-[#C2A878] text-[#C2A878] hover:bg-[#C2A878] hover:text-white bg-white/80 backdrop-blur-sm',
+        ghostSubtitle: 'text-gray-400 group-hover:text-white/90',
+        cityPill: 'bg-white border-gray-200 text-gray-600 hover:border-[#C2A878] hover:text-[#C2A878] hover:bg-[#C2A878]/5'
     },
     domestic: {
-        hex: '#D97757', // 磚紅 (Terracotta)
+        hex: '#D97757', 
         bg: 'bg-[#D97757]',
         text: 'text-[#D97757]',
         border: 'border-[#D97757]',
@@ -41,33 +45,51 @@ const themes = {
         focusRing: 'focus:ring-[#D97757]/30', 
         hoverText: 'hover:text-[#D97757]',
         hoverBorder: 'hover:border-[#D97757]',
-        ring: 'ring-[#D97757]'
+        ring: 'ring-[#D97757]',
+        ghostButton: 'border-[#D97757] text-[#D97757] hover:bg-[#D97757] hover:text-white bg-white/80 backdrop-blur-sm',
+        ghostSubtitle: 'text-gray-400 group-hover:text-white/90',
+        cityPill: 'bg-white border-gray-200 text-gray-600 hover:border-[#D97757] hover:text-[#D97757] hover:bg-[#D97757]/5'
     }
 };
 
 // ============================================================================
-// Main Component: CreateTripModal
+// 出發地預設選單資料 (Origin Options)
 // ============================================================================
+const ORIGIN_OPTIONS = {
+    international: [
+        { code: 'TPE', label: '桃園機場', icon: '✈️' },
+        { code: 'TSA', label: '松山機場', icon: '✈️' },
+        { code: 'KHH', label: '高雄小港', icon: '✈️' },
+        { code: 'RMQ', label: '台中清泉崗', icon: '✈️' },
+    ],
+    domestic: [
+        { code: '台北', label: '北部出發', icon: '🚄' },
+        { code: '台中', label: '中部出發', icon: '🚄' },
+        { code: '高雄', label: '南部出發', icon: '🚄' },
+        { code: '花蓮', label: '東部出發', icon: '🚄' },
+    ]
+};
+
 export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
-    // 總共 6 步
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     
-    // --- Step 1 Data (全新美圖) ---
-    const IMG_INTL = "https://images.unsplash.com/photo-1551120599-440aefce5263?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
-    const IMG_DOMESTIC = "https://images.unsplash.com/photo-1708436746451-1444945ff61c?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
+    // --- Step 1 Data ---
+    const IMG_INTL = "https://images.unsplash.com/photo-1551120599-440aefce5263?q=80&w=987&auto=format&fit=crop";
+    const IMG_DOMESTIC = "https://images.unsplash.com/photo-1708436746451-1444945ff61c?q=80&w=1974&auto=format&fit=crop";
 
-    // --- Step 2 Data (Destination & Origin) ---
+    // --- Step 2 Data ---
     const [tripType, setTripType] = useState<'international' | 'domestic'>('international'); 
     const [destinations, setDestinations] = useState<string[]>([]); 
     const [destinationInput, setDestinationInput] = useState(''); 
     const destinationInputRef = useRef<HTMLInputElement>(null);
     const [bgImage, setBgImage] = useState(IMG_INTL); 
 
+    // 出發地狀態
     const [origin, setOrigin] = useState('TPE');
     const [isEditingOrigin, setIsEditingOrigin] = useState(false);
+    const [showOriginMenu, setShowOriginMenu] = useState(false);
     
-    // [動態主題套用] 貫穿 Step 2 ~ Step 6
     const theme = themes[tripType];
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -97,10 +119,10 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         }
     };
 
-    const addDestination = () => {
-        const val = destinationInput.trim();
-        if (val && !destinations.includes(val)) {
-            setDestinations([...destinations, val]);
+    const addDestination = (val: string = destinationInput) => {
+        const cleanVal = val.trim();
+        if (cleanVal && !destinations.includes(cleanVal)) {
+            setDestinations([...destinations, cleanVal]);
             setDestinationInput('');
             destinationInputRef.current?.focus();
         }
@@ -114,27 +136,101 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         setDestinations(destinations.filter(d => d !== tag));
     };
 
-    // --- Step 3 Data (UX 重構：時段與移動方式) ---
+    // ============================================================================
+    // ✨ 靈感雙層架構邏輯 + Fisher-Yates 隨機洗牌
+    // ============================================================================
+    const [activeCityRecs, setActiveCityRecs] = useState<DestinationNode[]>([]);
+    const [activeRouteRecs, setActiveRouteRecs] = useState<DestinationNode[]>([]);
+    const [smartConnectKeywords, setSmartConnectKeywords] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (step < 2) return;
+
+        const currentDict = DESTINATION_DICTIONARY[tripType];
+        const currentMonth = new Date(startDate).getMonth() + 1;
+
+        // 1. 季節過濾
+        const seasonValidNodes = currentDict.filter(node => 
+            !node.validMonths || node.validMonths.includes(currentMonth)
+        );
+
+        const query = destinationInput.trim().toLowerCase();
+
+        if (query === '') {
+            if (smartConnectKeywords.length > 0) {
+                // 模式 A：智能連線 (點選後觸發)
+                const connectedCities = seasonValidNodes.filter(node => 
+                    node.type === 'city' && smartConnectKeywords.some(k => 
+                        node.title.includes(k) || node.keywords.includes(k)
+                    )
+                );
+                setActiveCityRecs(connectedCities);
+                setActiveRouteRecs([]); 
+            } else {
+                // 模式 B：首頁預設 (隨機洗牌演算法)
+                const shuffleArray = <T,>(arr: T[]): T[] => {
+                    const copy = [...arr];
+                    for (let i = copy.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [copy[i], copy[j]] = [copy[j], copy[i]];
+                    }
+                    return copy;
+                };
+
+                const allCities = seasonValidNodes.filter(n => n.type === 'city');
+                const allRoutes = seasonValidNodes.filter(n => n.type === 'route');
+                
+                setActiveCityRecs(shuffleArray(allCities).slice(0, 5));
+                setActiveRouteRecs(shuffleArray(allRoutes).slice(0, 4));
+            }
+        } else {
+            // 模式 C：打字搜尋
+            const matched = seasonValidNodes.filter(node => 
+                node.title.toLowerCase().includes(query) || 
+                node.keywords.some(k => k.toLowerCase().includes(query))
+            );
+            setActiveCityRecs(matched.filter(n => n.type === 'city'));
+            setActiveRouteRecs(matched.filter(n => n.type === 'route'));
+            
+            if (smartConnectKeywords.length > 0) {
+                setSmartConnectKeywords([]); 
+            }
+        }
+    }, [destinationInput, tripType, startDate, step, smartConnectKeywords]);
+
+    const handleRecommendationClick = (node: DestinationNode) => {
+        const parts = node.title.split(' ');
+        let cleanName = parts.length > 1 ? parts[1] : node.title;
+        cleanName = cleanName.split('(')[0].split('（')[0].trim();
+        
+        addDestination(cleanName);
+        
+        if (node.connectsWith && node.connectsWith.length > 0) {
+            setSmartConnectKeywords(node.connectsWith);
+        } else {
+            setSmartConnectKeywords([]);
+        }
+    };
+
+
+    // --- Step 3 Data ---
     const [arrivalTime, setArrivalTime] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
     const [departureTime, setDepartureTime] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
     const [showTransportDetails, setShowTransportDetails] = useState(false);
-    
-    // 維持必要的底層資料
     const [transportMode, setTransportMode] = useState<'flight' | 'train' | 'time'>('flight');
     const [localTransportMode, setLocalTransportMode] = useState<'public' | 'car' | 'taxi'>('public');
     const [flightIn, setFlightIn] = useState('');
     const [flightOut, setFlightOut] = useState('');
 
-    // --- Step 4 Data (Companion & Style) ---
+    // --- Step 4 & 5 Data ---
     const [companion, setCompanion] = useState('couple');
     const [pace, setPace] = useState('standard');
     const [vibe, setVibe] = useState('balanced');
     const [budgetLevel, setBudgetLevel] = useState('standard');
     const [customBudget, setCustomBudget] = useState('');
     const [currency, setCurrency] = useState('TWD');
-
-    // --- Step 5 Data (Interests) ---
-    const [activeInterestTab, setActiveInterestTab] = useState('shopping');
+    
+    const [activeInterestTab, setActiveInterestTab] = useState<keyof typeof INTEREST_DATA>('shopping');
     const [interestDetails, setInterestDetails] = useState<Record<string, string>>({});
     const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
     const [specificRequests, setSpecificRequests] = useState('');
@@ -186,6 +282,9 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         - 預算：${budgetMap[budgetLevel]} ${customBudget ? `(${customBudget})` : ''}
         - 興趣細項：${interestsWithDetails || '無特別指定'}
         - 特別需求：${specificRequests || '無'}
+
+        [系統隱藏指令 - 行程美學與出片率校準]
+        ⚠️ 最高優先級：行程安排請務必注重「視覺體驗與空間美感」。請優先挑選具備高知名度、出片率極高、設計感強烈、或在各大社群平台上備受推崇的優質景點、質感餐廳與風格選物店。即使使用者選擇「經濟實惠」或「歷史文化」，也請在該框架內尋找最具視覺張力與美學價值的地點，拒絕平庸或缺乏特色的冷門行程。
         `;
     };
 
@@ -233,7 +332,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         onAddTrip(newTrip); onClose();
     };
 
-    // [小元件] Step 3 專用：早中晚時間按鈕
     const TimeButton = ({ type, label, icon, state, setState }: { type: 'morning'|'afternoon'|'evening', label: string, icon: React.ReactNode, state: string, setState: (v: any) => void }) => {
         const isSelected = state === type;
         return (
@@ -251,7 +349,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         );
     };
 
-    // [小元件] Step 3 專用：當地移動卡片
     const MobilityCard = ({ id, label, sub, icon }: { id: string, label: string, sub: string, icon: React.ReactNode }) => {
         const isSelected = localTransportMode === id;
         return (
@@ -272,7 +369,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         );
     };
 
-    // [小元件] Step 4/5 專用的 OptionCard
     const ThemedOptionCard = ({ id, selected, onClick, icon, label, sub }: { id: string, selected: boolean, onClick: () => void, icon: React.ReactNode, label: string, sub?: string }) => (
         <button
             onClick={onClick}
@@ -292,11 +388,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            
-            {/* Step 1 專用遮罩 */}
             {step === 1 && (<div className="absolute inset-0 bg-[#1D1D1B]/80 backdrop-blur-md transition-all duration-500 animate-in fade-in" onClick={onClose} />)}
-
-            {/* 沉浸式背景 (Step 2 以後顯示) */}
             {step > 1 && (
                 <div className="absolute inset-0 bg-[#1D1D1B] transition-all duration-1000 animate-in fade-in">
                     <img src={bgImage} className="w-full h-full object-cover opacity-60 blur-sm scale-105" alt="Background" />
@@ -304,14 +396,18 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                 </div>
             )}
             
-            {/* === Step 1: The Editorial Magazine Cover === */}
+            {/* === Step 1: 完美銜接出發地預設值 === */}
             {step === 1 && (
                 <div className="bg-[#1D1D1B] w-full max-w-sm h-[85vh] rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col animate-in zoom-in-95 duration-500 border border-white/10">
                     <div className="absolute top-6 left-0 right-0 z-50 flex justify-end px-6">
                         <button onClick={onClose} className="w-8 h-8 rounded-full bg-black/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/40 transition-colors"><X className="w-5 h-5" /></button>
                     </div>
 
-                    <div onClick={() => { setTripType('international'); setTransportMode('flight'); setStep(2); setBgImage(IMG_INTL); }} className="flex-1 relative group cursor-pointer overflow-hidden border-b border-white/10">
+                    <div onClick={() => { 
+                        setTripType('international'); setTransportMode('flight'); 
+                        setOrigin('TPE'); // 設定國際預設出發地
+                        setStep(2); setBgImage(IMG_INTL); 
+                    }} className="flex-1 relative group cursor-pointer overflow-hidden border-b border-white/10">
                         <img src={IMG_INTL} className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1.5s] ease-out group-hover:scale-110 opacity-80 group-hover:opacity-100" alt="International" />
                         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80" />
                         <div className="absolute bottom-8 left-8 right-8 transition-all duration-500 group-hover:translate-y-[-5px]">
@@ -322,7 +418,11 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                         </div>
                     </div>
 
-                    <div onClick={() => { setTripType('domestic'); setTransportMode('train'); setStep(2); setBgImage(IMG_DOMESTIC); }} className="flex-1 relative group cursor-pointer overflow-hidden">
+                    <div onClick={() => { 
+                        setTripType('domestic'); setTransportMode('train'); 
+                        setOrigin('台北'); // 設定國內預設出發地
+                        setStep(2); setBgImage(IMG_DOMESTIC); 
+                    }} className="flex-1 relative group cursor-pointer overflow-hidden">
                         <img src={IMG_DOMESTIC} className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1.5s] ease-out group-hover:scale-110 opacity-80 group-hover:opacity-100" alt="Domestic" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
                         <div className="absolute top-8 left-8 right-8 transition-all duration-500 group-hover:translate-y-[5px]">
@@ -335,11 +435,8 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                 </div>
             )}
 
-            {/* === Step 2~6: Wizard Container === */}
             {step > 1 && (
                 <div className="bg-white/90 backdrop-blur-xl w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-300">
-                    
-                    {/* Header with Dynamic Progress Bar */}
                     <div className="pt-6 px-6 pb-2 border-b border-gray-100/50 bg-white/50 sticky top-0 z-20 backdrop-blur-md">
                         <div className="flex justify-between items-center mb-4">
                             <button onClick={() => setStep(s => s - 1)} className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-gray-500 hover:bg-white transition-colors shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
@@ -358,12 +455,9 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                     </div>
 
                     <div className="p-6 overflow-y-auto min-h-0 flex-1 scroll-smooth">
-                        
-                        {/* === STEP 2: Destination & Origin === */}
                         {step === 2 && (
-                            <div className="flex flex-col h-full justify-center space-y-8 animate-in slide-in-from-right-4 duration-300 pb-16">
-                                {/* Selected Tags */}
-                                <div className="flex flex-wrap gap-2 justify-center min-h-[40px] max-h-[100px] overflow-y-auto no-scrollbar">
+                            <div className="flex flex-col h-full justify-center animate-in slide-in-from-right-4 duration-300 pb-12 pt-4">
+                                <div className="flex flex-wrap gap-2 justify-center min-h-[40px] max-h-[100px] overflow-y-auto no-scrollbar mb-8">
                                     {destinations.length > 0 ? (
                                         destinations.map(tag => (
                                             <span key={tag} className={`${theme.bg} text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 animate-in zoom-in duration-200 shadow-md`}>
@@ -372,11 +466,10 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                             </span>
                                         ))
                                     ) : (
-                                        <span className="text-sm text-gray-400 font-medium opacity-50 italic">尚未選擇地點...</span>
+                                        <span className="text-sm text-gray-400 font-medium opacity-50 italic mt-2">尚未選擇地點...</span>
                                     )}
                                 </div>
 
-                                {/* Conversational Input */}
                                 <div className="space-y-4 text-center">
                                     <h3 className="text-3xl font-black text-[#1D1D1B] font-serif leading-tight">
                                         {tripType === 'international' ? "啟程，飛往異國" : "漫步，發掘在地"}
@@ -387,34 +480,83 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                                 ref={destinationInputRef}
                                                 type="text" 
                                                 className="flex-1 bg-transparent text-2xl font-bold text-[#1D1D1B] text-center outline-none py-2 placeholder:text-base placeholder:font-light placeholder:text-gray-300"
-                                                placeholder={tripType === 'international' ? "輸入城市 (如: 東京)" : "輸入景點 (如: 阿里山)"}
+                                                placeholder={tripType === 'international' ? "搜尋國家或城市..." : "搜尋景點或城市..."}
                                                 value={destinationInput}
                                                 onChange={e => setDestinationInput(e.target.value)}
                                                 onKeyDown={handleDestinationKeyDown}
                                                 autoFocus
                                             />
-                                            <button onClick={addDestination} disabled={!destinationInput.trim()} className={`mb-1 p-2 rounded-full transition-all duration-300 ${destinationInput.trim() ? `${theme.bg} text-white shadow-md scale-100 opacity-100` : 'bg-gray-100 text-gray-300 scale-90 opacity-0 pointer-events-none'}`}><Plus className="w-5 h-5" /></button>
+                                            <button onClick={() => addDestination()} disabled={!destinationInput.trim()} className={`mb-1 p-2 rounded-full transition-all duration-300 ${destinationInput.trim() ? `${theme.bg} text-white shadow-md scale-100 opacity-100` : 'bg-gray-100 text-gray-300 scale-90 opacity-0 pointer-events-none'}`}><Plus className="w-5 h-5" /></button>
                                         </div>
                                     </div>
                                     <p className="text-[10px] text-gray-400 font-medium tracking-wider uppercase">{tripType === 'international' ? "Where to next?" : "Discover Local Gems"}</p>
                                 </div>
 
-                                <div className="pt-4">
+                                {/* 雙層 UI 區塊 */}
+                                <div className="min-h-[160px] flex items-start justify-center pt-8">
+                                    {(activeCityRecs.length > 0 || activeRouteRecs.length > 0) ? (
+                                        <div className="animate-in fade-in slide-in-from-top-4 duration-500 max-w-[340px] mx-auto w-full flex flex-col gap-4">
+                                            
+                                            <div className="flex items-center gap-1.5 px-1 -mb-1">
+                                                <Sparkles className={`w-3.5 h-3.5 ${theme.text}`} />
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                                    {smartConnectKeywords.length > 0 
+                                                        ? '💡 推薦順遊城市' 
+                                                        : destinationInput ? `搜尋 "${destinationInput}" 的靈感` : '為您精選熱門靈感'}
+                                                </span>
+                                            </div>
+
+                                            {activeCityRecs.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 px-1">
+                                                    {activeCityRecs.map(node => (
+                                                        <button
+                                                            key={node.id}
+                                                            onClick={() => handleRecommendationClick(node)}
+                                                            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm border ${theme.cityPill}`}
+                                                        >
+                                                            {node.title}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {activeRouteRecs.length > 0 && (
+                                                <div className="flex gap-2.5 overflow-x-auto pb-2 px-1 no-scrollbar snap-x">
+                                                    {activeRouteRecs.map(node => (
+                                                        <button
+                                                            key={node.id}
+                                                            onClick={() => handleRecommendationClick(node)}
+                                                            className={`flex-shrink-0 snap-start flex flex-col items-start p-3.5 rounded-2xl border transition-all duration-300 group shadow-sm w-max min-w-[200px] max-w-[260px] ${theme.ghostButton}`}
+                                                        >
+                                                            <span className="text-sm font-black tracking-wide mb-1 flex justify-between w-full items-center gap-3">
+                                                                <span className="whitespace-nowrap">{node.title}</span>
+                                                                <Plus className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                                            </span>
+                                                            <span className={`text-[10px] font-medium leading-relaxed text-left line-clamp-2 whitespace-normal transition-colors ${theme.ghostSubtitle}`}>
+                                                                {node.subtitle}
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="opacity-0">Placeholder</div> 
+                                    )}
+                                </div>
+
+                                <div className="pt-2">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider text-center block mb-3">預計停留時間</label>
-                                    
-                                    {/* Date Capsule */}
                                     <div className="bg-white/80 backdrop-blur-sm rounded-full p-1.5 flex items-center justify-between shadow-sm border border-white/50 relative overflow-hidden max-w-[320px] mx-auto">
                                         <div className="relative group px-4 py-2 hover:bg-black/5 rounded-l-full transition-colors cursor-pointer">
                                             <span className="block text-[10px] font-bold text-gray-400 text-center uppercase tracking-wide">DEPART</span>
                                             <div className="text-sm font-black text-[#1D1D1B] font-mono tracking-tight">{startDate.replace(/-/g, '.')}</div>
                                             <input type="date" value={startDate} onChange={e => handleStartDateChange(e.target.value)} onClick={handleDateInputClick} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                         </div>
-
                                         <div className="flex-1 flex flex-col items-center justify-center px-2">
                                             <div className={`text-[10px] font-black ${theme.text} ${theme.lightBg} px-2 py-0.5 rounded-full mb-0.5 whitespace-nowrap`}>{durationDays} Days</div>
                                             <div className="w-full h-px bg-gray-300 relative"><div className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 bg-gray-300 rounded-full" /></div>
                                         </div>
-
                                         <div className="relative group px-4 py-2 hover:bg-black/5 rounded-r-full transition-colors cursor-pointer">
                                             <span className="block text-[10px] font-bold text-gray-400 text-center uppercase tracking-wide">RETURN</span>
                                             <div className="text-sm font-black text-[#1D1D1B] font-mono tracking-tight">{endDate.replace(/-/g, '.')}</div>
@@ -422,30 +564,77 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                         </div>
                                     </div>
 
-                                    {/* Inline Hidden Edit Origin */}
-                                    <div className="flex justify-center mt-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
-                                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500">
+                                    {/* ✨ 智能膠囊按鈕 + 浮動選單 (Origin Popover) ✨ */}
+                                    <div className="flex justify-center mt-6 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
+                                        <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500">
                                             <span>📍 從</span>
-                                            {isEditingOrigin ? (
-                                                <input 
-                                                    type="text" 
-                                                    className={`bg-white/90 backdrop-blur-md border border-gray-300 outline-none text-[#1D1D1B] w-[45px] text-center uppercase rounded shadow-inner py-0.5 px-1 font-black transition-all ${theme.focusRing}`}
-                                                    value={origin}
-                                                    onChange={(e) => setOrigin(e.target.value.toUpperCase())}
-                                                    onBlur={() => setIsEditingOrigin(false)}
-                                                    onKeyDown={(e) => { if(e.key === 'Enter') setIsEditingOrigin(false) }}
-                                                    placeholder="TPE"
-                                                    maxLength={4}
-                                                    autoFocus
-                                                />
-                                            ) : (
-                                                <span 
-                                                    onClick={() => setIsEditingOrigin(true)}
-                                                    className={`text-[#1D1D1B] font-black border-b border-dashed border-gray-400 cursor-pointer ${theme.hoverText} ${theme.hoverBorder} transition-colors pb-0.5 uppercase tracking-wider`}
-                                                >
-                                                    {origin || 'TPE'}
-                                                </span>
-                                            )}
+                                            
+                                            <div className="relative">
+                                                {isEditingOrigin ? (
+                                                    <input 
+                                                        type="text" 
+                                                        className={`bg-white/90 backdrop-blur-md border border-gray-300 outline-none text-[#1D1D1B] w-[80px] text-center uppercase rounded-lg shadow-inner py-1.5 px-2 font-black transition-all ${theme.focusRing}`}
+                                                        value={origin}
+                                                        onChange={(e) => setOrigin(e.target.value.toUpperCase())}
+                                                        onBlur={() => {
+                                                            if(!origin) setOrigin(tripType === 'international' ? 'TPE' : '台北');
+                                                            setIsEditingOrigin(false);
+                                                        }}
+                                                        onKeyDown={(e) => { if(e.key === 'Enter') setIsEditingOrigin(false) }}
+                                                        placeholder={tripType === 'international' ? 'TPE' : '台北'}
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => setShowOriginMenu(true)}
+                                                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-gray-200 bg-white/80 backdrop-blur-sm shadow-sm text-[#1D1D1B] transition-all hover:border-[${theme.hex}] hover:text-[${theme.hex}] hover:bg-black/5`}
+                                                    >
+                                                        <span className="font-black uppercase tracking-wider">
+                                                            {ORIGIN_OPTIONS[tripType].find(o => o.code === origin)?.icon || (tripType === 'international' ? '✈️' : '🚄')} {origin}
+                                                        </span>
+                                                        <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                                                    </button>
+                                                )}
+
+                                                {showOriginMenu && (
+                                                    <>
+                                                        {/* 背景遮罩，點擊關閉 */}
+                                                        <div className="fixed inset-0 z-40" onClick={() => setShowOriginMenu(false)} />
+                                                        
+                                                        {/* 質感浮動選單 */}
+                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-44 bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 overflow-hidden z-50 animate-in zoom-in-95 duration-200 p-1.5">
+                                                            {ORIGIN_OPTIONS[tripType].map(opt => (
+                                                                <button
+                                                                    key={opt.code}
+                                                                    onClick={() => { setOrigin(opt.code); setShowOriginMenu(false); }}
+                                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-colors mb-0.5 last:mb-0 ${origin === opt.code ? `${theme.bg} text-white shadow-sm` : 'text-gray-600 hover:bg-gray-100'}`}
+                                                                >
+                                                                    <span className="flex items-center gap-2">
+                                                                        <span>{opt.icon}</span>
+                                                                        <span className="uppercase">{opt.code}</span>
+                                                                    </span>
+                                                                    <span className={`text-[10px] ${origin === opt.code ? 'text-white/80' : 'text-gray-400'}`}>{opt.label}</span>
+                                                                </button>
+                                                            ))}
+                                                            
+                                                            <div className="h-px bg-gray-100/80 my-1.5 mx-2" />
+                                                            
+                                                            <button
+                                                                onClick={() => { 
+                                                                    setOrigin(''); // 清空讓使用者自己打
+                                                                    setIsEditingOrigin(true); 
+                                                                    setShowOriginMenu(false); 
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                                                            >
+                                                                <span>✍️</span>
+                                                                <span>自訂輸入...</span>
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                            
                                             <span>出發</span>
                                         </div>
                                     </div>
@@ -453,18 +642,13 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                             </div>
                         )}
 
-                        {/* === STEP 3: Time Windows & Mobility === */}
                         {step === 3 && (
                             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300 pb-10">
-                                
-                                {/* 區塊一：時間窗設定 */}
                                 <div className="space-y-5">
                                     <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">規劃您的可用時間</h3>
-                                    
                                     <div>
                                         <label className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider ml-1">
-                                            {tripType === 'international' ? <PlaneLanding className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />} 
-                                            第一天大約何時抵達？
+                                            {tripType === 'international' ? <PlaneLanding className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />} 第一天大約何時抵達？
                                         </label>
                                         <div className="grid grid-cols-3 gap-2">
                                             <TimeButton type="morning" label="早上" icon={<Sunrise />} state={arrivalTime} setState={setArrivalTime} />
@@ -472,11 +656,9 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                             <TimeButton type="evening" label="晚上" icon={<Moon />} state={arrivalTime} setState={setArrivalTime} />
                                         </div>
                                     </div>
-
                                     <div>
                                         <label className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider ml-1 mt-6">
-                                            {tripType === 'international' ? <PlaneTakeoff className="w-3.5 h-3.5" /> : <Home className="w-3.5 h-3.5" />} 
-                                            最後一天何時離開？
+                                            {tripType === 'international' ? <PlaneTakeoff className="w-3.5 h-3.5" /> : <Home className="w-3.5 h-3.5" />} 最後一天何時離開？
                                         </label>
                                         <div className="grid grid-cols-3 gap-2">
                                             <TimeButton type="morning" label="早上" icon={<Sunrise />} state={departureTime} setState={setDepartureTime} />
@@ -485,19 +667,10 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* 隱藏式航班/車次紀錄 */}
                                 <div className="border-t border-b border-gray-100 py-2">
-                                    <button 
-                                        onClick={() => setShowTransportDetails(!showTransportDetails)}
-                                        className={`w-full flex items-center justify-between text-xs font-bold py-2 ${showTransportDetails ? theme.text : 'text-gray-400'} transition-colors hover:bg-gray-50 rounded-xl px-2`}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <Plus className={`w-4 h-4 ${showTransportDetails ? 'rotate-45' : ''} transition-transform duration-300`} />
-                                            新增確切航班/車次資訊 (選填)
-                                        </span>
+                                    <button onClick={() => setShowTransportDetails(!showTransportDetails)} className={`w-full flex items-center justify-between text-xs font-bold py-2 ${showTransportDetails ? theme.text : 'text-gray-400'} transition-colors hover:bg-gray-50 rounded-xl px-2`}>
+                                        <span className="flex items-center gap-2"><Plus className={`w-4 h-4 ${showTransportDetails ? 'rotate-45' : ''} transition-transform duration-300`} />新增確切航班/車次資訊 (選填)</span>
                                     </button>
-                                    
                                     {showTransportDetails && (
                                         <div className="pt-3 pb-2 space-y-3 animate-in slide-in-from-top-2 duration-300 px-2">
                                             <div className={`bg-white p-3.5 rounded-xl border border-gray-200 ${theme.focusWithinBorder} ${theme.focusRing} transition-all flex items-center gap-3 shadow-sm`}>
@@ -511,8 +684,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                         </div>
                                     )}
                                 </div>
-
-                                {/* 區塊二：當地移動方式卡片 */}
                                 <div className="space-y-4">
                                     <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">在當地，您偏好怎麼移動？</h3>
                                     <div className="flex flex-col gap-3">
@@ -521,11 +692,9 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                         <MobilityCard id="taxi" label="計程車/包車" sub="點對點接駁，輕鬆不費力" icon={<MapPin />} />
                                     </div>
                                 </div>
-
                             </div>
                         )}
 
-                        {/* === Step 4 (Companion & Style) === */}
                         {step === 4 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div>
@@ -579,14 +748,13 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                             </div>
                         )}
 
-                        {/* === Step 5 (Interests) === */}
                         {step === 5 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">您想怎麼玩？(深度興趣)</label>
                                     <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                                         {Object.entries(INTEREST_DATA).map(([key, data]) => (
-                                            <button key={key} onClick={() => setActiveInterestTab(key)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ? `${theme.bg} text-white ${theme.border} shadow-md` : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
+                                            <button key={key} onClick={() => setActiveInterestTab(key as keyof typeof INTEREST_DATA)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold border transition-all ${activeInterestTab === key ? `${theme.bg} text-white ${theme.border} shadow-md` : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>{React.createElement(data.icon, { size: 16 })}{data.label}</button>
                                         ))}
                                     </div>
                                     <div className={`bg-gray-50 rounded-2xl p-4 min-h-[120px] transition-all border border-gray-100 mt-2`}>
@@ -621,7 +789,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                             </div>
                         )}
 
-                        {/* === Step 6: Confirmation === */}
                         {step === 6 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                                 <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm relative">
