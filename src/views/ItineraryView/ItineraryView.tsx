@@ -30,18 +30,49 @@ import { TripSettingsModal } from './modals/TripSettingsModal';
 import { ActivityDetailModal } from './modals/ActivityDetailModal';
 import { DocumentPickerModal } from './modals/DocumentPickerModal';
 import { DocumentEditModal } from './modals/DocumentEditModal';
-import { TripRemindersModal, type TodoItem } from './modals/TripRemindersModal'; 
+// 移除了原有的 type TodoItem，改用下方擴充後的 TripTodoItem
+import { TripRemindersModal } from './modals/TripRemindersModal'; 
 
 import { IOSShareSheet } from '../../components/UI';
 
-// --- Default Checklist Data ---
-const DEFAULT_TODOS: TodoItem[] = [
-    { id: '1', text: '預訂來回機票', isCompleted: false },
-    { id: '2', text: '預訂住宿飯店', isCompleted: false },
-    { id: '3', text: '檢查護照效期 (需6個月以上)', isCompleted: false },
-    { id: '4', text: '購買旅遊保險', isCompleted: false },
-    { id: '5', text: '購買當地網卡 / 開通漫遊', isCompleted: false },
-    { id: '6', text: '線上預辦登機', isCompleted: false, time: '24:00' }, 
+// ============================================================================
+// ✨ 階段一升級：全新擴充的待辦事項型別與預設模板 (包含分類 category)
+// ============================================================================
+export interface TripTodoItem {
+    id: string;
+    text: string;
+    isCompleted: boolean;
+    time?: string;
+    date?: string;
+    category?: 'tasks' | 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
+}
+
+const DEFAULT_TODOS: TripTodoItem[] = [
+    // 📌 行前任務 (Tasks)
+    { id: 't1', text: '預訂來回機票', isCompleted: false, category: 'tasks' },
+    { id: 't2', text: '預訂住宿飯店', isCompleted: false, category: 'tasks' },
+    { id: 't3', text: '購買旅遊保險', isCompleted: false, category: 'tasks' },
+    { id: 't4', text: '購買當地網卡 / 開通漫遊', isCompleted: false, category: 'tasks' },
+    { id: 't5', text: '線上預辦登機', isCompleted: false, time: '24:00', category: 'tasks' },
+    
+    // 💼 必備證件 (Documents)
+    { id: 'd1', text: '護照 (檢查效期需6個月以上)', isCompleted: false, category: 'documents' },
+    { id: 'd2', text: '簽證影本', isCompleted: false, category: 'documents' },
+    { id: 'd3', text: '機票證明', isCompleted: false, category: 'documents' },
+    { id: 'd4', text: '外幣/信用卡', isCompleted: false, category: 'documents' },
+    
+    // 👕 衣物穿搭 (Clothes)
+    { id: 'c1', text: '換洗衣物', isCompleted: false, category: 'clothes' },
+    { id: 'c2', text: '保暖外套', isCompleted: false, category: 'clothes' },
+    
+    // 🛁 盥洗藥品 (Toiletries)
+    { id: 'p1', text: '牙刷牙膏', isCompleted: false, category: 'toiletries' },
+    { id: 'p2', text: '個人常備藥品', isCompleted: false, category: 'toiletries' },
+    
+    // 📱 3C 電子 (Gadgets)
+    { id: 'g1', text: '手機充電器', isCompleted: false, category: 'gadgets' },
+    { id: 'g2', text: '行動電源', isCompleted: false, category: 'gadgets' },
+    { id: 'g3', text: '萬用轉接頭', isCompleted: false, category: 'gadgets' },
 ];
 
 const EndOfDayIndicator: React.FC<{ isTripEnd: boolean }> = ({ isTripEnd }) => (
@@ -89,7 +120,7 @@ interface ItineraryViewProps {
     documents?: Document[]; 
     user?: User; 
     onBack: () => void;
-    onDelete: () => void; 
+    onDelete: () => void;
     onUpdateTrip: (t: Trip) => void;
     onRefreshVault?: () => void; 
     onLocalFileUpdate?: (file: Partial<VaultFile>) => void;
@@ -114,7 +145,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kelvin',
         joinedDate: new Date().toISOString()
     };
-    
+
     // UI States
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -125,8 +156,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [isRemindersOpen, setIsRemindersOpen] = useState(false); 
     const [editingDoc, setEditingDoc] = useState<(Document & { folderName?: string }) | null>(null);
 
-    // Data States
-    const [todos, setTodos] = useState<TodoItem[]>(DEFAULT_TODOS); 
+    // ============================================================================
+    // ✨ 階段一核心：拔除 useState，將待辦事項與 trip 物件永久綁定
+    // ============================================================================
+    const currentTodos: TripTodoItem[] = (trip as any).todos || DEFAULT_TODOS;
     
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
@@ -143,9 +176,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const notifiedRef = useRef<Set<string>>(new Set());
 
     const currencyCode = trip.currency || 'TWD';
-    
+
     // Helpers
-    const incompleteTodosCount = todos.filter(t => !t.isCompleted).length;
+    const incompleteTodosCount = currentTodos.filter(t => !t.isCompleted).length;
 
     const linkedDocs = useMemo(() => {
         if (!trip.linkedDocumentIds || trip.linkedDocumentIds.length === 0) return [];
@@ -179,6 +212,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         currentTripDate.setDate(tripStart.getDate() + (d.day - 1));
         return currentTripDate.toISOString().split('T')[0] === today;
     });
+
     const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
     useEffect(() => {
@@ -196,12 +230,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             const currentYYYYMMDD = now.toISOString().split('T')[0];
             const currentHHMM = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
-            todos.forEach(todo => {
+            currentTodos.forEach(todo => {
                 if (!todo.isCompleted && todo.date && todo.time) {
                     if (todo.date === currentYYYYMMDD && todo.time === currentHHMM) {
                         const notificationKey = `${todo.id}-${currentYYYYMMDD}-${currentHHMM}`;
                         if (!notifiedRef.current.has(notificationKey)) {
-                            new Notification(`🔔 行前提醒：${todo.text}`, {
+                            new Notification(` 行前提醒：${todo.text}`, {
                                 body: `時間到了！記得處理您的待辦事項。`,
                                 icon: '/icon-192x192.png'
                             });
@@ -213,7 +247,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         };
         const intervalId = setInterval(checkNotifications, 15000);
         return () => clearInterval(intervalId);
-    }, [todos]);
+    }, [currentTodos]);
 
     const requestNotificationPermission = () => {
         if (Notification.permission === 'default') {
@@ -221,12 +255,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     };
 
-    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file); } };
+    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0];
+        if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file);
+        } };
     const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); };
     const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
-    
     const handleDateUpdate = (newDate: string) => { onUpdateTrip({ ...trip, startDate: newDate }); setIsDateEditOpen(false); };
-    
     const handleDaysUpdate = (newDaysCount: number) => {
         let newDays = [...trip.days];
         if (newDaysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
@@ -246,9 +280,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
         }
     };
-    
+
     const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
-        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc); }
+        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc);
+        }
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -277,7 +312,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
         const { dayIdx, actIdx } = menuTargetIndex;
-        if (type === 'activity') { setActiveDayForAdd(dayIdx + 1); setIsAddModalOpen(true); return; }
+        if (type === 'activity') { setActiveDayForAdd(dayIdx + 1); setIsAddModalOpen(true); return;
+        }
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const insertIdx = actIdx + 1;
@@ -288,7 +324,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             setAiLoading(true);
             const spot = await suggestNextSpot(prevAct?.location || trip.destination, nextTime, 'food, sightseeing');
             setAiLoading(false);
-            if (spot) newAct = spot; else { alert('AI 暫時無法提供靈感'); return; }
+            if (spot) newAct = spot; else { alert('AI 暫時無法提供靈感');
+            return; }
         } else if (type === 'transport') {
             newAct = { time: nextTime, title: '移動', type: 'transport', description: '', transportDetail: { mode: 'bus', duration: '30 min', instruction: '搭乘交通工具' } };
         } else if (type === 'note') {
@@ -301,7 +338,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             newTrip.days[dayIdx].activities.splice(insertIdx, 0, newAct);
             newTrip.days[dayIdx] = recalculateTimeline(newTrip.days[dayIdx]);
             onUpdateTrip(newTrip);
-            if (['note', 'expense', 'transport'].includes(type)) { setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true }); }
+            if (['note', 'expense', 'transport'].includes(type)) { setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true });
+            }
         }
     };
 
@@ -380,7 +418,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 {incompleteTodosCount > 0 && (
                                     <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5">
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-50 border border-white"></span>
                                     </div>
                                 )}
                             </GlassCapsule>
@@ -548,10 +586,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             
             {editingDoc && <DocumentEditModal doc={editingDoc} folders={folders} onClose={() => setEditingDoc(null)} onSave={handleDocumentSave} />}
             
+            {/* 傳遞 currentTodos (已與 trip 綁定) 給 Modal，並在更新時寫回 trip 狀態 */}
             {isRemindersOpen && (
                 <TripRemindersModal 
-                    todos={todos} 
-                    onUpdateTodos={setTodos} 
+                    todos={currentTodos as any} 
+                    onUpdateTodos={(newTodos) => onUpdateTrip({ ...trip, todos: newTodos } as any)} 
                     startDate={trip.startDate}
                     onClose={() => setIsRemindersOpen(false)} 
                 />
