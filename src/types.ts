@@ -6,6 +6,7 @@
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
+  WISHBOX: 'wishbox', // [New] 第五分頁：心願盒
   TOOLS: 'tools',
   VAULT: 'vault',
   LOGIN: 'login'
@@ -35,7 +36,6 @@ export interface User {
   email?: string;
 }
 
-// 旅伴成員 (用於分帳)
 export interface Member {
   id: string;
   name: string;
@@ -46,11 +46,8 @@ export interface Member {
 // ==========================================
 // 3. 行程與活動 (核心結構)
 // ==========================================
-
-// 卡片版型定義
 export type ActivityLayout = 'list' | 'polaroid';
 
-// 活動類別定義
 export type ActivityType = 
   | 'food' | 'shopping' | 'sightseeing' | 'hotel' | 'gift' | 'bar' | 'activity' 
   | 'tickets' | 'snacks' | 'health' | 'cafe' | 'relax' | 'culture' | 'other'
@@ -65,7 +62,7 @@ export interface TransportDetail {
   duration: string;      
   fromStation?: string;  
   toStation?: string;    
-  instruction?: string;  
+  instruction?: string;
 }
 
 export interface ExpenseItem {
@@ -85,7 +82,7 @@ export interface Activity {
   category?: string; 
   location?: string; 
   cost?: string | number; 
-  transportDetail?: TransportDetail; 
+  transportDetail?: TransportDetail;
   payer?: string;        
   splitWith?: string[];  
   expenseImage?: string; 
@@ -95,15 +92,14 @@ export interface Activity {
 
 export interface TripDay {
   day: number;
-  date?: string; 
+  date?: string;
   activities: Activity[];
 }
 
-// [New] 提醒事項介面 (用於行程 Header 的小鈴鐺功能)
 export interface Reminder {
   id: string;
   text: string;
-  time?: string; // 選填，例如 "14:00"
+  time?: string;
   isCompleted: boolean;
 }
 
@@ -111,20 +107,11 @@ export interface Trip {
   id: string;
   destination: string;
   origin?: string; 
-  focusArea?: string; 
-  
-  // 主要交通方式
+  focusArea?: string;
   transportMode?: 'flight' | 'train' | 'time';
-
-  // 當地交通方式
-  localTransportMode?: 'public' | 'car' | 'taxi'; 
-  
-  // 行程規劃狀態 (配合設計思路 B 的邏輯預留)
+  localTransportMode?: 'public' | 'car' | 'taxi';
   planningStatus?: 'draft' | 'booked' | 'ready';
-
-  // [New] 提醒事項列表 (儲存使用者的待辦清單)
   reminders?: Reminder[];
-
   startDate: string;
   endDate: string;
   coverImage: string;
@@ -132,15 +119,32 @@ export interface Trip {
   isDeleted?: boolean;
   currency?: string; 
   members?: Member[];
-  
-  // 連結的憑證 ID 列表 (對應 VaultFile 的 id)
   linkedDocumentIds?: string[];
 }
 
 // ==========================================
-// 4. 其他功能 (檢查表/保管箱/API)
+// 4. 心願盒 (Wish Box) 資料結構 [New]
 // ==========================================
+export type WishItemType = 'place' | 'item';
 
+export interface WishItem {
+  id: string;
+  type: WishItemType;      // 地點 或 物品
+  country: string;         // 國家 (用於第一層便當盒分類)
+  title: string;           // 名稱
+  area?: string;           // 手動分區 (例如：中西區、澀谷區，用於驅動濾鏡)
+  url?: string;            // Google Map 或 IG 連結
+  notes?: string;          // 備註 (漸進式展開)
+  customImage?: string;    // 自訂圖片 Base64 (優雅降級防破圖)
+  budget?: number;         // 預算 (購物專用)
+  currency?: string;       // 幣別 (購物專用)
+  tags?: string[];         // 風格標籤 (例如：#藥妝、#精品)
+  createdAt: string;       // 加入時間 (用於排序)
+}
+
+// ==========================================
+// 5. 其他功能 (檢查表/保管箱/API)
+// ==========================================
 export type ChecklistCategory = 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
 
 export interface ChecklistItem {
@@ -158,7 +162,6 @@ export interface VaultFolder {
   isDeleted: boolean;
 }
 
-// 升級版 VaultFile：整合了檔案屬性與業務屬性
 export interface VaultFile {
   id: string;
   name: string;
@@ -166,8 +169,8 @@ export interface VaultFile {
   size: string;
   date: string;
   parentId: string | null;
-  data?: string; // Public URL
-  file_path?: string; // Storage path
+  data?: string; 
+  file_path?: string; 
   isDeleted: boolean;
   isPinned: boolean;
   category?: 'passport' | 'hotel' | 'flight' | 'other'; 
@@ -175,7 +178,6 @@ export interface VaultFile {
   notes?: string;
 }
 
-// [Deprecated] 舊的全域文件定義 
 export interface Document {
     id: string;
     title: string;

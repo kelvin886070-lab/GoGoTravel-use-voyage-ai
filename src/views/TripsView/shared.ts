@@ -378,8 +378,62 @@ export const DESTINATION_DICTIONARY: Record<'domestic' | 'international', Destin
         { id: "c-dk-cph", type: 'city', title: "🇩🇰 哥本哈根 (Copenhagen)", subtitle: "小美人魚雕像、新港彩色房子、緹沃麗樂園", keywords: ["歐洲", "europe", "丹麥", "denmark", "哥本哈根", "copenhagen", "小美人魚", "新港", "緹沃麗"], dna: ["童話國度", "單車城市"] },
 
         // --- 美洲 (Americas) ---
-        { id: "c-us-nyc", type: 'city', title: "🗽 紐約 (New York)", subtitle: "時代廣場、自由女神、中央公園、百老匯", keywords: ["美國", "usa", "america", "紐約", "new york", "nyc", "時代廣場", "自由女神", "中央公園", "百老匯", "帝國大廈"], dna: ["大都會", "世界中心", "藝術博物館"] },
-        { id: "c-us-lax", type: 'city', title: "🎬 洛杉磯 (Los Angeles)", subtitle: "好萊塢星光大道、環球影城、聖莫尼卡", keywords: ["美國", "usa", "america", "洛杉磯", "los angeles", "la", "好萊塢", "環球影城", "聖莫尼卡", "天文台"], dna: ["影視娛樂", "陽光沙灘", "主題樂園"] },
+        { 
+        id: "c-us-nyc", 
+        type: 'city', 
+        title: "🗽 紐約 (New York)", 
+        subtitle: "時代廣場、自由女神、世界貿易中心、帝國大廈、中央公園", 
+        keywords: [
+            "美國", "usa", "america", "紐約", "new york", "nyc", 
+            "時代廣場", "times square", "自由女神", "statue of liberty", 
+            "世界貿易中心一號大樓", "one world trade center", "freedom tower",
+            "帝國大廈", "empire state building", "中央公園", "central park", 
+            "華盛頓廣場公園", "washington square park", "第五大道", "5th avenue", 
+            "梅西百貨", "macy's", "34街", "34th street", 
+            "麥迪遜廣場花園", "madison square garden", "msg", 
+            "第七大道", "7th avenue", "百老匯", "broadway"
+        ], 
+        dna: ["大都會", "世界中心", "藝術博物館", "摩天大樓天際線", "購物天堂"] 
+        },
+
+        { 
+        id: "c-us-wdc", 
+        type: 'city', 
+        title: "🏛️ 華盛頓 (Washington, D.C.)", 
+        subtitle: "白宮、國會大廈、林肯紀念堂、史密森尼博物館群", 
+        keywords: [
+            "美國", "usa", "america", "華盛頓", "washington dc", "wdc", "特區",
+            "白宮", "the white house", "美國國會大廈", "united states capitol", 
+            "華盛頓紀念碑", "washington monument", "林肯紀念堂", "lincoln memorial", 
+            "國家廣場", "national mall", "第二次世界大戰紀念碑", "world war 2 memorial", 
+            "傑佛遜紀念堂", "thomas jefferson memorial", "五角大廈", "the pentagon", 
+            "國家藝廊", "national gallery of art", 
+            "史密森尼國家自然歷史博物館", "smithsonian national museum of natural history", 
+            "總統公園", "the president's park", "橢圓廣場", "the ellipse", 
+            "林肯公園", "lincoln park"
+        ], 
+        dna: ["政治中心", "博物館之都", "歷史建築", "權力核心"] 
+        },
+
+        { 
+        id: "c-us-lax", 
+        type: 'city', 
+        title: "🌴 洛杉磯 (Los Angeles)", 
+        subtitle: "好萊塢、格里菲斯天文台、環球影城、聖莫尼卡碼頭", 
+        keywords: [
+            "美國", "usa", "america", "洛杉磯", "los angeles", "lax", "la", "加州", "california",
+            "好萊塢標誌", "hollywood sign", "好萊塢星光大道", "hollywood walk of fame", 
+            "格里菲斯天文台", "griffith observatory", "好萊塢環球影城", "universal studios hollywood", 
+            "聖莫尼卡碼頭", "santa monica pier", "蓋提中心", "the getty center", 
+            "華特迪士尼音樂廳", "walt disney concert hall", "羅德歐大道", "rodeo drive", 
+            "洛杉磯郡立美術館", "lacma", "城市之光", "urban light", 
+            "比佛利山莊", "beverly hills", "威尼斯海灘", "venice beach", 
+            "加密貨幣網體育館", "crypto.com arena", "staples center", 
+            "華納兄弟影城", "warner bros. studio tour hollywood", "tcl中國劇院", "tcl chinese theatre"
+        ], 
+        dna: ["娛樂之都", "電影夢工廠", "加州陽光", "多元藝術", "海濱生活"] 
+        },
+
         { id: "c-us-sfo", type: 'city', title: "🌉 舊金山 (San Francisco)", subtitle: "金門大橋、漁人碼頭、九曲花街、惡魔島", keywords: ["美國", "usa", "america", "舊金山", "san francisco", "金門大橋", "漁人碼頭", "九曲花街", "惡魔島", "叮噹車"], dna: ["海灣風情", "高低起伏", "科技重鎮"] },
         { id: "c-us-las", type: 'city', title: "🎰 拉斯維加斯 (Las Vegas)", subtitle: "豪華賭場、太陽馬戲團、噴泉秀、大峽谷門戶", keywords: ["美國", "usa", "america", "拉斯維加斯", "las vegas", "賭城", "大峽谷", "太陽馬戲團"], dna: ["極致娛樂", "奢華夜生活", "沙漠不夜城"] },
         { id: "c-us-sea", type: 'city', title: "☕ 西雅圖 (Seattle)", subtitle: "太空針塔、派克市場(首家星巴克)", keywords: ["美國", "usa", "america", "西雅圖", "seattle", "太空針塔", "派克市場", "星巴克"], dna: ["咖啡文化", "科技浪漫"] },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Home, Compass, Briefcase, FileText } from 'lucide-react';
+import { Home, Compass, Briefcase, FileText, Sparkles } from 'lucide-react';
 import { AppView } from './types';
-import type { Trip, User, Document, VaultFolder, VaultFile } from './types';
+import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './types';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
@@ -9,12 +9,49 @@ import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
 import ItineraryView from './views/ItineraryView/ItineraryView';
+import { WishBoxView } from './views/WishBoxView';
+import { WishItemEditModal } from './views/ItineraryView/modals/WishItemEditModal';
 
 const DEFAULT_FOLDERS_CONFIG = [
     { name: '機票憑證', isPinned: true },
     { name: '住宿憑證', isPinned: true },
     { name: '保險單', isPinned: true },
     { name: '行程參考圖', isPinned: true },
+];
+
+// ==========================================
+// ✨ 階段一：準備高品質心願假資料 (Mock Data)
+// ==========================================
+const MOCK_WISH_ITEMS: WishItem[] = [
+    {
+        id: 'w1',
+        type: 'place',
+        country: '日本',
+        title: '澀谷 Blue Bottle Coffee',
+        area: '澀谷區',
+        url: 'https://maps.app.goo.gl/example1',
+        createdAt: new Date().toISOString()
+    },
+    {
+        id: 'w2',
+        type: 'item',
+        country: '日本',
+        title: 'EVE 止痛藥',
+        area: '藥妝店',
+        budget: 1500,
+        currency: 'JPY',
+        tags: ['藥妝', '必買'], // 對齊您的標籤邏輯
+        createdAt: new Date(Date.now() - 86400000).toISOString()
+    },
+    {
+        id: 'w3',
+        type: 'place',
+        country: '台灣',
+        title: '波哥茶飲',
+        area: '中西區',
+        notes: '朋友強推，記得點綜合新味！',
+        createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
+    }
 ];
 
 const App: React.FC = () => {
@@ -27,6 +64,11 @@ const App: React.FC = () => {
   const [vaultFolders, setVaultFolders] = useState<VaultFolder[]>([]);
   const [vaultFiles, setVaultFiles] = useState<VaultFile[]>([]);
   
+  // [New] 綁定心願盒資料狀態
+  const [wishItems, setWishItems] = useState<WishItem[]>(MOCK_WISH_ITEMS);
+  // 👉 [新增在這裡]：控制心願編輯抽屜的 UI 狀態
+  // undefined: 關閉 | null: 新增模式 | WishItem: 編輯模式
+  const [editingWishItem, setEditingWishItem] = useState<WishItem | null | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitializingVaultRef = useRef(false);
 
@@ -109,7 +151,6 @@ const App: React.FC = () => {
       if (!currentUserId) return;
 
       const { data: folderData } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
-      
       if (folderData && folderData.length === 0) {
           if (!isInitializingVaultRef.current) {
               isInitializingVaultRef.current = true;
@@ -120,7 +161,6 @@ const App: React.FC = () => {
                   is_pinned: f.isPinned,
                   is_deleted: false
               }));
-              
               const { error } = await supabase.from('vault_folders').insert(defaultFolders);
               if (!error) {
                   const { data: newFolders } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
@@ -146,9 +186,7 @@ const App: React.FC = () => {
           })));
       }
 
-      // Security Upgrade: Signed URL Logic
       const { data: fileData } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
-      
       if (fileData) {
           const activeFiles = fileData.filter((f:any) => !f.is_deleted);
           const signedUrlMap: Record<string, string> = {};
@@ -158,7 +196,6 @@ const App: React.FC = () => {
                   .storage
                   .from('vault')
                   .createSignedUrls(activeFiles.map((f:any) => f.file_path), 60 * 60 * 24);
-              
               if (signedData) {
                   signedData.forEach(item => {
                       if (item.path && item.signedUrl) {
@@ -227,7 +264,7 @@ const App: React.FC = () => {
   
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
-  
+
   const handleUpdateTrip = (updatedTrip: Trip) => {
     setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
     setSelectedTrip(updatedTrip);
@@ -286,7 +323,6 @@ const App: React.FC = () => {
         documents={allDocuments} 
         folders={vaultFolders}
         files={vaultFiles}
-        // [New] 傳遞 user 給 ItineraryView，讓它能同步頭貼
         user={user} 
         onBack={() => setSelectedTrip(null)}
         onDelete={() => handleSoftDeleteTrip(selectedTrip.id)}
@@ -311,7 +347,7 @@ const App: React.FC = () => {
 
         <div className="flex-1 min-h-0 relative w-full flex flex-col">
             {currentView === AppView.TRIPS && (
-              <TripsView 
+                <TripsView 
                   trips={trips.filter(t => !t.isDeleted)} 
                   user={user}
                   onLogout={handleLogout}
@@ -328,6 +364,36 @@ const App: React.FC = () => {
                 <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in">
                     <ExploreView />
                 </div>
+            )}
+
+            {/* 心願盒主視覺 */}
+            {currentView === AppView.WISHBOX && (
+                <WishBoxView 
+                    wishItems={wishItems}
+                    onAddClick={() => setEditingWishItem(null)}
+                    onEditClick={(item) => setEditingWishItem(item)}
+                />
+            )}
+
+            {/* 心願編輯抽屜 (Modal) */}
+            {editingWishItem !== undefined && (
+                <WishItemEditModal 
+                    item={editingWishItem}
+                    allWishItems={wishItems}
+                    onSave={(savedItem) => {
+                        if (editingWishItem === null) { // 新增模式
+                            setWishItems([savedItem, ...wishItems]);
+                        } else { // 編輯模式
+                            setWishItems(wishItems.map(w => w.id === savedItem.id ? savedItem : w));
+                        }
+                        setEditingWishItem(undefined); // 存檔後關閉抽屜
+                    }}
+                    onDelete={(id) => {
+                        setWishItems(wishItems.filter(w => w.id !== id));
+                        setEditingWishItem(undefined); // 刪除後關閉抽屜
+                    }}
+                    onClose={() => setEditingWishItem(undefined)}
+                />
             )}
             
             {currentView === AppView.TOOLS && (
@@ -348,10 +414,12 @@ const App: React.FC = () => {
             )}
         </div>
 
+        {/* [New] 擴充為 5 個 Tab，並調整 Padding 確保完美容納 */}
         <div className="flex-shrink-0 z-50 relative w-full bg-white/90 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center pb-safe pt-4 px-8 h-[calc(70px+env(safe-area-inset-bottom))]">
-                <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="行程" />
+            <div className="flex justify-between items-center pb-safe pt-4 px-5 h-[calc(70px+env(safe-area-inset-bottom))]">
+                <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="首頁" />
                 <TabButton active={currentView === AppView.EXPLORE} onClick={() => setCurrentView(AppView.EXPLORE)} icon={<Compass />} label="探索" />
+                <TabButton active={currentView === AppView.WISHBOX} onClick={() => setCurrentView(AppView.WISHBOX)} icon={<Sparkles />} label="靈感" />
                 <TabButton active={currentView === AppView.TOOLS} onClick={() => setCurrentView(AppView.TOOLS)} icon={<Briefcase />} label="小工具" />
                 <TabButton active={currentView === AppView.VAULT} onClick={() => setCurrentView(AppView.VAULT)} icon={<FileText />} label="保管箱" />
             </div>
