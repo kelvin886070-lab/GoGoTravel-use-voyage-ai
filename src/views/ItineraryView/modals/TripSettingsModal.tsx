@@ -1,10 +1,13 @@
+// src/views/ItineraryView/modals/TripSettingsModal.tsx
 import React, { useState, useRef, useMemo } from 'react';
 import { 
     X, Camera, Calendar, MapPin, 
     Bell, Trash2, Plus, Minus, 
-    Check, Users, Crop, MoveVertical,Save
+    Check, Users, Crop, MoveVertical, Save
 } from 'lucide-react';
 import type { Trip, Member, User } from '../../../types';
+// 📥 9.0 引入：前端圖片壓縮引擎
+import { compressImage } from '../../../utils/imageUtils';
 
 interface TripSettingsModalProps {
     trip: Trip;
@@ -20,7 +23,8 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
     const [startDate, setStartDate] = useState(trip.startDate);
     const [endDate, setEndDate] = useState(trip.endDate);
     const [coverImage, setCoverImage] = useState(trip.coverImage);
-    const [imagePositionY, setImagePositionY] = useState(50); 
+    // 🛡️ 9.0 修改：讀取既有的 Y 軸座標，若無則預設 50(置中)
+    const [imagePositionY, setImagePositionY] = useState(trip.coverImagePositionY ?? 50); 
     
     // UI States
     const [isRepositioning, setIsRepositioning] = useState(false);
@@ -35,7 +39,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const startDateRef = useRef<HTMLInputElement>(null); // [新增]
+    const startDateRef = useRef<HTMLInputElement>(null);
     const endDateRef = useRef<HTMLInputElement>(null);
     const isDraggingRef = useRef(false);
     const startYRef = useRef(0);
@@ -59,16 +63,21 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
     const startParts = getDateParts(startDate);
     const endParts = getDateParts(endDate);
 
-    // --- Handlers: Image ---
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // --- Handlers: Image (9.0 升級：非同步壓縮) ---
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setCoverImage(reader.result as string);
+            try {
+                // 🛡️ 使用壓縮引擎，將龐大的原圖轉化為輕量 Base64
+                const compressedBase64 = await compressImage(file);
+                setCoverImage(compressedBase64);
+                // 上傳新圖後，將座標重置為 50 並自動開啟裁切模式
+                setImagePositionY(50);
                 setIsRepositioning(true);
-            };
-            reader.readAsDataURL(file);
+            } catch (error) {
+                console.error("Image compression failed:", error);
+                alert("圖片處理失敗，請嘗試其他照片。");
+            }
         }
     };
 
@@ -120,6 +129,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
             startDate,
             endDate,
             coverImage,
+            coverImagePositionY: imagePositionY, // 🛡️ 9.0 新增：回寫 Y 軸座標記憶
             days: newDays,
             members,
         };
@@ -203,11 +213,8 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
 
                     {/* === BLOCK B: Date Ticket (Clean Text Only) === */}
                     <div className="bg-white rounded-[24px] p-5 shadow-sm border border-white relative overflow-hidden">
-                        {/* Decorative Notches */}
                         <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-[#F2F2F2] rounded-full" />
                         <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-[#F2F2F2] rounded-full" />
-                        
-                        {/* Header Label */}
                         <div className="flex justify-between items-center mb-4 px-1">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                                 <Calendar className="w-3 h-3" /> Date Period
@@ -216,68 +223,27 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                                 {durationDays} DAYS
                             </span>
                         </div>
-
                         <div className="flex items-center justify-between gap-4 px-1">
-                            
-                            {/* --- DEPART ZONE (Left) --- */}
-                            <div 
-                                className="flex-1 cursor-pointer group flex flex-col items-start"
-                                onClick={() => startDateRef.current?.showPicker()}
-                            >
+                            <div className="flex-1 cursor-pointer group flex flex-col items-start" onClick={() => startDateRef.current?.showPicker()}>
                                 <span className="text-[9px] font-bold text-gray-400 mb-1 block tracking-wider uppercase">DEPART</span>
-                                {/* Date Text Only (Icon Removed) */}
                                 <div className="flex flex-col items-start w-full">
-                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">
-                                        {startParts.md}
-                                    </span>
-                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">
-                                        {startParts.y}
-                                    </span>
+                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">{startParts.md}</span>
+                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">{startParts.y}</span>
                                 </div>
-                                {/* Hidden Input (Force Triggered) */}
-                                <input 
-                                    ref={startDateRef}
-                                    type="date" 
-                                    value={startDate} 
-                                    onChange={(e) => { 
-                                        setStartDate(e.target.value); 
-                                        if(e.target.value > endDate) setEndDate(e.target.value); 
-                                    }} 
-                                    className="hidden" 
-                                />
+                                <input ref={startDateRef} type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); if(e.target.value > endDate) setEndDate(e.target.value); }} className="hidden" />
                             </div>
-
-                            {/* Divider (Simple Dashed Line) */}
                             <div className="w-px h-10 bg-gray-100 border-r border-dashed border-gray-300 mx-2" />
-
-                            {/* --- RETURN ZONE (Right) --- */}
-                            <div 
-                                className="flex-1 cursor-pointer group flex flex-col items-end"
-                                onClick={() => endDateRef.current?.showPicker()}
-                            >
+                            <div className="flex-1 cursor-pointer group flex flex-col items-end" onClick={() => endDateRef.current?.showPicker()}>
                                 <span className="text-[9px] font-bold text-gray-400 mb-1 block tracking-wider uppercase">RETURN</span>
-                                {/* Date Text Only (Icon Removed) */}
                                 <div className="flex flex-col items-end w-full">
-                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">
-                                        {endParts.md}
-                                    </span>
-                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">
-                                        {endParts.y}
-                                    </span>
+                                    <span className="block text-2xl font-bold text-[#1D1D1B] tracking-tight leading-none font-mono group-hover:text-[#45846D] transition-colors">{endParts.md}</span>
+                                    <span className="block text-[10px] font-bold text-gray-400 mt-0.5 font-mono">{endParts.y}</span>
                                 </div>
-                                {/* Hidden Input */}
-                                <input 
-                                    ref={endDateRef}
-                                    type="date" 
-                                    value={endDate} 
-                                    min={startDate} 
-                                    onChange={(e) => setEndDate(e.target.value)} 
-                                    className="hidden"
-                                />
+                                <input ref={endDateRef} type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} className="hidden" />
                             </div>
-
                         </div>
                     </div>
+
                     {/* === BLOCK C: Travelers (White Card) === */}
                     <div className="bg-white rounded-[24px] p-3 shadow-sm border border-white">
                         <div className="flex justify-between items-center mb-2 px-2">
@@ -286,12 +252,8 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                             </label>
                             <span className="text-[10px] font-bold text-gray-300">{members.length} People</span>
                         </div>
-                        
                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1">
-                            <button 
-                                onClick={() => setIsAddingMember(true)}
-                                className="w-10 h-10 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-[#45846D] hover:text-[#45846D] hover:bg-[#45846D]/5 transition-all shrink-0 active:scale-95"
-                            >
+                            <button onClick={() => setIsAddingMember(true)} className="w-10 h-10 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-[#45846D] hover:text-[#45846D] hover:bg-[#45846D]/5 transition-all shrink-0 active:scale-95">
                                 <Plus className="w-4 h-4" />
                             </button>
                             {members.map(member => {
@@ -304,10 +266,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                                             {member.isHost && <div className="absolute inset-0 border-2 border-[#45846D] rounded-full" />}
                                         </div>
                                         {!member.isHost && (
-                                            <button 
-                                                onClick={() => setMembers(members.filter(m => m.id !== member.id))}
-                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md border border-white active:scale-90 transition-transform z-10"
-                                            >
+                                            <button onClick={() => setMembers(members.filter(m => m.id !== member.id))} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md border border-white active:scale-90 transition-transform z-10">
                                                 <Minus className="w-2.5 h-2.5" />
                                             </button>
                                         )}
@@ -317,14 +276,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                         </div>
                         {isAddingMember && (
                             <div className="mt-2 flex items-center gap-2 animate-in fade-in slide-in-from-left-2 bg-gray-50 p-1 rounded-xl border border-gray-100">
-                                <input 
-                                    autoFocus
-                                    className="flex-1 bg-transparent text-xs font-bold px-3 py-1.5 outline-none text-[#1D1D1B] placeholder-gray-400"
-                                    placeholder="名字..."
-                                    value={newMemberName}
-                                    onChange={e => setNewMemberName(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleAddMember()}
-                                />
+                                <input autoFocus className="flex-1 bg-transparent text-xs font-bold px-3 py-1.5 outline-none text-[#1D1D1B] placeholder-gray-400" placeholder="名字..." value={newMemberName} onChange={e => setNewMemberName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddMember()} />
                                 <button onClick={handleAddMember} className="p-1.5 bg-[#1D1D1B] text-white rounded-lg hover:bg-black active:scale-95 transition-transform shadow-sm">
                                     <Check className="w-3 h-3" />
                                 </button>
@@ -332,14 +284,10 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                         )}
                     </div>
                     
-                    {/* Spacer */}
                     <div className="h-2" />
 
-                   {/* === BLOCK D: Reminder (Transparent Bar) === */}
-                    <button 
-                        onClick={() => setReminderEnabled(!reminderEnabled)}
-                        className="w-full h-16 px-5 rounded-[24px] flex items-center justify-between transition-all hover:bg-gray-50 active:scale-[0.99]"
-                    >
+                   {/* === BLOCK D: Reminder === */}
+                    <button onClick={() => setReminderEnabled(!reminderEnabled)} className="w-full h-16 px-5 rounded-[24px] flex items-center justify-between transition-all hover:bg-gray-50 active:scale-[0.99]">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-[#45846D]">
                                 <Bell className="w-4 h-4" />
@@ -351,31 +299,18 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                         </div>
                     </button>
 
-                    {/* [修正] 分隔線 (Divider) - 改用 gray-200 加深顏色確保可見 */}
                     <div className="mx-5 my-2 h-px bg-gray-300" />
 
-                    {/* === BLOCK E: Delete (Text Only, No Icon) === */}
-                    <button 
-                        onClick={() => { if(confirm('確定要刪除此行程嗎？此動作無法復原。')) onDelete(); }}
-                        // 修改處：移除了 gap-2，保留 flex justify-center 讓文字置中
-                        className="w-full h-12 px-5 rounded-[24px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center hover:bg-red-100 active:scale-[0.99] transition-all"
-                    >
-                        {/* 修改處：已移除 Trash2 icon */}
+                    {/* === BLOCK E: Delete === */}
+                    <button onClick={() => { if(confirm('確定要刪除此行程嗎？此動作無法復原。')) onDelete(); }} className="w-full h-12 px-5 rounded-[24px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center hover:bg-red-100 active:scale-[0.99] transition-all">
                         <span>刪除整個行程</span>
                     </button>
+                </div>
 
-                    </div>
-
-                {/* === BLOCK F: Save Bar (Sticky Bottom, Black) === */}
+                {/* === BLOCK F: Save Bar === */}
                 <div className="p-4 pt-2 bg-[#F2F2F2] sticky bottom-0 z-20 border-t border-gray-200/50 backdrop-blur-sm">
-                    <button 
-                        onClick={handleSave}
-                        className="h-12 w-full rounded-[24px] bg-[#1D1D1B] text-white flex items-center justify-center gap-2 shadow-lg hover:bg-black active:scale-[0.99] transition-transform"
-                    >
-                        {/* 1. 加入儲存圖示 (大小設為 w-4 h-4) */}
+                    <button onClick={handleSave} className="h-12 w-full rounded-[24px] bg-[#1D1D1B] text-white flex items-center justify-center gap-2 shadow-lg hover:bg-black active:scale-[0.99] transition-transform">
                         <Save className="w-4 h-4" />
-                        
-                        {/* 2. 修改文字大小 (text-base -> text-sm) */}
                         <span className="text-sm font-bold tracking-wide">儲存設定</span>
                     </button>
                 </div>

@@ -1,3 +1,4 @@
+// src/views/ItineraryView/ItineraryView.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     ArrowLeft, List, Map, Plus, Settings, 
@@ -9,6 +10,9 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User } from '../../types'; 
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
+
+// 📥 9.0 引入：前端圖片壓縮引擎
+import { compressImage } from '../../utils/imageUtils';
 
 import { GlassCapsule } from '../../components/common/GlassCapsule';
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
@@ -23,6 +27,7 @@ import { ProcessItem } from './items/ProcessItem';
 import { TransportConnectorItem } from './items/TransportConnectorItem';
 import { NoteItem } from './items/NoteItem';
 import { ExpensePolaroid } from './items/ExpensePolaroid';
+
 import { SimpleDateEditModal } from './modals/SimpleDateEditModal';
 import { SimpleDaysEditModal } from './modals/SimpleDaysEditModal';
 import { AddActivityModal } from './modals/AddActivityModal';
@@ -30,14 +35,11 @@ import { TripSettingsModal } from './modals/TripSettingsModal';
 import { ActivityDetailModal } from './modals/ActivityDetailModal';
 import { DocumentPickerModal } from './modals/DocumentPickerModal';
 import { DocumentEditModal } from './modals/DocumentEditModal';
-// 移除了原有的 type TodoItem，改用下方擴充後的 TripTodoItem
-import { TripRemindersModal } from './modals/TripRemindersModal'; 
-
+import { TripRemindersModal } from './modals/TripRemindersModal';
+import { VibeTagEditModal } from './modals/VibeTagEditModal';
 import { IOSShareSheet } from '../../components/UI';
+import { ShareBottomSheet } from './modals/ShareBottomSheet';
 
-// ============================================================================
-// ✨ 階段一升級：全新擴充的待辦事項型別與預設模板 (包含分類 category)
-// ============================================================================
 export interface TripTodoItem {
     id: string;
     text: string;
@@ -48,28 +50,19 @@ export interface TripTodoItem {
 }
 
 const DEFAULT_TODOS: TripTodoItem[] = [
-    // 📌 行前任務 (Tasks)
     { id: 't1', text: '預訂來回機票', isCompleted: false, category: 'tasks' },
     { id: 't2', text: '預訂住宿飯店', isCompleted: false, category: 'tasks' },
     { id: 't3', text: '購買旅遊保險', isCompleted: false, category: 'tasks' },
     { id: 't4', text: '購買當地網卡 / 開通漫遊', isCompleted: false, category: 'tasks' },
     { id: 't5', text: '線上預辦登機', isCompleted: false, time: '24:00', category: 'tasks' },
-    
-    // 💼 必備證件 (Documents)
     { id: 'd1', text: '護照 (檢查效期需6個月以上)', isCompleted: false, category: 'documents' },
     { id: 'd2', text: '簽證影本', isCompleted: false, category: 'documents' },
     { id: 'd3', text: '機票證明', isCompleted: false, category: 'documents' },
     { id: 'd4', text: '外幣/信用卡', isCompleted: false, category: 'documents' },
-    
-    // 👕 衣物穿搭 (Clothes)
     { id: 'c1', text: '換洗衣物', isCompleted: false, category: 'clothes' },
     { id: 'c2', text: '保暖外套', isCompleted: false, category: 'clothes' },
-    
-    // 🛁 盥洗藥品 (Toiletries)
     { id: 'p1', text: '牙刷牙膏', isCompleted: false, category: 'toiletries' },
     { id: 'p2', text: '個人常備藥品', isCompleted: false, category: 'toiletries' },
-    
-    // 📱 3C 電子 (Gadgets)
     { id: 'g1', text: '手機充電器', isCompleted: false, category: 'gadgets' },
     { id: 'g2', text: '行動電源', isCompleted: false, category: 'gadgets' },
     { id: 'g3', text: '萬用轉接頭', isCompleted: false, category: 'gadgets' },
@@ -111,8 +104,6 @@ const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => (
     </div>
 );
 
-// --- Main Component ---
-
 interface ItineraryViewProps { 
     trip: Trip;
     folders?: VaultFolder[];
@@ -138,7 +129,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     onRefreshVault,
     onLocalFileUpdate
 }) => {
-    // User Fallback
     const currentUser: User = user || {
         id: 'me',
         name: '我',
@@ -155,12 +145,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [isDocPickerOpen, setIsDocPickerOpen] = useState(false);
     const [isRemindersOpen, setIsRemindersOpen] = useState(false); 
     const [editingDoc, setEditingDoc] = useState<(Document & { folderName?: string }) | null>(null);
-
-    // ============================================================================
-    // ✨ 階段一核心：拔除 useState，將待辦事項與 trip 物件永久綁定
-    // ============================================================================
-    const currentTodos: TripTodoItem[] = (trip as any).todos || DEFAULT_TODOS;
+    const [isShareOpen, setIsShareOpen] = useState(false);
+    const [editingVibeDay, setEditingVibeDay] = useState<number | null>(null); 
     
+    const currentTodos: TripTodoItem[] = (trip as any).todos || DEFAULT_TODOS;
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showVault, setShowVault] = useState(false);
@@ -171,13 +159,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [shareOpen, setShareOpen] = useState(false);
     const [shareUrl, setShareUrl] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Notification Logic Ref
     const notifiedRef = useRef<Set<string>>(new Set());
-
     const currencyCode = trip.currency || 'TWD';
-
-    // Helpers
     const incompleteTodosCount = currentTodos.filter(t => !t.isCompleted).length;
 
     const linkedDocs = useMemo(() => {
@@ -204,28 +187,25 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const flightDisplayDest = trip.destination || 'DEST';
     const firstType = trip.days[0]?.activities[0]?.type || 'other';
     const headerBgClass = firstType === 'flight' ? 'bg-[#2C5E4B]' : firstType === 'train' ? 'bg-[#ea580c]' : 'bg-transparent';
-
     const today = new Date().toISOString().split('T')[0];
+    
     const currentDayIndex = trip.days.findIndex(d => {
         const tripStart = new Date(trip.startDate);
         const currentTripDate = new Date(tripStart);
         currentTripDate.setDate(tripStart.getDate() + (d.day - 1));
         return currentTripDate.toISOString().split('T')[0] === today;
     });
-
     const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-
+    
     useEffect(() => {
         if (!trip.members || trip.members.length === 0) {
             onUpdateTrip({ ...trip, members: [{ id: 'me', name: '我', isHost: true }] });
         }
     }, []);
 
-    // --- Notification Engine (背景通知監聽器) ---
     useEffect(() => {
         const checkNotifications = () => {
             if (Notification.permission !== 'granted') return;
-
             const now = new Date();
             const currentYYYYMMDD = now.toISOString().split('T')[0];
             const currentHHMM = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
@@ -249,22 +229,30 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         return () => clearInterval(intervalId);
     }, [currentTodos]);
 
-    const requestNotificationPermission = () => {
-        if (Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
+    // 🛡️ 9.0 升級：非同步壓縮與座標重置
+    const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => { 
+        const file = e.target.files?.[0];
+        if (file) { 
+            try {
+                const compressedBase64 = await compressImage(file);
+                // 上傳新圖片時，預設將 Y 軸座標重置為 50 (置中)
+                onUpdateTrip({ ...trip, coverImage: compressedBase64, coverImagePositionY: 50 }); 
+            } catch (err) {
+                console.error(err);
+                alert("圖片上傳失敗");
+            }
+        } 
     };
 
-    const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0];
-        if (file) { const reader = new FileReader(); reader.onloadend = () => onUpdateTrip({ ...trip, coverImage: reader.result as string }); reader.readAsDataURL(file);
-        } };
     const handleCurrencyChange = (curr: string) => { onUpdateTrip({ ...trip, currency: curr }); };
-    const handleShare = () => { const liteTrip = { ...trip, coverImage: '' }; setShareUrl(`${window.location.origin}${window.location.pathname}?import=${btoa(unescape(encodeURIComponent(JSON.stringify(liteTrip))))}`); setShareOpen(true); };
     const handleDateUpdate = (newDate: string) => { onUpdateTrip({ ...trip, startDate: newDate }); setIsDateEditOpen(false); };
     const handleDaysUpdate = (newDaysCount: number) => {
         let newDays = [...trip.days];
-        if (newDaysCount > trip.days.length) { for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
-        } else { newDays = newDays.slice(0, newDaysCount); }
+        if (newDaysCount > trip.days.length) { 
+            for (let i = trip.days.length + 1; i <= newDaysCount; i++) newDays.push({ day: i, activities: [] });
+        } else { 
+            newDays = newDays.slice(0, newDaysCount);
+        }
         onUpdateTrip({ ...trip, days: newDays });
         setIsDaysEditOpen(false);
     };
@@ -282,8 +270,17 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     };
 
     const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
-        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc);
+        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc); }
+    };
+
+    const handleSaveVibeTag = (dayNumber: number, newTag: string) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        const targetDay = newTrip.days.find((d: any) => d.day === dayNumber);
+        if (targetDay) {
+            targetDay.vibeTag = newTag; 
+            onUpdateTrip(newTrip);     
         }
+        setEditingVibeDay(null);
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -312,8 +309,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setIsPlusMenuOpen(false);
         if (!menuTargetIndex) return;
         const { dayIdx, actIdx } = menuTargetIndex;
-        if (type === 'activity') { setActiveDayForAdd(dayIdx + 1); setIsAddModalOpen(true); return;
-        }
+        if (type === 'activity') { setActiveDayForAdd(dayIdx + 1); setIsAddModalOpen(true); return; }
 
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const insertIdx = actIdx + 1;
@@ -324,8 +320,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             setAiLoading(true);
             const spot = await suggestNextSpot(prevAct?.location || trip.destination, nextTime, 'food, sightseeing');
             setAiLoading(false);
-            if (spot) newAct = spot; else { alert('AI 暫時無法提供靈感');
-            return; }
+            if (spot) newAct = spot; else { alert('AI 暫時無法提供靈感'); return; }
         } else if (type === 'transport') {
             newAct = { time: nextTime, title: '移動', type: 'transport', description: '', transportDetail: { mode: 'bus', duration: '30 min', instruction: '搭乘交通工具' } };
         } else if (type === 'note') {
@@ -338,7 +333,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             newTrip.days[dayIdx].activities.splice(insertIdx, 0, newAct);
             newTrip.days[dayIdx] = recalculateTimeline(newTrip.days[dayIdx]);
             onUpdateTrip(newTrip);
-            if (['note', 'expense', 'transport'].includes(type)) { setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true });
+            if (['note', 'expense', 'transport'].includes(type)) { 
+                setSelectedActivity({ dayIdx, actIdx: insertIdx, activity: newAct, initialEdit: true });
             }
         }
     };
@@ -349,16 +345,17 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         newTrip.days[dayIndex] = recalculateTimeline(newTrip.days[dayIndex]);
         onUpdateTrip(newTrip);
         setSelectedActivity(null); 
-    }
+    };
 
     const handleUpdateActivity = (updatedAct: Activity) => {
         if (!selectedActivity) return;
+        const { dayIdx, actIdx } = selectedActivity;
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        newTrip.days[selectedActivity.dayIdx].activities[selectedActivity.actIdx] = updatedAct;
-        newTrip.days[selectedActivity.dayIdx] = recalculateTimeline(newTrip.days[selectedActivity.dayIdx]);
+        newTrip.days[dayIdx].activities[actIdx] = updatedAct;
+        newTrip.days[dayIdx] = recalculateTimeline(newTrip.days[dayIdx]);
         onUpdateTrip(newTrip);
         setSelectedActivity(null);
-    }
+    };
 
     const getDateInfo = (startDate: string, dayOffset: number) => {
         if (!startDate) return { dateStr: '--.--', weekDay: '---', isToday: false };
@@ -368,31 +365,44 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
         const weekDay = date.toLocaleDateString('en-US', { weekday: 'short' });
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        const isToday = date.getTime() === today.getTime();
+        const todayObj = new Date();
+        todayObj.setHours(0,0,0,0);
+        const isToday = date.getTime() === todayObj.getTime();
         return { dateStr: `${mm}.${dd}`, weekDay, isToday };
     };
 
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
             
+            {/* 置頂大 Banner 區 */}
             <div className={`relative h-72 w-full ${headerBgClass}`}>
                 <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
-                    <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10"><ArrowLeft className="w-6 h-6" /></button>
+                    <button onClick={onBack} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all pointer-events-auto shadow-sm border border-white/10">
+                        <ArrowLeft className="w-6 h-6" />
+                    </button>
                     <div className="flex gap-3 pointer-events-auto">
-                        <button onClick={handleShare} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Share className="w-5 h-5" /></button>
-                        <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10"><Settings className="w-5 h-5" /></button>
+                        <button onClick={() => setIsShareOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10">
+                            <Share className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 bg-black/20 hover:bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-sm border border-white/10">
+                            <Settings className="w-5 h-5" />
+                        </button>
                     </div>
                 </div>
 
-                {(firstType !== 'flight' && firstType !== 'train') && (
+                {/* 🛡️ 9.0 封印解除：只要有圖片就無條件顯示，並套用 Y 軸偏移記憶 */}
+                {trip.coverImage && (
                     <>
-                        <img src={trip.coverImage} className="w-full h-full object-cover opacity-80" alt="Cover" />
+                        <img 
+                            src={trip.coverImage} 
+                            className="w-full h-full object-cover opacity-80" 
+                            alt="Cover" 
+                            style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }}
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#1D1D1B] via-transparent to-transparent" />
                     </>
                 )}
-                
+    
                 <div className="absolute inset-0 px-6 pt-20 pb-3 flex flex-col justify-end z-20">
                     <div className="absolute top-20 left-6 right-6 pointer-events-none">
                          <div className="flex justify-between items-end border-b border-white/20 pb-4 mb-4">
@@ -402,19 +412,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                         </div>
                     </div>
 
-                    <div className="mt-auto relative z-30 flex items-end justify-between">
-                        {/* 左側資訊列 (Vertical Stack) */}
-                        <div className="flex flex-col gap-2 items-start">
-                            {/* 1. 憑證按鈕 (TOP) */}
+                    <div className="absolute bottom-3 left-6 right-6 flex items-end justify-between">
+                        <div className="flex flex-col gap-2 items-start pointer-events-auto">
                             <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); }} className="text-[10px] sm:text-xs">
-                                <Ticket className="w-3.5 h-3.5" /> 
-                                憑證 ({linkedDocs.length})
+                                <Ticket className="w-3.5 h-3.5" /> 憑證 ({linkedDocs.length})
                             </GlassCapsule>
-
-                            {/* 2. 行前提醒按鈕 (BOTTOM) */}
-                            <GlassCapsule onClick={() => { setIsRemindersOpen(true); requestNotificationPermission(); }} className="text-[10px] sm:text-xs relative">
-                                <ListChecks className="w-3.5 h-3.5" /> 
-                                行前提醒
+                            <GlassCapsule onClick={() => { setIsRemindersOpen(true); Notification.permission === 'default' && Notification.requestPermission(); }} className="text-[10px] sm:text-xs relative">
+                                <ListChecks className="w-3.5 h-3.5" /> 行前提醒
                                 {incompleteTodosCount > 0 && (
                                     <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5">
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
@@ -423,13 +427,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 )}
                             </GlassCapsule>
                         </div>
-
-                        {/* 右側工具 (錢包) */}
-                        <div className="flex items-end">
-                            <button 
-                                onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }}
-                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm border border-white/10 backdrop-blur-md ${showExpenses ? 'bg-white text-[#1D1D1B]' : 'bg-black/20 text-white hover:bg-black/30'}`}
-                            >
+                        <div className="flex items-end pointer-events-auto">
+                            <button onClick={() => { setShowExpenses(!showExpenses); setShowVault(false); }} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-sm border border-white/10 backdrop-blur-md ${showExpenses ? 'bg-white text-[#1D1D1B]' : 'bg-black/20 text-white hover:bg-black/30'}`}>
                                 <Wallet className="w-5 h-5" />
                             </button>
                         </div>
@@ -438,16 +437,18 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
             </div>
 
+            {/* 列表 / 地圖切換列 */}
             <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
                 <div className="bg-white/50 p-1 rounded-2xl flex shadow-inner">
                     <button onClick={() => setViewMode('list')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><List className="w-4 h-4" /> 列表</button>
-                    <button onClick={() => setViewMode('map')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
+                    <button onClick={() => setViewMode('map')} className={`flex-1 flex-row flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-xl transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-[#1D1D1B]' : 'text-gray-500'}`}><Map className="w-4 h-4" /> 地圖</button>
                 </div>
             </div>
 
+            {/* 行程主體內容區 */}
             <div className="px-5 pb-safe w-full">
                 {showExpenses && <ExpenseDashboard trip={trip} onCurrencyChange={handleCurrencyChange} />}
-                
+              
                 {showVault && (
                     <div className="mb-6 animate-in fade-in slide-in-from-top-4">
                         {linkedDocs.length > 0 ? (
@@ -457,10 +458,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                         <VaultCard doc={doc} onRemove={() => handleUnlinkDocument(doc.id)} onEdit={() => setEditingDoc(doc)} />
                                     </div>
                                 ))}
-                                <button 
-                                    onClick={() => setIsDocPickerOpen(true)}
-                                    className="flex flex-col items-center justify-center gap-2 min-w-[120px] bg-[#45846D]/5 rounded-3xl border-2 border-dashed border-[#45846D]/20 hover:bg-[#45846D]/10 transition-colors shrink-0 h-[190px]"
-                                >
+                                <button onClick={() => setIsDocPickerOpen(true)} className="flex flex-col items-center justify-center gap-2 min-w-[120px] bg-[#45846D]/5 rounded-3xl border-2 border-dashed border-[#45846D]/20 hover:bg-[#45846D]/10 transition-colors shrink-0 h-[190px]">
                                     <div className="w-10 h-10 rounded-full bg-[#45846D] text-white flex items-center justify-center shadow-lg"><Plus className="w-5 h-5" /></div>
                                     <span className="text-xs font-bold text-[#45846D]">連結更多</span>
                                 </button>
@@ -475,10 +473,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                         <h3 className="font-bold text-base text-[#1D1D1B]">尚未加入憑證</h3>
                                         <p className="text-gray-500 text-[11px] leading-relaxed max-w-[200px] mx-auto">建議加入：護照、機票、訂房確認信</p>
                                     </div>
-                                    <button 
-                                        onClick={() => setIsDocPickerOpen(true)}
-                                        className="mt-2 px-5 py-3 bg-[#1D1D1B] text-white rounded-xl text-xs font-bold shadow-lg shadow-gray-200 active:scale-95 transition-all flex items-center gap-2 hover:bg-black hover:shadow-xl"
-                                    >
+                                    <button onClick={() => setIsDocPickerOpen(true)} className="mt-2 px-5 py-3 bg-[#1D1D1B] text-white rounded-xl text-xs font-bold shadow-lg shadow-gray-200 active:scale-95 transition-all flex items-center gap-2 hover:bg-black hover:shadow-xl">
                                         <PlusCircle className="w-3.5 h-3.5" /> 從保管箱挑選文件
                                     </button>
                                 </div>
@@ -507,10 +502,25 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                                 <span className={`text-4xl font-black font-serif tracking-tighter leading-none mb-1 ${dayInfo.isToday ? 'text-[#45846D]' : 'text-[#1D1D1B]'}`}>
                                                     {dayInfo.dateStr}
                                                 </span>
-                                                <div className={`flex items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase ${dayInfo.isToday ? 'text-[#45846D]' : 'text-gray-400'}`}>
+                                                <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] font-bold tracking-[0.15em] uppercase ${dayInfo.isToday ? 'text-[#45846D]' : 'text-gray-400'}`}>
                                                     <span>{dayInfo.weekDay}</span>
                                                     <span className="opacity-30">|</span>
                                                     <span>DAY {day.day}</span>
+                                                    
+                                                    <button
+                                                        onClick={() => setEditingVibeDay(day.day)}
+                                                        className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 hover:bg-gray-200/60 text-gray-600 transition-colors pointer-events-auto normal-case tracking-normal font-sans text-[10px] border border-gray-200/40 shadow-sm active:scale-95"
+                                                    >
+                                                        {(day as any).vibeTag ? (
+                                                            <>
+                                                                <span className="text-gray-700 font-bold">{`[ ${(day as any).vibeTag} ]`}</span>
+                                                                <span className="text-[9px] opacity-70">✏️</span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-gray-400/90 font-medium">+ 新增單日主題</span>
+                                                        )}
+                                                    </button>
+
                                                     {dayInfo.isToday && (
                                                         <>
                                                             <span className="opacity-30">|</span>
@@ -525,7 +535,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                                     )}
                                                 </div>
                                             </div>
-                                            <button onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20 mb-1"><Plus className="w-5 h-5" /></button>
+                                            <button onClick={() => { setMenuTargetIndex({ dayIdx: dayIndex, actIdx: -1 }); setIsPlusMenuOpen(true); }} className="p-1.5 rounded-full text-[#45846D] bg-[#45846D]/10 hover:bg-[#45846D]/20 mb-1 pointer-events-auto"><Plus className="w-5 h-5" /></button>
                                         </div>
 
                                         <Droppable droppableId={`day-${dayIndex + 1}`}>
@@ -574,6 +584,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 )}
             </div>
             
+            {/* 所有浮層與 Modals */}
             {isDateEditOpen && <SimpleDateEditModal date={trip.startDate} onClose={() => setIsDateEditOpen(false)} onSave={handleDateUpdate} />}
             {isDaysEditOpen && <SimpleDaysEditModal days={trip.days.length} onClose={() => setIsDaysEditOpen(false)} onSave={handleDaysUpdate} />}
             {isSettingsOpen && <TripSettingsModal trip={trip} user={currentUser} onClose={() => setIsSettingsOpen(false)} onUpdate={(updatedTrip: Trip) => { onUpdateTrip(updatedTrip); setIsSettingsOpen(false); }} onDelete={onDelete} />}
@@ -586,7 +597,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             
             {editingDoc && <DocumentEditModal doc={editingDoc} folders={folders} onClose={() => setEditingDoc(null)} onSave={handleDocumentSave} />}
             
-            {/* 傳遞 currentTodos (已與 trip 綁定) 給 Modal，並在更新時寫回 trip 狀態 */}
             {isRemindersOpen && (
                 <TripRemindersModal 
                     todos={currentTodos as any} 
@@ -596,8 +606,19 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 />
             )}
 
+            {editingVibeDay !== null && (
+                <VibeTagEditModal
+                    dayNumber={editingVibeDay}
+                    initialValue={(trip.days.find((d: any) => d.day === editingVibeDay) as any)?.vibeTag || ''}
+                    onClose={() => setEditingVibeDay(null)}
+                    onSave={(newTag) => handleSaveVibeTag(editingVibeDay, newTag)}
+                />
+            )}
+
             <IOSShareSheet isOpen={shareOpen} onClose={() => setShareOpen(false)} url={shareUrl} title={`看看我在 Kelvin Trip 規劃的 ${trip.destination} 之旅！`} />
+            <ShareBottomSheet trip={trip} isOpen={isShareOpen} onClose={() => setIsShareOpen(false)} />
             
+            {/* 快速插入選單 */}
             {isPlusMenuOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/20 backdrop-blur-sm" onClick={() => setIsPlusMenuOpen(false)} />

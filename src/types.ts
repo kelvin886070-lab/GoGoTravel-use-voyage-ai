@@ -93,6 +93,7 @@ export interface Activity {
 export interface TripDay {
   day: number;
   date?: string;
+  vibeTag?: string;
   activities: Activity[];
 }
 
@@ -115,6 +116,8 @@ export interface Trip {
   startDate: string;
   endDate: string;
   coverImage: string;
+  // 🛡️ 9.0 新增：無損座標法，記憶使用者拖曳的封面 Y 軸百分比 (0-100)
+  coverImagePositionY?: number; 
   days: TripDay[];
   isDeleted?: boolean;
   currency?: string; 

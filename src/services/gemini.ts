@@ -1,3 +1,4 @@
+// src/services/gemini.ts
 import type { TripDay, WeatherInfo, VoltageInfo, Activity } from "../types";
 
 // 1. 讀取環境變數
@@ -56,10 +57,10 @@ async function callGeminiDirectly(prompt: string): Promise<string> {
 }
 
 // ==========================================================
-// [新增] 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
+// 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
 // ==========================================================
 async function callGeminiVision(prompt: string, base64Image: string): Promise<string> {
-    const model = "gemini-2.5-flash"; 
+    const model = "gemini-2.5-flash";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp|heic);base64,/, "");
@@ -82,7 +83,6 @@ async function callGeminiVision(prompt: string, base64Image: string): Promise<st
                 }]
             })
         });
-
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(`Vision API Error: ${err.error?.message || response.statusText}`);
@@ -137,7 +137,7 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
-// 1. 行程生成
+// 1. 行程生成 (8.0 終極升級版：注入單日靈魂標籤 vibeTag)
 // ==========================================================
 export const generateItinerary = async (
     destination: string, 
@@ -149,7 +149,9 @@ export const generateItinerary = async (
     localTransportMode?: 'public' | 'car' | 'taxi'
 ): Promise<TripDay[]> => {
   
-  const cacheKey = `itinerary_v4_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
+  // 🛡️ 升級為 v8，強迫放棄舊版無 vibeTag 的快取
+  const cacheKey = `itinerary_v8_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
+  
   return fetchWithCache(cacheKey, async () => {
       let context = "";
       
@@ -199,23 +201,30 @@ export const generateItinerary = async (
 
         1. **Arrival Logic (Day 1)**:
            - The first activity MUST be the arrival (Flight/Train).
-           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**.
-             (e.g., "Exit North Gate to Bus Stop 5", "Go to B1 for Express Train").
-           - The NEXT activity (e.g. moving to hotel) should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
+           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**. (e.g., "Exit North Gate to Bus Stop 5").
+           - The NEXT activity should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
+        
         2. **Gap Connectors (Transport)**:
            - You MUST explicitly calculate travel time between spots.
            - Use 'type': 'transport' for these movements.
            - Fill 'transportDetail': { "mode": "bus"|"train"|"car"|"walk", "duration": "XX min" }.
-           - The 'duration' string will be used for timeline calculation.
-        3. **Data Integrity**:
+           
+        3. **Daily Vibe Tag (NEW & CRITICAL)**:
+           - For EACH day, you MUST generate a "vibeTag" summarizing the day's theme.
+           - Constraints: Maximum 15 characters. STRICTLY NO EMOJIS. Professional, high-end travel magazine tone.
+           - MUST be uniquely tailored to the day's specific activities. DO NOT repeat the same tag across different days.
+           
+        4. **Data Integrity**:
            - **Currency**: Estimate costs in **${currency}** (Number only).
            - **Types**: Use strict types: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity".
-        4. **Format**: Output valid JSON only.
+        
+        5. **Format**: Output valid JSON only.
         
         JSON Structure Example:
         [
           {
             "day": 1,
+            "vibeTag": "啟程出發與城市初探",
             "activities": [
               {
                 "time": "14:00",
@@ -223,7 +232,7 @@ export const generateItinerary = async (
                 "description": "Terminal 1 Arrival.",
                 "type": "flight",
                 "location": "Narita Airport",
-                "cost": "0"
+                "cost": 0
               },
               {
                 "time": "15:30", 
@@ -231,7 +240,7 @@ export const generateItinerary = async (
                 "description": "Skyliner Express",
                 "type": "transport",
                 "location": "Transit",
-                "cost": "2500",
+                "cost": 2500,
                 "transportDetail": {
                     "mode": "train",
                     "duration": "45 min",
@@ -316,7 +325,7 @@ export const suggestNextSpot = async (
             "description": "Why go there? (Short reason)",
             "type": "sightseeing/food/cafe/shopping",
             "location": "Spot Location",
-            "cost": "Estimated Cost (Number)"
+            "cost": 150
         }
         Language: Traditional Chinese.
     `;
@@ -327,12 +336,11 @@ export const suggestNextSpot = async (
 };
 
 // ==========================================================
-// [修改] 4. AI 辨識收據 (Vision API - 簡化版：只抓總額與店家)
+// 4. AI 辨識收據 (Vision API - 簡化版：只抓總額與店家)
 // ==========================================================
 interface ReceiptResult {
     merchant: string;
     total: number;
-    // 移除 items 欄位，專注於總金額
 }
 
 export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptResult | null> => {
@@ -426,11 +434,11 @@ export const getWeatherForecast = async (location: string): Promise<WeatherInfo 
         const data = await response.json();
         return {
           location: data.location.name,
-          temperature: `${Math.round(data.current.temp_c)}°`,
+          temperature: `${Math.round(data.current.temp_c)}°C`,
           condition: data.current.condition.text,
           humidity: `${data.current.humidity}%`,
           wind: `${data.current.wind_kph} km/h`,
-          description: `體感 ${data.current.feelslike_c}°`,
+          description: `體感 ${data.current.feelslike_c}°C`,
           clothingSuggestion: "建議穿著舒適衣物",
           activityTip: "適合戶外走走",
           sunrise: data.forecast.forecastday[0].astro.sunrise,
