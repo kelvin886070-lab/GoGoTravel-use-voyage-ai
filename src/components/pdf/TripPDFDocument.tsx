@@ -36,7 +36,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
     const featuredTransports = getFeaturedTransports(trip);
     const galleryImages = getGalleryImages(trip);
     
-    // 🛡️ 9.0 優化：取得封面 Y 軸偏移量 (預設 50% 置中)
+    // 🛡️ 9.1 優化：精確設定 X 與 Y 軸百分比，確保符合 React-PDF 解析規格
     const coverPositionY = trip.coverImagePositionY ?? 50;
     
     const currentCurrency = (trip as any).currency || 'TWD';
@@ -46,7 +46,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
     return (
         <Document title={`${sanitizedDestination} 行程表 - Kelvin Trip`}>
             
-            {/* === 1. 封面頁 (9.0 適配：套用無損座標 Y 軸裁切) === */}
+            {/* === 1. 封面頁 (9.1 適配：修正百分比位置語法) === */}
             <Page size="A4" style={s.coverPage}>
                 <View style={s.coverTop}>
                     {trip.coverImage ? (
@@ -54,7 +54,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                             src={trip.coverImage} 
                             style={{ 
                                 ...s.coverImage, 
-                                objectPosition: `center ${coverPositionY}%` // 👈 9.0 核心：套用無損 Y 軸座標
+                                objectPosition: `50% ${coverPositionY}%` // 🛡️ 修正為標準二維數值，避免 React-PDF 潔癖黑底
                             }} 
                         />
                     ) : null}
@@ -67,7 +67,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                         </View>
                         <Text style={s.coverTitle}>{sanitizedDestination}</Text>
                         <Text style={s.coverSubtitle}>
-                            {`${formatPDFDate(trip.startDate)} — ${formatPDFDate(trip.endDate)}`}
+                            {`${formatPDFDate(trip.startDate)}  ${formatPDFDate(trip.endDate)}`}
                         </Text>
                     </View>
                     
@@ -81,7 +81,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                 </View>
                 
                 <Text style={s.footer} fixed>
-                    {`KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}  —  COVER`}
+                    {`KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    COVER`}
                 </Text>
             </Page>
 
@@ -151,11 +151,11 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                 </View>
                 
                 <Text style={s.footer} render={({ pageNumber }) => (
-                    `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}  —  PAGE ${pageNumber}`
+                    `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    PAGE ${pageNumber}`
                 )} fixed />
             </Page>
 
-            {/* === 3. 每日行程頁 (8.1 同步 + 9.0 適配) === */}
+            {/* === 3. 每日行程頁 (9.1 修正：全面阻斷斷頁時間分離) === */}
             {trip.days.map((day, dIdx) => {
                 const validActivities = day.activities.filter(isSignificantTransport);
                 if (validActivities.length === 0) return null;
@@ -179,17 +179,19 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                             const theme = getActivityTheme(act.type);
 
                             return (
-                                <View key={aIdx} style={s.timelineContainer}>
+                                // 🛡️ 9.1 修正：將 wrap={false} 提升至整行容器，防禦左側時間與右側卡片在分頁邊緣被切開
+                                <View key={aIdx} style={s.timelineContainer} wrap={false}>
                                     <View style={s.timelineLeft}>
                                         <View style={s.timelineLine} />
                                         <Text style={s.timeText}>{act.time}</Text>
                                     </View>
 
-                                    <View style={s.timelineContent} wrap={false}>
+                                    {/* 🛡️ 9.1 修正：移除此處的 wrap 限制，將其權限完全交由外層 Container 控制 */}
+                                    <View style={s.timelineContent}>
                                         {isTransport ? (
                                             <View style={s.transportCard}>
                                                 <Text style={s.transportText}>
-                                                    {`—— ${sanitizeTextForPDF(act.title)}${act.description ? ` (${sanitizeTextForPDF(act.description)})` : ''}`}
+                                                    {` ${sanitizeTextForPDF(act.title)}${act.description ? ` (${sanitizeTextForPDF(act.description)})` : ''}`}
                                                 </Text>
                                             </View>
                                         ) : (
@@ -231,7 +233,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                         })}
                         
                         <Text style={s.footer} render={({ pageNumber }) => (
-                            `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}  —  PAGE ${pageNumber}`
+                            `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    PAGE ${pageNumber}`
                         )} fixed />
                     </Page>
                 );
@@ -250,14 +252,14 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                             <View key={idx} style={s.polaroidCard} wrap={false}>
                                 <Image src={img.url} style={s.polaroidImage} />
                                 <Text style={s.polaroidCaption}>
-                                    {truncateText(`Day ${img.day} · ${img.caption}`, 12)}
+                                    {truncateText(`Day ${img.day}  ${img.caption}`, 12)}
                                 </Text>
                             </View>
                         ))}
                     </View>
 
                     <Text style={s.footer} render={({ pageNumber }) => (
-                        `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}  —  PAGE ${pageNumber}`
+                        `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    PAGE ${pageNumber}`
                     )} fixed />
                 </Page>
             ) : null}

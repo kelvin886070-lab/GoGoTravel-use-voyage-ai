@@ -1,3 +1,4 @@
+// src/views/TripView/components/cards/TripCard.tsx
 import React from 'react';
 import { 
     Plane, Train, Car, Bus, MoreHorizontal, 
@@ -37,7 +38,6 @@ const CountdownBadge: React.FC<{ days: number }> = ({ days }) => (
 // 3. 規劃狀態徽章 (Planning Status Badge) - 未來行程用
 // ============================================================================
 const PlanningBadge: React.FC<{ status?: 'draft' | 'booked' | 'ready', hasDays: boolean }> = ({ status, hasDays }) => {
-    // 如果沒有明確設定 status，則根據是否有行程天數來自動判斷
     const currentStatus = status || (hasDays ? 'ready' : 'draft');
 
     if (currentStatus === 'draft') {
@@ -49,7 +49,6 @@ const PlanningBadge: React.FC<{ status?: 'draft' | 'booked' | 'ready', hasDays: 
         );
     }
 
-    // Default to Ready (已就緒)
     return (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/30 backdrop-blur-md border border-white/10 text-white">
             <CheckCircle2 className="w-3 h-3" />
@@ -65,12 +64,10 @@ const TransportBadge: React.FC<{ trip: Trip }> = ({ trip }) => {
     const icons = [];
     if (trip.transportMode === 'flight') icons.push(<Plane key="flight" className="w-3.5 h-3.5" />);
     else if (trip.transportMode === 'train') icons.push(<Train key="train" className="w-3.5 h-3.5" />);
-
     if (trip.localTransportMode === 'car' || trip.localTransportMode === 'taxi') icons.push(<Car key="car" className="w-3.5 h-3.5" />);
     else if (trip.localTransportMode === 'public') icons.push(<Bus key="bus" className="w-3.5 h-3.5" />);
 
     if (icons.length === 0) return null;
-
     return (
         <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full shadow-sm">
             <div className="flex gap-2 text-white">
@@ -86,7 +83,7 @@ const TransportBadge: React.FC<{ trip: Trip }> = ({ trip }) => {
 };
 
 // ============================================================================
-// 主元件：TripCard (智慧整併邏輯)
+// 主元件：TripCard (9.1 座標同步修正)
 // ============================================================================
 interface TripCardProps { 
     trip: Trip;
@@ -97,13 +94,10 @@ interface TripCardProps {
 
 export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandleProps, isPast }) => { 
     const formattedDate = trip.startDate.replace(/-/g, '.');
-
-    // --- 日期邏輯判定 (修復時區/時間問題) ---
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 歸零時間，只比對日期
+    today.setHours(0, 0, 0, 0);
     const nowTs = today.getTime();
 
-    // 解析 YYYY-MM-DD 為本地時間戳
     const getTs = (dateStr: string) => {
         const [y, m, d] = dateStr.split('-').map(Number);
         return new Date(y, m - 1, d).getTime();
@@ -111,11 +105,9 @@ export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandlePr
 
     const startTs = getTs(trip.startDate);
     const endTs = getTs(trip.endDate);
-
-    // 狀態判定
-    const isOnTrip = nowTs >= startTs && nowTs <= endTs; // 今天在開始與結束之間 (含)
+    const isOnTrip = nowTs >= startTs && nowTs <= endTs;
     const daysUntil = Math.ceil((startTs - nowTs) / (1000 * 60 * 60 * 24));
-    const isCountdown = !isOnTrip && daysUntil > 0 && daysUntil <= 3; // 倒數 3 天內
+    const isCountdown = !isOnTrip && daysUntil > 0 && daysUntil <= 3;
 
     return (
         <div 
@@ -127,7 +119,13 @@ export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandlePr
         >
             {/* 背景圖層 */}
             <div className="absolute inset-0">
-                <img src={trip.coverImage} alt={trip.destination} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <img 
+                    src={trip.coverImage} 
+                    alt={trip.destination} 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                    // 🛡️ 9.1 修正：動態套用 Y 軸裁剪偏移量，確保與行程頁、PDF 完美同步
+                    style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }}
+                />
                 <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent opacity-60" />
@@ -135,28 +133,17 @@ export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandlePr
 
             {/* 內容圖層 */}
             <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
-                
                 {/* Header: 智慧整併區 (Smart Merge Layout) */}
                 <div className="flex justify-between items-start">
                     <div className="flex flex-col gap-2 items-start">
-                        
-                        {/* 邏輯 1: 如果是過去行程，不顯示任何狀態標籤 */}
                         {!isPast && (
                             <>
-                                {/* 邏輯 2: 旅途中 (最高優先級) - 只顯示這個，隱藏交通與其他 */}
                                 {isOnTrip ? (
                                     <OnTripBadge />
                                 ) : (
-                                    /* 邏輯 3: 未來行程 (顯示 倒數/規劃 + 交通) */
                                     <>
-                                        {/* Slot 1: 狀態 (倒數 或 規劃) */}
-                                        {isCountdown ? (
-                                            <CountdownBadge days={daysUntil} />
-                                        ) : (
-                                            <PlanningBadge status={trip.planningStatus} hasDays={trip.days.length > 0} />
-                                        )}
-                                        
-                                        {/* Slot 2: 交通 (旅途中時隱藏，因為當下不重要) */}
+                                        <CountdownBadge days={daysUntil} />
+                                        <PlanningBadge status={trip.planningStatus} hasDays={trip.days.length > 0} />
                                         <TransportBadge trip={trip} />
                                     </>
                                 )}
