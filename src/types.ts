@@ -6,7 +6,7 @@
 export const AppView = {
   TRIPS: 'trips',
   EXPLORE: 'explore',
-  WISHBOX: 'wishbox', // 第五分頁：心願盒
+  WISHBOX: 'wishbox',
   TOOLS: 'tools',
   VAULT: 'vault',
   LOGIN: 'login'
@@ -85,13 +85,12 @@ export interface Activity {
   transportDetail?: TransportDetail;
   payer?: string;        
   splitWith?: string[];  
-  expenseImage?: string;       // 用於實體記帳收據
+  expenseImage?: string;       
   imagePositionY?: number;
   items?: ExpenseItem[]; 
   
-  // 🛡️ 9.2 新增：心願盒高階視覺與溯源擴充
-  image?: string;              // 景點/活動的精美形象圖 (與記帳的 expenseImage 徹底區隔)
-  wishItemId?: string;         // 記錄此活動是否由心願盒轉換而來 (溯源 ID)
+  image?: string;              
+  wishItemId?: string;         
 }
 
 export interface TripDay {
@@ -127,7 +126,6 @@ export interface Trip {
   members?: Member[];
   linkedDocumentIds?: string[];
   
-  // 🛡️ 9.2 新增：專屬靈感暫存區，存放從心願盒被「推入 (Push)」等待排程的心願項目
   stagedWishes?: WishItem[]; 
 }
 
@@ -138,18 +136,22 @@ export type WishItemType = 'place' | 'item';
 
 export interface WishItem {
   id: string;
-  type: WishItemType;      // 地點 或 物品
-  country: string;         // 國家 (用於第一層便當盒分類)
-  title: string;           // 名稱
-  location?: string;       // 🛡️ 9.2 新增：精確地點 (地址或地標)，以利未來無損轉換為 Activity.location
-  area?: string;           // 手動分區 (例如：中西區、澀谷區，用於驅動濾鏡)
-  url?: string;            // Google Map 或 IG 連結
-  notes?: string;          // 備註 (漸進式展開)
-  customImage?: string;    // 自訂圖片 Base64 (優雅降級防破圖)
-  budget?: number;         // 預算 (購物專用)
-  currency?: string;       // 幣別 (購物專用)
-  tags?: string[];         // 風格標籤 (例如：#藥妝、#精品)
-  createdAt: string;       // 加入時間 (用於排序)
+  type: WishItemType;      
+  country: string;         
+  title: string;           
+  location?: string;       
+  area?: string;           
+  url?: string;            
+  notes?: string;          
+  customImage?: string;    
+  budget?: number;         
+  currency?: string;       
+  tags?: string[];         
+  createdAt: string;       
+
+  // 🛡️ 9.3 新增：行程內購物清單的獨立狀態追蹤
+  isPurchased?: boolean;   // 標記是否已純勾選購買 (觸發金流移轉與刪除線)
+  assignedDay?: number;    // 標記被排入至哪一天 (觸發下沉至影子區域)
 }
 
 // ==========================================

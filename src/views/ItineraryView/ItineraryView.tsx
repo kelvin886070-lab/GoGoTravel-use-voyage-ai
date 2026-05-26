@@ -4,7 +4,8 @@ import {
     ArrowLeft, List, Map, Plus, Settings, 
     Train, Plane, Ticket, Wallet, 
     MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
-    Briefcase, PlusCircle, Share, ListChecks, X
+    Briefcase, PlusCircle, Share, ListChecks, X, ShoppingBag,
+    Check, Trash2, Undo
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem } from '../../types'; 
@@ -38,6 +39,107 @@ import { TripRemindersModal } from './modals/TripRemindersModal';
 import { VibeTagEditModal } from './modals/VibeTagEditModal';
 import { IOSShareSheet } from '../../components/UI';
 import { ShareBottomSheet } from './modals/ShareBottomSheet';
+
+// ============================================================================
+// 9.3 專屬：手勢驅動購物卡片 (SwipeableWishCard)
+// ============================================================================
+const SwipeableWishCard: React.FC<{
+    wish: WishItem;
+    isAssigned: boolean;
+    onToggleCheck: () => void;
+    onDelete: () => void;
+    onAssign: () => void;
+    onRollback: () => void;
+}> = ({ wish, isAssigned, onToggleCheck, onDelete, onAssign, onRollback }) => {
+    const [offsetX, setOffsetX] = useState(0);
+    const [isSwiping, setIsSwiping] = useState(false);
+    const startXRef = useRef(0);
+    const currentXRef = useRef(0);
+    const SWIPE_THRESHOLD = 60;
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        startXRef.current = e.touches[0].clientX;
+        setIsSwiping(true);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (!isSwiping) return;
+        currentXRef.current = e.touches[0].clientX;
+        const diff = currentXRef.current - startXRef.current;
+        // 如果已指派，封鎖右滑 (指派功能)
+        if (isAssigned && diff > 0) return; 
+        setOffsetX(diff);
+    };
+
+    const handleTouchEnd = () => {
+        setIsSwiping(false);
+        if (offsetX > SWIPE_THRESHOLD && !isAssigned) {
+            onAssign();
+        } else if (offsetX < -SWIPE_THRESHOLD) {
+            if (isAssigned) onRollback();
+            else onDelete();
+        }
+        setOffsetX(0);
+    };
+
+    const isChecked = wish.isPurchased || isAssigned;
+    const textStyle = isChecked ? 'line-through opacity-40 text-gray-400 font-normal' : 'font-bold text-[#1D1D1B]';
+
+    return (
+        <div className="relative w-full overflow-hidden rounded-2xl mb-2 bg-gray-100/50 select-none">
+            {/* 底層動作提示 (指派 / 刪除 / 抽離) */}
+            <div className="absolute inset-0 flex justify-between items-center px-4">
+                <div className={`flex items-center gap-2 font-bold text-sm text-[#45846D] transition-opacity duration-300 ${offsetX > 20 ? 'opacity-100' : 'opacity-0'}`}>
+                    <PlusCircle className="w-4 h-4" /> 指派
+                </div>
+                <div className={`flex items-center gap-2 font-bold text-sm text-red-500 transition-opacity duration-300 ${offsetX < -20 ? 'opacity-100' : 'opacity-0'}`}>
+                    {isAssigned ? <Undo className="w-4 h-4"/> : <Trash2 className="w-4 h-4"/>}
+                    {isAssigned ? '抽離' : '移除'}
+                </div>
+            </div>
+
+            {/* 表層卡片本體 */}
+            <div
+                className="relative bg-white p-3 shadow-sm border border-transparent flex items-center gap-3 transition-transform"
+                style={{
+                    transform: `translateX(${offsetX}px)`,
+                    transition: isSwiping ? 'none' : 'transform 0.3s ease'
+                }}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
+                {/* 極簡空心勾選圓圈 */}
+                <button
+                    onClick={(e) => { e.stopPropagation(); onToggleCheck(); }}
+                    className={`w-5 h-5 shrink-0 rounded-full border-[1.5px] flex items-center justify-center transition-all duration-300 ${wish.isPurchased ? 'bg-[#45846D] border-[#45846D]' : 'border-gray-300 bg-transparent'}`}
+                >
+                    <Check className={`w-3 h-3 text-white transition-opacity duration-300 ${wish.isPurchased ? 'opacity-100' : 'opacity-0'}`} strokeWidth={3} />
+                </button>
+
+                {/* 內容區塊 */}
+                <div className="flex-1 min-w-0 pointer-events-none">
+                    <h4 className={`text-sm truncate transition-all duration-300 ${textStyle}`}>
+                        {wish.title}
+                    </h4>
+                    <div className={`flex items-center gap-2 mt-0.5 transition-all duration-300 ${isChecked ? 'opacity-40' : 'opacity-100'}`}>
+                        {wish.area && <span className="text-[10px] text-gray-400 truncate font-medium">{wish.area}</span>}
+                        {wish.budget && (
+                            <span className="text-[10px] font-bold text-gray-600 font-mono">
+                                {wish.currency || 'TWD'} {wish.budget.toLocaleString()}
+                            </span>
+                        )}
+                    </div>
+                    {isAssigned && (
+                        <span className="inline-block mt-1 text-[9px] font-black tracking-wider text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">
+                            ✓ 已排入 DAY {wish.assignedDay}
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export interface TripTodoItem {
     id: string;
@@ -135,7 +237,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         joinedDate: new Date().toISOString()
     };
 
-    // UI States
     const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isDateEditOpen, setIsDateEditOpen] = useState(false);
@@ -147,8 +248,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [isShareOpen, setIsShareOpen] = useState(false);
     const [editingVibeDay, setEditingVibeDay] = useState<number | null>(null); 
     
-    // 🛡️ 9.2 UI States: 心願暫存區
+    // 🛡️ UI States: 心願盒面板分頁切換
     const [showWishTray, setShowWishTray] = useState(false);
+    const [wishTrayTab, setWishTrayTab] = useState<'place' | 'item'>('place');
     const [actionStagedWish, setActionStagedWish] = useState<WishItem | null>(null);
     const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -166,6 +268,37 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const notifiedRef = useRef<Set<string>>(new Set());
     const currencyCode = trip.currency || 'TWD';
     const incompleteTodosCount = currentTodos.filter(t => !t.isCompleted).length;
+
+    // 🛡️ 9.3 智慧多幣別動態金流計算引擎 (雙向分組計算)
+    const shoppingBudgetStats = useMemo(() => {
+        const staged = trip.stagedWishes || [];
+        const items = staged.filter(w => w.type === 'item');
+
+        const remainingMap: Record<string, number> = {};
+        const allocatedMap: Record<string, number> = {};
+
+        items.forEach(w => {
+            const cur = w.currency || 'TWD';
+            const amt = w.budget || 0;
+            // 尚未勾選且未排入行程，視為尚需預算
+            if (!w.isPurchased && w.assignedDay === undefined) {
+                remainingMap[cur] = (remainingMap[cur] || 0) + amt;
+            } else {
+                allocatedMap[cur] = (allocatedMap[cur] || 0) + amt;
+            }
+        });
+
+        const formatCurrencyMap = (map: Record<string, number>) => {
+            const entries = Object.entries(map);
+            if (entries.length === 0) return '0';
+            return entries.map(([cur, amt]) => `${cur} ${amt.toLocaleString()}`).join(' + ');
+        };
+
+        return {
+            remaining: formatCurrencyMap(remainingMap),
+            allocated: formatCurrencyMap(allocatedMap)
+        };
+    }, [trip.stagedWishes]);
 
     const linkedDocs = useMemo(() => {
         if (!trip.linkedDocumentIds || trip.linkedDocumentIds.length === 0) return [];
@@ -207,32 +340,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     }, []);
 
-    useEffect(() => {
-        const checkNotifications = () => {
-            if (Notification.permission !== 'granted') return;
-            const now = new Date();
-            const currentYYYYMMDD = now.toISOString().split('T')[0];
-            const currentHHMM = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-
-            currentTodos.forEach(todo => {
-                if (!todo.isCompleted && todo.date && todo.time) {
-                    if (todo.date === currentYYYYMMDD && todo.time === currentHHMM) {
-                        const notificationKey = `${todo.id}-${currentYYYYMMDD}-${currentHHMM}`;
-                        if (!notifiedRef.current.has(notificationKey)) {
-                            new Notification(` 行前提醒：${todo.text}`, {
-                                body: `時間到了！記得處理您的待辦事項。`,
-                                icon: '/icon-192x192.png'
-                            });
-                            notifiedRef.current.add(notificationKey);
-                        }
-                    }
-                }
-            });
-        };
-        const intervalId = setInterval(checkNotifications, 15000);
-        return () => clearInterval(intervalId);
-    }, [currentTodos]);
-
     const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => { 
         const file = e.target.files?.[0];
         if (file) { 
@@ -270,9 +377,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
         }
     };
-
     const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
-        if (onLocalFileUpdate) { onLocalFileUpdate(updatedDoc); }
+        if (onLocalFileUpdate) { 
+            onLocalFileUpdate(updatedDoc); 
+        }
+        setEditingDoc(null); // 存檔後自動關閉編輯彈窗
     };
 
     const handleSaveVibeTag = (dayNumber: number, newTag: string) => {
@@ -341,7 +450,25 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     };
 
-    // 🛡️ 9.2 升級：將心願轉換為 Activity 並注入特定天數
+    // 🛡️ 9.3 核心金流：局部勾選已購買 (變更狀態)
+    const handleTogglePurchase = (wishId: string) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w =>
+            w.id === wishId ? { ...w, isPurchased: !w.isPurchased } : w
+        );
+        onUpdateTrip(newTrip);
+    };
+
+    // 🛡️ 9.3 核心金流：局部移除 (未刪除全域心願)
+    const handleLocalDeleteWish = (wishId: string) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).filter(w => w.id !== wishId);
+        onUpdateTrip(newTrip);
+        setToastMsg('✕ 已自此行程移除 (未刪除全域靈感收藏)');
+        setTimeout(() => setToastMsg(null), 3000);
+    };
+
+    // 🛡️ 9.3 核心金流：指派排入行程
     const handleInjectWish = (wish: WishItem, dayIndex: number) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const targetDay = newTrip.days[dayIndex];
@@ -359,26 +486,60 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             type: wish.type === 'item' ? 'shopping' : 'sightseeing',
             location: wish.area || wish.country,
             image: wish.customImage,
-            expenseImage: wish.customImage, // 暫存映射，確保現有卡片支援度
-            wishItemId: wish.id
+            expenseImage: wish.customImage, 
+            wishItemId: wish.id,
+            cost: wish.type === 'item' ? wish.budget : undefined
         };
 
         targetDay.activities.push(newActivity);
         newTrip.days[dayIndex] = recalculateTimeline(targetDay);
         
-        // 注入成功後，自暫存區刪除
-        newTrip.stagedWishes = (newTrip.stagedWishes || []).filter(w => w.id !== wish.id);
+        // 將該心願狀態更新為已排入，轉移至下沉影子區
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w => 
+            w.id === wish.id ? { ...w, assignedDay: dayIndex + 1 } : w
+        );
         
         onUpdateTrip(newTrip);
         setActionStagedWish(null);
-        if (newTrip.stagedWishes.length === 0) setShowWishTray(false);
         
         setToastMsg(`✨ 已將「${wish.title}」排入 DAY ${dayIndex + 1}`);
         setTimeout(() => setToastMsg(null), 3000);
     };
 
+    // 🛡️ 9.3 核心金流：Rollback (抽離行程)
+    const handleRollbackWish = (wishId: string) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        
+        // 1. 從時間軸找出並移除該 Activity
+        newTrip.days.forEach(day => {
+            const originalLength = day.activities.length;
+            day.activities = day.activities.filter(a => a.wishItemId !== wishId);
+            if (day.activities.length !== originalLength) {
+                Object.assign(day, recalculateTimeline(day));
+            }
+        });
+        
+        // 2. 恢復心願的未指派狀態
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w =>
+            w.id === wishId ? { ...w, assignedDay: undefined } : w
+        );
+
+        onUpdateTrip(newTrip);
+        setToastMsg('✓ 已抽離行程，恢復至未指派狀態');
+        setTimeout(() => setToastMsg(null), 3000);
+    };
+
     const handleDeleteActivity = (dayIndex: number, activityIndex: number) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        const removedAct = newTrip.days[dayIndex].activities[activityIndex];
+        
+        // Rollback 金流機制
+        if (removedAct.wishItemId) {
+            newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w => 
+                w.id === removedAct.wishItemId ? { ...w, assignedDay: undefined } : w
+            );
+        }
+
         newTrip.days[dayIndex].activities.splice(activityIndex, 1);
         newTrip.days[dayIndex] = recalculateTimeline(newTrip.days[dayIndex]);
         onUpdateTrip(newTrip);
@@ -408,6 +569,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         const isToday = date.getTime() === todayObj.getTime();
         return { dateStr: `${mm}.${dd}`, weekDay, isToday };
     };
+
+    const displayedStagedWishes = useMemo(() => {
+        return (trip.stagedWishes || []).filter(w => w.type === wishTrayTab);
+    }, [trip.stagedWishes, wishTrayTab]);
 
     return (
         <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
@@ -450,7 +615,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                     </div>
 
                     <div className="absolute bottom-3 left-6 right-6 flex items-end justify-between">
-                        {/* 🛡️ 9.2 升級：新增心願盒膠囊入口 */}
                         <div className="flex flex-col gap-2 items-start pointer-events-auto">
                             <GlassCapsule isActive={showVault} onClick={() => { setShowVault(!showVault); setShowExpenses(false); setShowWishTray(false); }} className="text-[10px] sm:text-xs">
                                 <Ticket className="w-3.5 h-3.5" /> 憑證 ({linkedDocs.length})
@@ -677,58 +841,166 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </div>
             )}
 
-            {/* === 🛡️ 9.2 升級：靈感暫存區托盤 (Bottom Sheet) === */}
+            {/* === 🛡️ 9.3 升級：融合分頁與手勢化操作之心願盒面板 === */}
             {showWishTray && (
                 <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm transition-opacity" onClick={() => setShowWishTray(false)} />
-                    <div className="w-full max-w-md bg-[#F2F2F2] rounded-[32px] p-6 relative z-10 animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[70vh]">
-                        <div className="flex justify-between items-center mb-5 shrink-0">
-                            <h3 className="text-lg font-black font-serif text-[#1D1D1B] flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-[#45846D]" /> 靈感暫存區
-                            </h3>
-                            <button onClick={() => setShowWishTray(false)} className="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 transition-colors rounded-full text-gray-500">
-                                <X className="w-4 h-4"/>
-                            </button>
+                    <div className="w-full max-w-md bg-[#F2F2F2] rounded-[32px] p-6 relative z-10 animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[75vh]">
+                        
+                        {/* Header 及 iOS 原生膠囊切換器 */}
+                        <div className="shrink-0 pb-3 border-b border-gray-200/60">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-black font-serif text-[#1D1D1B] flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-[#45846D]" /> 靈感心願盒
+                                </h3>
+                                <button onClick={() => setShowWishTray(false)} className="w-8 h-8 flex items-center justify-center bg-gray-200 hover:bg-gray-300 transition-colors rounded-full text-gray-500">
+                                    <X className="w-4 h-4"/>
+                                </button>
+                            </div>
+
+                            {/* iOS Segmented UI 切換滑塊 */}
+                            <div className="bg-[#767680]/10 p-[2px] rounded-lg flex relative items-center h-8 mb-3">
+                                <div 
+                                    className="absolute top-[2px] bottom-[2px] w-[calc(50%-2px)] bg-white rounded-md shadow-[0_3px_1px_rgba(0,0,0,0.04),0_3px_8px_rgba(0,0,0,0.12)] transition-all duration-300 ease-out" 
+                                    style={{ left: wishTrayTab === 'place' ? '2px' : 'calc(50%)' }} 
+                                />
+                                <button 
+                                    onClick={() => setWishTrayTab('place')}
+                                    className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 h-full text-xs font-bold rounded-md transition-colors duration-300 ${wishTrayTab === 'place' ? 'text-[#1D1D1B]' : 'text-gray-500'}`}
+                                >
+                                    <MapPin className="w-3.5 h-3.5" /> 探索地點
+                                </button>
+                                <button 
+                                    onClick={() => setWishTrayTab('item')}
+                                    className={`flex-1 relative z-10 flex items-center justify-center gap-1.5 h-full text-xs font-bold rounded-md transition-colors duration-300 ${wishTrayTab === 'item' ? 'text-[#1D1D1B]' : 'text-gray-500'}`}
+                                >
+                                    <ShoppingBag className="w-3.5 h-3.5" /> 購物清單
+                                </button>
+                            </div>
+
+                            {/* 精品級動態雙金流計量表 (僅在切換至購物清單時顯示) */}
+                            {wishTrayTab === 'item' && (
+                                <div className="bg-white/60 rounded-xl p-3 text-[10px] font-black tracking-wider text-gray-500 flex flex-col gap-1.5 shadow-sm border border-white">
+                                    <div className="flex justify-between items-center">
+                                        <span>🛍️ 購物尚需預算</span>
+                                        <span className="font-mono text-[#1D1D1B] text-xs">{shoppingBudgetStats.remaining}</span>
+                                    </div>
+                                    <div className="w-full h-[3px] bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#45846D] transition-all duration-500" style={{ width: '45%' }}></div>
+                                    </div>
+                                    <div className="flex justify-between items-center mt-0.5 text-gray-400">
+                                        <span>💰 行程已納入花費</span>
+                                        <span className="font-mono text-gray-600">{shoppingBudgetStats.allocated}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto no-scrollbar pb-safe">
-                            {!trip.stagedWishes || trip.stagedWishes.length === 0 ? (
+                        {/* 心願項目內容流 */}
+                        <div className="flex-1 overflow-y-auto no-scrollbar pt-4 pb-safe">
+                            {displayedStagedWishes.length === 0 ? (
                                 <div className="py-12 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center opacity-70">
                                     <Sparkles className="w-8 h-8 text-gray-300 mb-2" />
-                                    <p className="text-sm font-bold text-gray-400">暫存區目前空空如也</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">請前往「靈感」分頁將心願排入</p>
+                                    <p className="text-sm font-bold text-gray-400">此類別目前沒有任何心願</p>
+                                    <p className="text-[10px] text-gray-400 mt-1">請前往主分頁收藏新的旅行靈感</p>
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-3">
-                                    {trip.stagedWishes.map(wish => (
-                                        <div key={wish.id} className="bg-white rounded-2xl p-3 shadow-sm border border-transparent hover:border-[#45846D]/30 transition-all flex items-center gap-3">
-                                            {wish.customImage ? (
-                                                <img src={wish.customImage} className="w-16 h-16 rounded-xl object-cover" />
-                                            ) : (
-                                                <div className="w-16 h-16 rounded-xl bg-gray-50 flex items-center justify-center">
-                                                    <MapPin className="w-6 h-6 text-gray-300"/>
+                                <>
+                                    {/* 購物模式的雙區分流設計 */}
+                                    {wishTrayTab === 'item' ? (
+                                        <div className="flex flex-col gap-5">
+                                            {/* A 區：未指派 */}
+                                            <div>
+                                                <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">未指派清單 (向右滑動指派)</h4>
+                                                {displayedStagedWishes.filter(w => w.assignedDay === undefined).length === 0 ? (
+                                                    <p className="text-xs text-gray-400 font-medium">目前無未指派之購物清單</p>
+                                                ) : (
+                                                    displayedStagedWishes.filter(w => w.assignedDay === undefined).map(wish => (
+                                                        <SwipeableWishCard
+                                                            key={wish.id}
+                                                            wish={wish}
+                                                            isAssigned={false}
+                                                            onToggleCheck={() => handleTogglePurchase(wish.id)}
+                                                            onDelete={() => handleLocalDeleteWish(wish.id)}
+                                                            onAssign={() => setActionStagedWish(wish)}
+                                                            onRollback={() => {}}
+                                                        />
+                                                    ))
+                                                )}
+                                            </div>
+
+                                            {/* B 區：下沉影子區 */}
+                                            {displayedStagedWishes.filter(w => w.assignedDay !== undefined).length > 0 && (
+                                                <div>
+                                                    <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">已排入行程 (向左滑動抽離)</h4>
+                                                    {displayedStagedWishes.filter(w => w.assignedDay !== undefined).map(wish => (
+                                                        <SwipeableWishCard
+                                                            key={wish.id}
+                                                            wish={wish}
+                                                            isAssigned={true}
+                                                            onToggleCheck={() => handleTogglePurchase(wish.id)}
+                                                            onDelete={() => {}}
+                                                            onAssign={() => {}}
+                                                            onRollback={() => handleRollbackWish(wish.id)}
+                                                        />
+                                                    ))}
                                                 </div>
                                             )}
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="font-bold text-sm text-[#1D1D1B] truncate">{wish.title}</h4>
-                                                {wish.area && <p className="text-[10px] text-gray-400 truncate mt-0.5">{wish.area}</p>}
-                                            </div>
-                                            <button 
-                                                onClick={() => setActionStagedWish(wish)} 
-                                                className="w-10 h-10 shrink-0 rounded-full bg-[#45846D]/10 text-[#45846D] flex items-center justify-center hover:bg-[#45846D] hover:text-white transition-colors active:scale-95"
-                                            >
-                                                <Plus className="w-5 h-5" />
-                                            </button>
                                         </div>
-                                    ))}
-                                </div>
+                                    ) : (
+                                        /* 地點模式：維持原本直接注入的操作邏輯 */
+                                        <div className="flex flex-col gap-3">
+                                            {displayedStagedWishes.map(wish => {
+                                                const isAssigned = wish.assignedDay !== undefined;
+                                                return (
+                                                    <div 
+                                                        key={wish.id} 
+                                                        className={`bg-white rounded-2xl p-3 shadow-sm border border-transparent transition-all flex items-center gap-3
+                                                            ${isAssigned ? 'opacity-40 bg-gray-50/50' : 'hover:border-[#45846D]/30'}
+                                                        `}
+                                                    >
+                                                        {wish.customImage ? (
+                                                            <img src={wish.customImage} className="w-14 h-14 rounded-xl object-cover shrink-0" alt="" />
+                                                        ) : (
+                                                            <div className="w-14 h-14 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
+                                                                <MapPin className="w-5 h-5 text-gray-300"/>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <h4 className={`font-bold text-sm text-[#1D1D1B] truncate ${isAssigned ? 'line-through text-gray-400 font-normal' : ''}`}>
+                                                                {wish.title}
+                                                            </h4>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                {wish.area && <span className="text-[10px] text-gray-400 truncate font-medium">{wish.area}</span>}
+                                                            </div>
+                                                            {isAssigned && (
+                                                                <span className="inline-block mt-1 text-[9px] font-black tracking-wider text-[#45846D] bg-[#45846D]/10 px-1.5 py-0.5 rounded uppercase">
+                                                                    已排入 DAY {wish.assignedDay}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {!isAssigned && (
+                                                            <button 
+                                                                onClick={() => setActionStagedWish(wish)} 
+                                                                className="w-9 h-9 shrink-0 rounded-full bg-[#45846D]/10 text-[#45846D] flex items-center justify-center hover:bg-[#45846D] hover:text-white transition-colors active:scale-95"
+                                                            >
+                                                                <Plus className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* === 🛡️ 9.2 升級：天數指派彈窗 (Sub-Modal) === */}
+            {/* === 天數指派彈窗 (Sub-Modal) === */}
             {actionStagedWish && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={() => setActionStagedWish(null)} />
@@ -754,7 +1026,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </div>
             )}
 
-            {/* === 🛡️ 9.2 升級：全域 Toast 提示 === */}
+            {/* === 全域 Toast 提示 === */}
             {toastMsg && (
                 <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[120] animate-in slide-in-from-top-4 fade-in duration-300 pointer-events-none">
                     <div className="bg-[#1D1D1B]/90 backdrop-blur-md px-5 py-3 rounded-full text-white text-[11px] font-bold tracking-widest shadow-2xl border border-white/20 whitespace-nowrap">
