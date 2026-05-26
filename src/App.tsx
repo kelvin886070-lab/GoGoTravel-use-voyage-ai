@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Home, Compass, Briefcase, FileText, Sparkles } from 'lucide-react';
 import { AppView } from './types';
@@ -19,9 +20,6 @@ const DEFAULT_FOLDERS_CONFIG = [
     { name: '行程參考圖', isPinned: true },
 ];
 
-// ==========================================
-// ✨ 階段一：準備高品質心願假資料 (Mock Data)
-// ==========================================
 const MOCK_WISH_ITEMS: WishItem[] = [
     {
         id: 'w1',
@@ -40,7 +38,7 @@ const MOCK_WISH_ITEMS: WishItem[] = [
         area: '藥妝店',
         budget: 1500,
         currency: 'JPY',
-        tags: ['藥妝', '必買'], // 對齊您的標籤邏輯
+        tags: ['藥妝', '必買'],
         createdAt: new Date(Date.now() - 86400000).toISOString()
     },
     {
@@ -60,14 +58,10 @@ const App: React.FC = () => {
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [bgImage, setBgImage] = useState<string>('');
   const [trips, setTrips] = useState<Trip[]>([]);
-  
   const [vaultFolders, setVaultFolders] = useState<VaultFolder[]>([]);
   const [vaultFiles, setVaultFiles] = useState<VaultFile[]>([]);
   
-  // [New] 綁定心願盒資料狀態
   const [wishItems, setWishItems] = useState<WishItem[]>(MOCK_WISH_ITEMS);
-  // 👉 [新增在這裡]：控制心願編輯抽屜的 UI 狀態
-  // undefined: 關閉 | null: 新增模式 | WishItem: 編輯模式
   const [editingWishItem, setEditingWishItem] = useState<WishItem | null | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitializingVaultRef = useRef(false);
@@ -97,7 +91,6 @@ const App: React.FC = () => {
               joinedDate: new Date(session.user.created_at).toLocaleDateString(),
               avatar: userAvatar
           });
-
           const savedBg = localStorage.getItem(`voyage_${session.user.id}_bg_image`);
           if (savedBg) setBgImage(savedBg);
           
@@ -250,7 +243,7 @@ const App: React.FC = () => {
   const handleLogin = (newUser: User) => { 
       fetchUserData();
   };
-
+  
   const handleLogout = async () => {
       if(confirm("確定要登出嗎？")) {
           await supabase.auth.signOut();
@@ -264,7 +257,7 @@ const App: React.FC = () => {
   
   const handleTripSelect = (trip: Trip) => setSelectedTrip(trip);
   const handleReorderTrips = (newTrips: Trip[]) => { setTrips(newTrips); };
-
+  
   const handleUpdateTrip = (updatedTrip: Trip) => {
     setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
     setSelectedTrip(updatedTrip);
@@ -313,6 +306,24 @@ const App: React.FC = () => {
       setTrips(prev => [...prev, tripWithUuid]);
       saveTripToCloud(tripWithUuid);
   }
+
+  // 🛡️ 9.2 升級：實作將心願推入至特定行程暫存區的函式
+  const handleAddWishToTrip = (wish: WishItem, tripId: string) => {
+      const targetTrip = trips.find(t => t.id === tripId);
+      if (!targetTrip) return;
+
+      // 檢查是否已在該行程的暫存區內，防禦重複點擊
+      const isAlreadyStaged = targetTrip.stagedWishes?.some(w => w.id === wish.id);
+      if (isAlreadyStaged) return;
+
+      const updatedTrip = {
+          ...targetTrip,
+          stagedWishes: [...(targetTrip.stagedWishes || []), wish]
+      };
+      
+      // 更新行程，系統會自動儲存至 DB 並更新 State
+      handleUpdateTrip(updatedTrip);
+  };
 
   if (!user) return <LoginView onLogin={handleLogin} />;
 
@@ -370,6 +381,8 @@ const App: React.FC = () => {
             {currentView === AppView.WISHBOX && (
                 <WishBoxView 
                     wishItems={wishItems}
+                    trips={trips.filter(t => !t.isDeleted)} // 🛡️ 9.2 傳入活躍行程名單
+                    onAddWishToTrip={handleAddWishToTrip}   // 🛡️ 9.2 傳入注入回呼函式
                     onAddClick={() => setEditingWishItem(null)}
                     onEditClick={(item) => setEditingWishItem(item)}
                 />
@@ -381,16 +394,16 @@ const App: React.FC = () => {
                     item={editingWishItem}
                     allWishItems={wishItems}
                     onSave={(savedItem) => {
-                        if (editingWishItem === null) { // 新增模式
+                        if (editingWishItem === null) {
                             setWishItems([savedItem, ...wishItems]);
-                        } else { // 編輯模式
+                        } else {
                             setWishItems(wishItems.map(w => w.id === savedItem.id ? savedItem : w));
                         }
-                        setEditingWishItem(undefined); // 存檔後關閉抽屜
+                        setEditingWishItem(undefined);
                     }}
                     onDelete={(id) => {
                         setWishItems(wishItems.filter(w => w.id !== id));
-                        setEditingWishItem(undefined); // 刪除後關閉抽屜
+                        setEditingWishItem(undefined);
                     }}
                     onClose={() => setEditingWishItem(undefined)}
                 />
@@ -414,7 +427,6 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* [New] 擴充為 5 個 Tab，並調整 Padding 確保完美容納 */}
         <div className="flex-shrink-0 z-50 relative w-full bg-white/90 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
             <div className="flex justify-between items-center pb-safe pt-4 px-5 h-[calc(70px+env(safe-area-inset-bottom))]">
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="首頁" />
