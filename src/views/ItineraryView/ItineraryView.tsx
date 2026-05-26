@@ -41,7 +41,7 @@ import { IOSShareSheet } from '../../components/UI';
 import { ShareBottomSheet } from './modals/ShareBottomSheet';
 
 // ============================================================================
-// 9.3 專屬：手勢驅動購物卡片 (SwipeableWishCard)
+// 9.3 專屬：雙向兩段式極限位移手勢卡片 (SwipeableWishCard)
 // ============================================================================
 const SwipeableWishCard: React.FC<{
     wish: WishItem;
@@ -53,33 +53,86 @@ const SwipeableWishCard: React.FC<{
 }> = ({ wish, isAssigned, onToggleCheck, onDelete, onAssign, onRollback }) => {
     const [offsetX, setOffsetX] = useState(0);
     const [isSwiping, setIsSwiping] = useState(false);
+    const [currentAnchor, setCurrentAnchor] = useState<'none' | 'left' | 'right'>('none');
+    
     const startXRef = useRef(0);
-    const currentXRef = useRef(0);
-    const SWIPE_THRESHOLD = 60;
+    const touchStartOffsetRef = useRef(0);
+
+    const ANCHOR_WIDTH = 70;      // 舒適停靠錨點
+    const COMFORT_LIMIT = 60;     // 觸發卡定臨界值
+    const EXPRESS_LIMIT = 130;    // 觸發一滑到底直接擊殺臨界值
+    const MAX_SHIELD_EXTENT = 110; // 物理橡皮筋最大極限位移
 
     const handleTouchStart = (e: React.TouchEvent) => {
         startXRef.current = e.touches[0].clientX;
+        // 記憶目前的起跑點偏移量，防禦再次滑動時的視覺瞬移跳動
+        touchStartOffsetRef.current = offsetX;
         setIsSwiping(true);
     };
 
     const handleTouchMove = (e: React.TouchEvent) => {
         if (!isSwiping) return;
-        currentXRef.current = e.touches[0].clientX;
-        const diff = currentXRef.current - startXRef.current;
-        // 如果已指派，封鎖右滑 (指派功能)
-        if (isAssigned && diff > 0) return; 
-        setOffsetX(diff);
+        const currentX = e.touches[0].clientX;
+        const rawDiff = currentX - startXRef.current;
+        let targetOffset = touchStartOffsetRef.current + rawDiff;
+
+        // 🛡️ 安全防禦防線：若已指派，封鎖右滑指派功能
+        if (isAssigned && targetOffset > 0) {
+            targetOffset = 0;
+        }
+
+        // 🧬 注入高階橡皮筋阻尼演算法
+        if (targetOffset > ANCHOR_WIDTH) {
+            const overExtent = targetOffset - ANCHOR_WIDTH;
+            targetOffset = ANCHOR_WIDTH + overExtent * 0.25; // 超過舒適區，阻尼衰減
+            if (targetOffset > MAX_SHIELD_EXTENT) targetOffset = MAX_SHIELD_EXTENT;
+        } else if (targetOffset < -ANCHOR_WIDTH) {
+            const overExtent = -targetOffset - ANCHOR_WIDTH;
+            targetOffset = -ANCHOR_WIDTH - overExtent * 0.25;
+            if (targetOffset < -MAX_SHIELD_EXTENT) targetOffset = -MAX_SHIELD_EXTENT;
+        }
+
+        setOffsetX(targetOffset);
     };
 
     const handleTouchEnd = () => {
         setIsSwiping(false);
-        if (offsetX > SWIPE_THRESHOLD && !isAssigned) {
-            onAssign();
-        } else if (offsetX < -SWIPE_THRESHOLD) {
-            if (isAssigned) onRollback();
-            else onDelete();
+        const absOffset = Math.abs(offsetX);
+
+        // 宇宙一：超越極致臨界值，發動直達擊殺 / 直接指派
+        if (absOffset >= EXPRESS_LIMIT) {
+            if (offsetX < 0) {
+                if (isAssigned) onRollback(); else onDelete();
+            } else {
+                if (!isAssigned) onAssign();
+            }
+            setOffsetX(0);
+            setCurrentAnchor('none');
+            return;
         }
-        setOffsetX(0);
+
+        // 宇宙二：雙向兩段式卡定清算邏輯
+        if (offsetX <= -COMFORT_LIMIT) {
+            // 左滑停靠成功
+            setOffsetX(-ANCHOR_WIDTH);
+            setCurrentAnchor('left');
+        } else if (offsetX >= COMFORT_LIMIT && !isAssigned) {
+            // 右滑停靠成功
+            setOffsetX(ANCHOR_WIDTH);
+            setCurrentAnchor('right');
+        } else {
+            // 未達標準，全數回彈歸零
+            setOffsetX(0);
+            setCurrentAnchor('none');
+        }
+    };
+
+    // 點擊本體彈回反悔機制
+    const handleCardClick = () => {
+        if (currentAnchor !== 'none') {
+            setOffsetX(0);
+            setCurrentAnchor('none');
+        }
     };
 
     const isChecked = wish.isPurchased || isAssigned;
@@ -87,23 +140,32 @@ const SwipeableWishCard: React.FC<{
 
     return (
         <div className="relative w-full overflow-hidden rounded-2xl mb-2 bg-gray-100/50 select-none">
-            {/* 底層動作提示 (指派 / 刪除 / 抽離) */}
+            {/* 底層雙向動作托盤 */}
             <div className="absolute inset-0 flex justify-between items-center px-4">
-                <div className={`flex items-center gap-2 font-bold text-sm text-[#45846D] transition-opacity duration-300 ${offsetX > 20 ? 'opacity-100' : 'opacity-0'}`}>
-                    <PlusCircle className="w-4 h-4" /> 指派
-                </div>
-                <div className={`flex items-center gap-2 font-bold text-sm text-red-500 transition-opacity duration-300 ${offsetX < -20 ? 'opacity-100' : 'opacity-0'}`}>
+                {/* 左側底層：右滑指派 */}
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onAssign(); }}
+                    className={`flex items-center gap-2 font-black text-xs text-[#45846D] h-full transition-all duration-200 ${offsetX > 20 ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}
+                >
+                    <PlusCircle className="w-4 h-4" /> 指派行程
+                </button>
+                {/* 右側底層：左滑移除 / 抽離 */}
+                <button 
+                    onClick={(e) => { e.stopPropagation(); if (isAssigned) onRollback(); else onDelete(); }}
+                    className={`flex items-center gap-2 font-black text-xs text-red-500 h-full transition-all duration-200 ${offsetX < -20 ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'}`}
+                >
                     {isAssigned ? <Undo className="w-4 h-4"/> : <Trash2 className="w-4 h-4"/>}
-                    {isAssigned ? '抽離' : '移除'}
-                </div>
+                    {isAssigned ? '抽離行程' : '移除項目'}
+                </button>
             </div>
 
             {/* 表層卡片本體 */}
             <div
-                className="relative bg-white p-3 shadow-sm border border-transparent flex items-center gap-3 transition-transform"
+                onClick={handleCardClick}
+                className={`relative bg-white p-3 shadow-sm border border-transparent flex items-center gap-3 ${currentAnchor !== 'none' ? 'cursor-pointer' : ''}`}
                 style={{
                     transform: `translateX(${offsetX}px)`,
-                    transition: isSwiping ? 'none' : 'transform 0.3s ease'
+                    transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
                 }}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
@@ -117,7 +179,7 @@ const SwipeableWishCard: React.FC<{
                     <Check className={`w-3 h-3 text-white transition-opacity duration-300 ${wish.isPurchased ? 'opacity-100' : 'opacity-0'}`} strokeWidth={3} />
                 </button>
 
-                {/* 內容區塊 */}
+                {/* 文字與預算資訊 */}
                 <div className="flex-1 min-w-0 pointer-events-none">
                     <h4 className={`text-sm truncate transition-all duration-300 ${textStyle}`}>
                         {wish.title}
@@ -131,7 +193,7 @@ const SwipeableWishCard: React.FC<{
                         )}
                     </div>
                     {isAssigned && (
-                        <span className="inline-block mt-1 text-[9px] font-black tracking-wider text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">
+                        <span className="inline-block mt-1 text-[9px] font-black tracking-wider text-[#45846D] bg-[#45846D]/10 px-1.5 py-0.5 rounded uppercase">
                             ✓ 已排入 DAY {wish.assignedDay}
                         </span>
                     )}
@@ -248,7 +310,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [isShareOpen, setIsShareOpen] = useState(false);
     const [editingVibeDay, setEditingVibeDay] = useState<number | null>(null); 
     
-    // 🛡️ UI States: 心願盒面板分頁切換
     const [showWishTray, setShowWishTray] = useState(false);
     const [wishTrayTab, setWishTrayTab] = useState<'place' | 'item'>('place');
     const [actionStagedWish, setActionStagedWish] = useState<WishItem | null>(null);
@@ -269,7 +330,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const currencyCode = trip.currency || 'TWD';
     const incompleteTodosCount = currentTodos.filter(t => !t.isCompleted).length;
 
-    // 🛡️ 9.3 智慧多幣別動態金流計算引擎 (雙向分組計算)
     const shoppingBudgetStats = useMemo(() => {
         const staged = trip.stagedWishes || [];
         const items = staged.filter(w => w.type === 'item');
@@ -280,7 +340,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         items.forEach(w => {
             const cur = w.currency || 'TWD';
             const amt = w.budget || 0;
-            // 尚未勾選且未排入行程，視為尚需預算
             if (!w.isPurchased && w.assignedDay === undefined) {
                 remainingMap[cur] = (remainingMap[cur] || 0) + amt;
             } else {
@@ -377,11 +436,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
         }
     };
+
+    // 🛡️ 9.3 核心漏洞補回：處理文件編輯存檔並安全關閉
     const handleDocumentSave = (updatedDoc: Partial<VaultFile>) => {
         if (onLocalFileUpdate) { 
             onLocalFileUpdate(updatedDoc); 
         }
-        setEditingDoc(null); // 存檔後自動關閉編輯彈窗
+        setEditingDoc(null);
     };
 
     const handleSaveVibeTag = (dayNumber: number, newTag: string) => {
@@ -450,7 +511,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         }
     };
 
-    // 🛡️ 9.3 核心金流：局部勾選已購買 (變更狀態)
     const handleTogglePurchase = (wishId: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w =>
@@ -459,7 +519,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         onUpdateTrip(newTrip);
     };
 
-    // 🛡️ 9.3 核心金流：局部移除 (未刪除全域心願)
     const handleLocalDeleteWish = (wishId: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         newTrip.stagedWishes = (newTrip.stagedWishes || []).filter(w => w.id !== wishId);
@@ -468,7 +527,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setTimeout(() => setToastMsg(null), 3000);
     };
 
-    // 🛡️ 9.3 核心金流：指派排入行程
     const handleInjectWish = (wish: WishItem, dayIndex: number) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const targetDay = newTrip.days[dayIndex];
@@ -494,7 +552,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         targetDay.activities.push(newActivity);
         newTrip.days[dayIndex] = recalculateTimeline(targetDay);
         
-        // 將該心願狀態更新為已排入，轉移至下沉影子區
         newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w => 
             w.id === wish.id ? { ...w, assignedDay: dayIndex + 1 } : w
         );
@@ -506,11 +563,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setTimeout(() => setToastMsg(null), 3000);
     };
 
-    // 🛡️ 9.3 核心金流：Rollback (抽離行程)
     const handleRollbackWish = (wishId: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         
-        // 1. 從時間軸找出並移除該 Activity
         newTrip.days.forEach(day => {
             const originalLength = day.activities.length;
             day.activities = day.activities.filter(a => a.wishItemId !== wishId);
@@ -519,7 +574,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             }
         });
         
-        // 2. 恢復心願的未指派狀態
         newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w =>
             w.id === wishId ? { ...w, assignedDay: undefined } : w
         );
@@ -533,7 +587,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const removedAct = newTrip.days[dayIndex].activities[activityIndex];
         
-        // Rollback 金流機制
         if (removedAct.wishItemId) {
             newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w => 
                 w.id === removedAct.wishItemId ? { ...w, assignedDay: undefined } : w
@@ -841,7 +894,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </div>
             )}
 
-            {/* === 🛡️ 9.3 升級：融合分頁與手勢化操作之心願盒面板 === */}
+            {/* === 🛡️ 9.3 升級：融合分頁與雙向極限手勢之心願盒面板 === */}
             {showWishTray && (
                 <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4">
                     <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm transition-opacity" onClick={() => setShowWishTray(false)} />
@@ -878,7 +931,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 </button>
                             </div>
 
-                            {/* 精品級動態雙金流計量表 (僅在切換至購物清單時顯示) */}
+                            {/* 精品級動態雙金流計量表 */}
                             {wishTrayTab === 'item' && (
                                 <div className="bg-white/60 rounded-xl p-3 text-[10px] font-black tracking-wider text-gray-500 flex flex-col gap-1.5 shadow-sm border border-white">
                                     <div className="flex justify-between items-center">
@@ -906,14 +959,13 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 </div>
                             ) : (
                                 <>
-                                    {/* 購物模式的雙區分流設計 */}
                                     {wishTrayTab === 'item' ? (
                                         <div className="flex flex-col gap-5">
                                             {/* A 區：未指派 */}
                                             <div>
-                                                <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">未指派清單 (向右滑動指派)</h4>
+                                                <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">未指派清單 (滑動：右👉指派 ｜ 左👈移除)</h4>
                                                 {displayedStagedWishes.filter(w => w.assignedDay === undefined).length === 0 ? (
-                                                    <p className="text-xs text-gray-400 font-medium">目前無未指派之購物清單</p>
+                                                    <p className="text-xs text-gray-400 font-medium py-2">目前無未指派之購物清單</p>
                                                 ) : (
                                                     displayedStagedWishes.filter(w => w.assignedDay === undefined).map(wish => (
                                                         <SwipeableWishCard
@@ -929,10 +981,10 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                                 )}
                                             </div>
 
-                                            {/* B 區：下沉影子區 */}
+                                            {/* B 區：已排入行程 */}
                                             {displayedStagedWishes.filter(w => w.assignedDay !== undefined).length > 0 && (
                                                 <div>
-                                                    <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">已排入行程 (向左滑動抽離)</h4>
+                                                    <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">已排入行程 (左👈滑動可抽離還原)</h4>
                                                     {displayedStagedWishes.filter(w => w.assignedDay !== undefined).map(wish => (
                                                         <SwipeableWishCard
                                                             key={wish.id}
@@ -948,7 +1000,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                             )}
                                         </div>
                                     ) : (
-                                        /* 地點模式：維持原本直接注入的操作邏輯 */
+                                        /* 地點模式宇宙：維持原本的操作邏輯 */
                                         <div className="flex flex-col gap-3">
                                             {displayedStagedWishes.map(wish => {
                                                 const isAssigned = wish.assignedDay !== undefined;
