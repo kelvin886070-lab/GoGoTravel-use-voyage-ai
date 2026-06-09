@@ -23,7 +23,7 @@ const CACHE_TTL = {
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
     const candidateModels = [
-        "gemini-2.5-flash", 
+        "gemini-3.1-flash-lite", 
     ];
     let lastError = null;
 
