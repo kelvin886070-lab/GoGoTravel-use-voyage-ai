@@ -122,6 +122,13 @@ const App: React.FC = () => {
       };
   }, []);
 
+  // 🚀 2.3 關閉/重新整理前，盡力把尚未寫出的編輯補存（最後防線）
+  useEffect(() => {
+      const handler = () => flushTripSave();
+      window.addEventListener('beforeunload', handler);
+      return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
   const fetchTrips = async (userId?: string) => {
       const currentUserId = userId || user?.id;
       if (!currentUserId) return;
@@ -222,6 +229,12 @@ const App: React.FC = () => {
       ));
   };
 
+  // 🚀 2.3 防抖（debounce）儲存
+  //   - 本地 state 即時更新（畫面不延遲）
+  //   - 雲端寫入延後 800ms 合併，連續編輯只寫一次，大幅減少 DB 寫入與「同步中」閃爍
+  const saveTimerRef = useRef<number | null>(null);
+  const pendingTripRef = useRef<Trip | null>(null);
+
   const saveTripToCloud = async (trip: Trip) => {
       if (!user) return;
       setIsSyncing(true);
@@ -235,6 +248,38 @@ const App: React.FC = () => {
       setIsSyncing(false);
   };
 
+  // 取消尚未寫出的排程（用於刪除等「不該被舊版覆蓋」的情境）
+  const cancelPendingSave = () => {
+      if (saveTimerRef.current !== null) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+      }
+      pendingTripRef.current = null;
+  };
+
+  // 立即把待儲存的行程寫出（換頁、登出、關閉前呼叫，避免遺失最後編輯）
+  const flushTripSave = () => {
+      if (saveTimerRef.current !== null) {
+          clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+      }
+      const pending = pendingTripRef.current;
+      if (pending) {
+          pendingTripRef.current = null;
+          saveTripToCloud(pending);
+      }
+  };
+
+  // 排程一次延後儲存；期間若有新編輯則重新計時
+  const scheduleTripSave = (trip: Trip) => {
+      pendingTripRef.current = trip;
+      if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(() => {
+          saveTimerRef.current = null;
+          flushTripSave();
+      }, 800);
+  };
+
   const deleteTripFromCloud = async (tripId: string) => {
       const { error } = await supabase.from('trips').delete().eq('id', tripId);
       if (error) console.error("刪除失敗", error);
@@ -246,6 +291,7 @@ const App: React.FC = () => {
   
   const handleLogout = async () => {
       if(confirm("確定要登出嗎？")) {
+          flushTripSave(); // 登出前補存最後編輯
           await supabase.auth.signOut();
       }
   };
@@ -261,11 +307,12 @@ const App: React.FC = () => {
   const handleUpdateTrip = (updatedTrip: Trip) => {
     setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
     setSelectedTrip(updatedTrip);
-    saveTripToCloud(updatedTrip);
+    scheduleTripSave(updatedTrip); // 🚀 2.3 改為防抖儲存
   };
 
   const handleSoftDeleteTrip = (id: string) => {
     if(confirm('確定要將此行程移至保管箱嗎？')) {
+        cancelPendingSave(); // 避免尚未寫出的舊版覆蓋掉刪除狀態
         const targetTrip = trips.find(t => t.id === id);
         if (targetTrip) {
             const deletedTrip = { ...targetTrip, isDeleted: true };
@@ -287,6 +334,7 @@ const App: React.FC = () => {
 
   const handlePermanentDeleteTrip = (id: string) => {
       if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
+          cancelPendingSave(); // 取消殘留排程，避免覆蓋刪除
           setTrips(prev => prev.filter(t => t.id !== id));
           deleteTripFromCloud(id);
       }
@@ -335,7 +383,7 @@ const App: React.FC = () => {
         folders={vaultFolders}
         files={vaultFiles}
         user={user} 
-        onBack={() => setSelectedTrip(null)}
+        onBack={() => { flushTripSave(); setSelectedTrip(null); }}
         onDelete={() => handleSoftDeleteTrip(selectedTrip.id)}
         onUpdateTrip={handleUpdateTrip}
         onLocalFileUpdate={handleLocalFileUpdate}

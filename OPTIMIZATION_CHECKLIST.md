@@ -71,7 +71,7 @@ order by table_name, ordinal_position;
 
 ## 🟠 階段二：架構解阻塞（讓後續優化變容易）
 
-### [ ] 2.1 刪除巢狀重複目錄 `voyage-ai/voyage-ai/`
+### [x] 2.1 刪除巢狀重複目錄 `voyage-ai/voyage-ai/` ✅ 2026-06-28 完成（commit 4858377，刪 23 檔 / 3695 行；已確認主程式無引用、可從 git 歷史復原）
 - **為什麼**：那是一份預設 Vite 樣板殘骸，被 git 追蹤、含獨立 117MB node_modules，純死碼，會誤導搜尋與協作。
 - **做什麼**：確認該資料夾無任何被主程式 import 後，`git rm -r voyage-ai/`（巢狀那個）並 commit。
 - **DoD**：根目錄只剩一份 `src/`，build 仍正常。
@@ -83,7 +83,7 @@ order by table_name, ordinal_position;
 - **DoD**：`trip_data` 內不再出現 `data:image/...;base64` 字串。
 - **需要我**：給我資訊 E。
 
-### [ ] 2.3 `saveTripToCloud` 加上 debounce
+### [x] 2.3 `saveTripToCloud` 加上 debounce ✅ 2026-06-28 完成（800ms 防抖 + flush on 換頁/登出/關閉 + cancel on 刪除；四情境驗收通過）
 - **為什麼**：`onUpdateTrip` 在 `ItineraryView` 被呼叫 20+ 次，每次都 upsert 整包 blob、無節流，造成過量寫入與成本。
 - **做什麼**：在 `App.tsx` 用一個 debounce（如 800ms）包住雲端寫入；本地 state 仍即時更新，只延後寫 DB。可加「同步中／已儲存」狀態提示。
 - **DoD**：連續操作（如連點調整）只觸發一次 DB 寫入。
