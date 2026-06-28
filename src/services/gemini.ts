@@ -1,11 +1,17 @@
 // src/services/gemini.ts
 import type { TripDay, WeatherInfo, VoltageInfo, Activity } from "../types";
+import { supabase } from "./supabase";
 
-// 1. 讀取環境變數
-const apiKey = (import.meta.env.VITE_API_KEY || '').trim();
-const weatherApiKey = (import.meta.env.VITE_WEATHER_API_KEY || '').trim();
-
-if (!apiKey) console.error("Gemini API Key is missing!");
+// 🔐 所有外部 API 金鑰已移至 Supabase Edge Function (ai-proxy)。
+// 前端不再持有任何金鑰，僅以「已登入使用者的 JWT」呼叫代理。
+async function callProxy(action: string, payload: Record<string, unknown>): Promise<any> {
+    const { data, error } = await supabase.functions.invoke('ai-proxy', {
+        body: { action, payload },
+    });
+    if (error) throw new Error(error.message || 'AI 代理呼叫失敗');
+    if (data?.error) throw new Error(data.error);
+    return data;
+}
 
 // --- 快取設定 ---
 const CACHE_PREFIX = 'kelvin_cache_';
@@ -19,81 +25,19 @@ const CACHE_TTL = {
 };
 
 // ==========================================================
-// 核心：純 HTTP 請求函式 (文字模式)
+// 核心：文字模式 (透過 ai-proxy)
 // ==========================================================
 async function callGeminiDirectly(prompt: string): Promise<string> {
-    const candidateModels = [
-        "gemini-3.1-flash-lite", 
-    ];
-    let lastError = null;
-
-    for (const model of candidateModels) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            } else {
-                if ([404, 429, 503].includes(response.status)) {
-                    continue;
-                }
-                const err = await response.json().catch(() => ({}));
-                lastError = new Error(`模型 ${model} 回傳 ${response.status}: ${err.error?.message}`);
-            }
-        } catch (e: any) {
-            lastError = e;
-        }
-    }
-
-    throw lastError || new Error("AI 服務暫時無法使用，請稍後再試。");
+    const data = await callProxy('gemini-text', { prompt });
+    return data.text || "";
 }
 
 // ==========================================================
-// 核心：純 HTTP 請求函式 (視覺模式 - 處理圖片)
+// 核心：視覺模式 (透過 ai-proxy，處理圖片)
 // ==========================================================
 async function callGeminiVision(prompt: string, base64Image: string): Promise<string> {
-    const model = "gemini-2.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp|heic);base64,/, "");
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        {
-                            inline_data: {
-                                mime_type: "image/jpeg", 
-                                data: cleanBase64
-                            }
-                        }
-                    ]
-                }]
-            })
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(`Vision API Error: ${err.error?.message || response.statusText}`);
-        }
-        
-        const data = await response.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    } catch (e) {
-        console.error("Gemini Vision Error:", e);
-        throw e;
-    }
+    const data = await callProxy('gemini-vision', { prompt, base64Image });
+    return data.text || "";
 }
 
 // --- 快取邏輯 ---
@@ -427,11 +371,10 @@ export const getPlugInfo = async (country: string): Promise<VoltageInfo | null> 
 
 export const getWeatherForecast = async (location: string): Promise<WeatherInfo | null> => {
   return fetchWithCache(`weather_${location}`, async () => {
-      if (!weatherApiKey) return null;
       try {
-        const response = await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${weatherApiKey}&q=${location}&days=1&aqi=no&alerts=no&lang=zh_tw`);
-        if (!response.ok) throw new Error("Weather API failed");
-        const data = await response.json();
+        const res = await callProxy('weather', { location });
+        const data = res.data;
+        if (!data) return null;
         return {
           location: data.location.name,
           temperature: `${Math.round(data.current.temp_c)}°C`,
@@ -452,12 +395,10 @@ export const getWeatherForecast = async (location: string): Promise<WeatherInfo 
 
 export const getTimezone = async (location: string): Promise<string | null> => {
     return fetchWithCache(`timezone_${location}`, async () => {
-        if (weatherApiKey) {
-            try {
-                const response = await fetch(`https://api.weatherapi.com/v1/timezone.json?key=${weatherApiKey}&q=${location}`);
-                if (response.ok) { return (await response.json()).location.tz_id; }
-            } catch (e) {}
-        }
+        try {
+            const res = await callProxy('timezone', { location });
+            if (res?.data?.location?.tz_id) return res.data.location.tz_id;
+        } catch (e) {}
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
     }, CACHE_TTL.TIMEZONE);
 }

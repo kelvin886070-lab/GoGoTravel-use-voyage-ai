@@ -7,14 +7,12 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '');
 
+  // 註：Gemini / Weather 金鑰已移至 Supabase Edge Function，前端不再注入。
+  void env;
   return {
     plugins: [react()],
     server: {
       port: 5173,
-    },
-    define: {
-      // Polyfill process.env.API_KEY so standard Gemini SDK code works
-      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY),
     },
   };
 });

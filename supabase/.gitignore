@@ -1,0 +1,8 @@
+# Supabase CLI 本機暫存與機密，不進版控
+.branches
+.temp
+
+# 環境變數
+.env
+.env.local
+.env.*.local
