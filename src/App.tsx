@@ -9,7 +9,7 @@ import { VaultView } from './views/VaultView';
 import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
-import { signPaths } from './services/storage';
+import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb } from './services/storage';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
 import { WishItemEditModal } from './views/ItineraryView/modals/WishItemEditModal';
@@ -142,13 +142,10 @@ const App: React.FC = () => {
               id: row.id,
               isDeleted: row.trip_data.isDeleted || false
           }));
-          // 🖼️ 2.2 把封面圖路徑批次換成 signed URL，塞進 coverImage 供顯示（顯示端零改動）
-          const urlMap = await signPaths(loadedTrips.map(t => t.coverImagePath));
-          const resolved = loadedTrips.map(t =>
-              t.coverImagePath && urlMap[t.coverImagePath]
-                  ? { ...t, coverImage: urlMap[t.coverImagePath] }
-                  : t
-          );
+          // 🖼️ 2.2 收集所有圖片路徑（封面 + 記帳照片），一次批次換成 signed URL（顯示端零改動）
+          const allPaths = loadedTrips.flatMap(collectTripImagePaths);
+          const urlMap = await signPaths(allPaths);
+          const resolved = loadedTrips.map(t => resolveTripImages(t, urlMap));
           setTrips(resolved);
       }
       setIsSyncing(false);
@@ -246,8 +243,8 @@ const App: React.FC = () => {
   const saveTripToCloud = async (trip: Trip) => {
       if (!user) return;
       setIsSyncing(true);
-      // 🖼️ 2.2 有路徑時，不要把暫時的 signed URL 寫進 DB（清空顯示值，DB 以 coverImagePath 為準）
-      const tripForDb = trip.coverImagePath ? { ...trip, coverImage: '' } : trip;
+      // 🖼️ 2.2 存 DB 前序列化：把有 Storage 路徑的封面/記帳照片「顯示值」清空，不寫入暫時的 signed URL
+      const tripForDb = serializeTripForDb(trip);
       const { error } = await supabase.from('trips').upsert({
               id: trip.id,
               user_id: user.id,
@@ -345,6 +342,8 @@ const App: React.FC = () => {
   const handlePermanentDeleteTrip = (id: string) => {
       if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
           cancelPendingSave(); // 取消殘留排程，避免覆蓋刪除
+          const target = trips.find(t => t.id === id);
+          if (target) deleteTripImages(collectTripImagePaths(target)); // 🖼️ 2.2 連帶刪除該行程所有圖（封面+記帳照片）
           setTrips(prev => prev.filter(t => t.id !== id));
           deleteTripFromCloud(id);
       }

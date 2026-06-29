@@ -81,7 +81,10 @@ order by table_name, ordinal_position;
 - ✅ 2026-06-29 封面圖：建立 trip-media bucket + 3 條 storage policy；services/storage.ts（upload/delete/批次 signPaths）；
   types 加 coverImagePath；App 載入解析 signed URL、儲存還原路徑；TripSettingsModal 上傳改走 Storage、換圖刪舊。
   驗收：trip-media 出現檔案、trip_data 只存路徑(coverImage="")、換圖後舊檔自動刪除，皆通過。
-- [ ] 待辦：記帳照片 expenseImage（回憶錄 PDF 的核心資料）改走 Storage（同模式，巢狀於 activities 內，較複雜）。
+- ✅ 2026-06-29 記帳照片 expenseImage：types 加 expenseImagePath；storage.ts 加 collectTripImagePaths/deleteTripImages/resolveTripImages/serializeTripForDb；
+  App 載入批次簽全部圖、儲存走訪序列化、永久刪行程連帶清圖；ActivityDetailModal 上傳改 Storage、換圖刪舊；ItineraryView 刪卡清圖。
+  驗收：上傳進 trip-media、trip_data 只存路徑、重整保留、換圖/刪卡/永久刪皆清孤兒，全通過。
+- ✅ 2.2 完成（封面＋記帳照片皆改存 Storage，blob 不再塞 base64 圖）。
 
 ---
 原始 2.2 說明：

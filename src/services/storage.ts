@@ -2,6 +2,7 @@
 // 🖼️ 2.2 行程圖片儲存：上傳到 Supabase Storage（trip-media），資料庫只存「路徑」。
 import { supabase } from './supabase';
 import { compressImage } from '../utils/imageUtils';
+import type { Trip } from '../types';
 
 const BUCKET = 'trip-media';
 const SIGNED_TTL = 60 * 60 * 24; // 24 小時
@@ -43,4 +44,52 @@ export async function signPaths(paths: (string | undefined)[]): Promise<Record<s
         if (item.path && item.signedUrl) map[item.path] = item.signedUrl;
     });
     return map;
+}
+
+// 蒐集一個行程裡所有「Storage 路徑」型的圖片（封面 + 所有記帳照片）
+export function collectTripImagePaths(trip: Trip): string[] {
+    const paths: (string | undefined)[] = [trip.coverImagePath];
+    trip.days?.forEach(d => d.activities?.forEach(a => paths.push(a.expenseImagePath)));
+    return Array.from(new Set(paths.filter(isStoragePath))) as string[];
+}
+
+// 批次刪除多張圖（只刪真正的 Storage 路徑）
+export async function deleteTripImages(paths: (string | undefined)[]): Promise<void> {
+    const real = Array.from(new Set(paths.filter(isStoragePath))) as string[];
+    if (real.length === 0) return;
+    await supabase.storage.from(BUCKET).remove(real);
+}
+
+// 載入後：把行程內圖片路徑換成 signed URL 供顯示（找不到的保留原值＝舊 base64/http passthrough）
+export function resolveTripImages(trip: Trip, urlMap: Record<string, string>): Trip {
+    const next: Trip = { ...trip };
+    if (trip.coverImagePath && urlMap[trip.coverImagePath]) {
+        next.coverImage = urlMap[trip.coverImagePath];
+    }
+    if (trip.days) {
+        next.days = trip.days.map(d => ({
+            ...d,
+            activities: (d.activities || []).map(a =>
+                a.expenseImagePath && urlMap[a.expenseImagePath]
+                    ? { ...a, expenseImage: urlMap[a.expenseImagePath] }
+                    : a
+            ),
+        }));
+    }
+    return next;
+}
+
+// 存進 DB 前：把有 Storage 路徑的圖片「顯示值」清空（不把暫時的 signed URL 寫進 DB）
+export function serializeTripForDb(trip: Trip): Trip {
+    const next: Trip = { ...trip };
+    if (trip.coverImagePath) next.coverImage = '';
+    if (trip.days) {
+        next.days = trip.days.map(d => ({
+            ...d,
+            activities: (d.activities || []).map(a =>
+                a.expenseImagePath ? { ...a, expenseImage: '' } : a
+            ),
+        }));
+    }
+    return next;
 }

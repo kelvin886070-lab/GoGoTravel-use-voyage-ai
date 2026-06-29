@@ -85,7 +85,8 @@ export interface Activity {
   transportDetail?: TransportDetail;
   payer?: string;        
   splitWith?: string[];  
-  expenseImage?: string;       
+  expenseImage?: string;         // 顯示用：載入時填 signed URL；舊資料為 base64
+  expenseImagePath?: string;     // 🖼️ 2.2b durable：Storage 路徑（DB 真正保存的來源）
   imagePositionY?: number;
   items?: ExpenseItem[]; 
   

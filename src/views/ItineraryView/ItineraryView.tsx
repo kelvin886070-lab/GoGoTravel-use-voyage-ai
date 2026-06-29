@@ -599,7 +599,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         newTrip.days[dayIndex].activities.splice(activityIndex, 1);
         newTrip.days[dayIndex] = recalculateTimeline(newTrip.days[dayIndex]);
         onUpdateTrip(newTrip);
-        setSelectedActivity(null); 
+        deleteTripImage(removedAct.expenseImagePath); // 🖼️ 2.2b 刪記帳卡連帶刪其照片，避免孤兒檔
+        setSelectedActivity(null);
     };
 
     const handleUpdateActivity = (updatedAct: Activity) => {

@@ -9,6 +9,8 @@ import { TimePickerWheel } from '../../../components/common/TimePickerWheel';
 // import { LocationLink } from '../../../components/common/LocationLink';
 import { CATEGORIES, getMemberName, getMemberAvatarColor, isSystemType, Tag } from '../shared';
 import type { Activity, Member, ExpenseItem } from '../../../types';
+// 🖼️ 2.2b 記帳照片改走 Storage
+import { uploadTripImage, signPaths, deleteTripImage } from '../../../services/storage';
 
 export const ActivityDetailModal: React.FC<{ 
     act: Activity; 
@@ -43,6 +45,8 @@ export const ActivityDetailModal: React.FC<{
     const isNote = edited.type === 'note';
     
     const newItemInputRef = useRef<HTMLInputElement>(null);
+    // 🖼️ 2.2b 記住開窗時「已存檔」的記帳照片路徑，存檔換圖才刪舊
+    const originalExpensePathRef = useRef(act.expenseImagePath);
 
     useEffect(() => {
         if (!edited.payer && members.length > 0) {
@@ -99,12 +103,17 @@ export const ActivityDetailModal: React.FC<{
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64 = reader.result as string;
-            setEdited(prev => ({ ...prev, expenseImage: base64 }));
-        };
-        reader.readAsDataURL(file);
+        try {
+            const prevPath = edited.expenseImagePath;
+            const path = await uploadTripImage(file);               // 壓縮並上傳到 Storage
+            const urlMap = await signPaths([path]);                 // 立刻換 signed URL 供預覽
+            // 清掉本次開窗內先前上傳但尚未存檔的圖（不動原始已存檔的）
+            if (prevPath && prevPath !== originalExpensePathRef.current) deleteTripImage(prevPath);
+            setEdited(prev => ({ ...prev, expenseImage: urlMap[path] || '', expenseImagePath: path }));
+        } catch (err) {
+            console.error('記帳照片上傳失敗', err);
+            alert('圖片上傳失敗，請再試一次。');
+        }
     };
 
     const addItem = () => {
@@ -468,8 +477,16 @@ export const ActivityDetailModal: React.FC<{
                 {/* Footer */}
                 <div className="p-4 border-t border-gray-100 bg-white z-20">
                     {isEditing ? (
-                        <button 
-                            onClick={() => { onSave(edited); setIsEditing(false); }} 
+                        <button
+                            onClick={() => {
+                                onSave(edited);
+                                // 🖼️ 2.2b 換了照片才刪掉「原本已存檔」的舊圖，避免孤兒檔
+                                if (edited.expenseImagePath !== originalExpensePathRef.current) {
+                                    deleteTripImage(originalExpensePathRef.current);
+                                    originalExpensePathRef.current = edited.expenseImagePath;
+                                }
+                                setIsEditing(false);
+                            }}
                             className="w-full py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
                         >
                             <Save className="w-4 h-4" /> 儲存變更
