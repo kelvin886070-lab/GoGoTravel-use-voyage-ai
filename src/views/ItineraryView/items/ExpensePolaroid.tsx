@@ -4,7 +4,7 @@ import type { Activity, Member } from '../../../types';
 import type { DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 import { CATEGORIES, getMemberName, getMemberAvatarColor } from '../shared';
 
-export const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
+const ExpensePolaroidImpl: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot, currencySymbol: string, members?: Member[] }> = ({ act, onClick, provided, snapshot, currencySymbol, members }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : '0';
     const payerName = getMemberName(members, act.payer);
     const avatarColor = getMemberAvatarColor(payerName);
@@ -51,3 +51,12 @@ export const ExpensePolaroid: React.FC<{ act: Activity, onClick: () => void, pro
         </div>
     );
 };
+
+// 🚀 3.3 memo：忽略 onClick，比較影響畫面的 props
+export const ExpensePolaroid = React.memo(ExpensePolaroidImpl, (prev, next) =>
+    prev.act === next.act &&
+    prev.provided === next.provided &&
+    prev.snapshot === next.snapshot &&
+    prev.currencySymbol === next.currencySymbol &&
+    prev.members === next.members
+);

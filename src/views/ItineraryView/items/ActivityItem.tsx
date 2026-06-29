@@ -4,7 +4,7 @@ import type { Activity } from '../../../types';
 import type { DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 import { CATEGORIES, Tag } from '../shared';
 
-export const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
+const ActivityItemImpl: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot, currencySymbol: string }> = ({ act, onClick, provided, snapshot, currencySymbol }) => {
     const displayCost = act.cost !== undefined && act.cost !== null ? Number(act.cost).toLocaleString() : null;
     const category = CATEGORIES.find(c => c.id === act.type);
 
@@ -28,3 +28,11 @@ export const ActivityItem: React.FC<{ act: Activity, onClick: () => void, provid
         </div>
     );
 };
+
+// 🚀 3.3 memo：忽略每次都變的 onClick，只在 act/provided/snapshot/currencySymbol 改變時重繪
+export const ActivityItem = React.memo(ActivityItemImpl, (prev, next) =>
+    prev.act === next.act &&
+    prev.provided === next.provided &&
+    prev.snapshot === next.snapshot &&
+    prev.currencySymbol === next.currencySymbol
+);

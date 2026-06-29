@@ -3,7 +3,7 @@ import { Train, Footprints, Car, TramFront, Plane, Bus, Clock, ArrowLeftRight, C
 import type { Activity } from '../../../types';
 import type { DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 
-export const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
+const TransportConnectorItemImpl: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     const getIcon = () => {
         const m = detail?.mode || 'bus';
@@ -39,3 +39,10 @@ export const TransportConnectorItem: React.FC<{ act: Activity, onClick: () => vo
         </div>
     );
 };
+
+// 🚀 3.3 memo：忽略 onClick
+export const TransportConnectorItem = React.memo(TransportConnectorItemImpl, (prev, next) =>
+    prev.act === next.act &&
+    prev.provided === next.provided &&
+    prev.snapshot === next.snapshot
+);

@@ -108,7 +108,13 @@ order by table_name, ordinal_position;
 - **做什麼**：為 DB row 定義明確 interface（或用 Supabase 產生的型別 `supabase gen types`）；移除 `Activity.type` 的 `| string`。
 - **DoD**：`grep -rn "as any" src` 大幅下降，`tsc` 無錯。
 
-### [ ] 3.3 拆分巨型元件 + 導入 memo / lazy load
+### [~] 3.3 拆分巨型元件 + 導入 memo / lazy load （進行中）
+- ✅ 2026-06-28：5 個拖曳卡片（ActivityItem/ExpensePolaroid/TransportConnectorItem/NoteItem/ProcessItem）加上自訂比較函式的 React.memo。
+  量測結果：Scripting 密度 ↓約36%（320→206 ms/s）、INP ↓35%（812→529ms）。功能驗收（點擊/拖曳/顯示）通過。
+- [ ] 待辦：DayRouteCard / TripCard memo、App handler useCallback、拆分 1092 行 ItineraryView、PDF 元件 lazy load。
+
+---
+原始 3.3 說明：
 - **為什麼**：`ItineraryView`(1092 行)、`CreateTripModal`(904 行) 過大；`React.memo`=0、`useCallback`=0，每次 render 重建所有 handler，拖曳大行程會掉幀；`@react-pdf/renderer` 等大套件全進首包。
 - **做什麼**：
   - 把 `App.tsx` 的 handler 用 `useCallback` 包起。

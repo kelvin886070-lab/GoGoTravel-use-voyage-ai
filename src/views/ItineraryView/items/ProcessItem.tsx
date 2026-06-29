@@ -3,7 +3,7 @@ import { UserCheck, GripVertical } from 'lucide-react';
 import type { Activity } from '../../../types';
 import type { DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 
-export const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
+const ProcessItemImpl: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
     const detail = act.transportDetail;
     return (
         <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`relative flex items-center py-1 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
@@ -17,3 +17,10 @@ export const ProcessItem: React.FC<{ act: Activity, onClick: () => void, provide
         </div>
     );
 };
+
+// 🚀 3.3 memo：忽略 onClick
+export const ProcessItem = React.memo(ProcessItemImpl, (prev, next) =>
+    prev.act === next.act &&
+    prev.provided === next.provided &&
+    prev.snapshot === next.snapshot
+);

@@ -3,7 +3,7 @@ import { StickyNote, GripVertical } from 'lucide-react';
 import type { Activity } from '../../../types';
 import type { DraggableProvided, DraggableStateSnapshot } from '@hello-pangea/dnd';
 
-export const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
+const NoteItemImpl: React.FC<{ act: Activity, onClick: () => void, provided: DraggableProvided, snapshot: DraggableStateSnapshot }> = ({ act, onClick, provided, snapshot }) => {
     return (
         <div ref={provided.innerRef} {...provided.draggableProps} style={{ ...provided.draggableProps.style, touchAction: 'pan-y' }} className={`flex gap-3 py-0.5 group ${snapshot.isDragging ? 'opacity-80 z-50' : ''}`} onClick={onClick}>
             <div className="flex flex-col items-center w-[55px] pt-2"><StickyNote className="w-4 h-4 text-yellow-400" /></div>
@@ -14,3 +14,10 @@ export const NoteItem: React.FC<{ act: Activity, onClick: () => void, provided: 
         </div>
     );
 };
+
+// 🚀 3.3 memo：忽略 onClick
+export const NoteItem = React.memo(NoteItemImpl, (prev, next) =>
+    prev.act === next.act &&
+    prev.provided === next.provided &&
+    prev.snapshot === next.snapshot
+);
