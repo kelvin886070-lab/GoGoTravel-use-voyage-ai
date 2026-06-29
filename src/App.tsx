@@ -9,6 +9,7 @@ import { VaultView } from './views/VaultView';
 import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
+import { signPaths } from './services/storage';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
 import { WishItemEditModal } from './views/ItineraryView/modals/WishItemEditModal';
@@ -136,12 +137,19 @@ const App: React.FC = () => {
       setIsSyncing(true);
       const { data } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips = data.map((row: any) => ({ 
-              ...row.trip_data, 
-              id: row.id, 
-              isDeleted: row.trip_data.isDeleted || false 
+          const loadedTrips: Trip[] = data.map((row: any) => ({
+              ...row.trip_data,
+              id: row.id,
+              isDeleted: row.trip_data.isDeleted || false
           }));
-          setTrips(loadedTrips);
+          // 🖼️ 2.2 把封面圖路徑批次換成 signed URL，塞進 coverImage 供顯示（顯示端零改動）
+          const urlMap = await signPaths(loadedTrips.map(t => t.coverImagePath));
+          const resolved = loadedTrips.map(t =>
+              t.coverImagePath && urlMap[t.coverImagePath]
+                  ? { ...t, coverImage: urlMap[t.coverImagePath] }
+                  : t
+          );
+          setTrips(resolved);
       }
       setIsSyncing(false);
   };
@@ -238,10 +246,12 @@ const App: React.FC = () => {
   const saveTripToCloud = async (trip: Trip) => {
       if (!user) return;
       setIsSyncing(true);
+      // 🖼️ 2.2 有路徑時，不要把暫時的 signed URL 寫進 DB（清空顯示值，DB 以 coverImagePath 為準）
+      const tripForDb = trip.coverImagePath ? { ...trip, coverImage: '' } : trip;
       const { error } = await supabase.from('trips').upsert({
               id: trip.id,
               user_id: user.id,
-              trip_data: trip,
+              trip_data: tripForDb,
               updated_at: new Date().toISOString()
           });
       if (error) console.error("上傳失敗", error);

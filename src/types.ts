@@ -118,8 +118,9 @@ export interface Trip {
   reminders?: Reminder[];
   startDate: string;
   endDate: string;
-  coverImage: string;
-  coverImagePositionY?: number; 
+  coverImage: string;            // 顯示用：載入時填入 signed URL；舊資料為 base64/http
+  coverImagePath?: string;       // 🖼️ 2.2 durable：Storage 路徑（DB 真正保存的來源）
+  coverImagePositionY?: number;
   days: TripDay[];
   isDeleted?: boolean;
   currency?: string; 

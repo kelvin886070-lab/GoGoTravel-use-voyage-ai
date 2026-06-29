@@ -6,8 +6,8 @@ import {
     Check, Users, Crop, MoveVertical, Save
 } from 'lucide-react';
 import type { Trip, Member, User } from '../../../types';
-// 📥 9.0 引入：前端圖片壓縮引擎
-import { compressImage } from '../../../utils/imageUtils';
+// 🖼️ 2.2 改走 Storage：上傳→存路徑，不再存 base64
+import { uploadTripImage, signPaths, deleteTripImage } from '../../../services/storage';
 
 interface TripSettingsModalProps {
     trip: Trip;
@@ -23,8 +23,11 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
     const [startDate, setStartDate] = useState(trip.startDate);
     const [endDate, setEndDate] = useState(trip.endDate);
     const [coverImage, setCoverImage] = useState(trip.coverImage);
+    // 🖼️ 2.2 封面圖的 Storage 路徑（durable）；以及記住開窗時「已存檔」的原始路徑
+    const [coverImagePath, setCoverImagePath] = useState(trip.coverImagePath);
+    const originalPathRef = useRef(trip.coverImagePath);
     // 🛡️ 9.0 修改：讀取既有的 Y 軸座標，若無則預設 50(置中)
-    const [imagePositionY, setImagePositionY] = useState(trip.coverImagePositionY ?? 50); 
+    const [imagePositionY, setImagePositionY] = useState(trip.coverImagePositionY ?? 50);
     
     // UI States
     const [isRepositioning, setIsRepositioning] = useState(false);
@@ -68,14 +71,19 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
         const file = e.target.files?.[0];
         if (file) {
             try {
-                // 🛡️ 使用壓縮引擎，將龐大的原圖轉化為輕量 Base64
-                const compressedBase64 = await compressImage(file);
-                setCoverImage(compressedBase64);
+                // 🖼️ 2.2 壓縮後上傳到 Storage，取得路徑與顯示用 signed URL
+                const prev = coverImagePath;
+                const path = await uploadTripImage(file);
+                const urlMap = await signPaths([path]);
+                // 若 prev 是「本次開窗內先前上傳、尚未存檔」的圖，先清掉避免堆積（不動原始已存檔的）
+                if (prev && prev !== originalPathRef.current) deleteTripImage(prev);
+                setCoverImagePath(path);
+                setCoverImage(urlMap[path] || '');
                 // 上傳新圖後，將座標重置為 50 並自動開啟裁切模式
                 setImagePositionY(50);
                 setIsRepositioning(true);
             } catch (error) {
-                console.error("Image compression failed:", error);
+                console.error("Image upload failed:", error);
                 alert("圖片處理失敗，請嘗試其他照片。");
             }
         }
@@ -129,13 +137,16 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
             startDate,
             endDate,
             coverImage,
+            coverImagePath,                       // 🖼️ 2.2 帶上 Storage 路徑
             coverImagePositionY: imagePositionY, // 🛡️ 9.0 新增：回寫 Y 軸座標記憶
             days: newDays,
             members,
         };
-        
+
         onUpdate(updatedTrip);
-        onClose(); 
+        // 🖼️ 2.2 換了封面才刪掉「原本已存檔」的舊圖，避免孤兒檔
+        if (coverImagePath !== originalPathRef.current) deleteTripImage(originalPathRef.current);
+        onClose();
     };
 
     return (

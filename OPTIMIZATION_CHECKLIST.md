@@ -77,7 +77,14 @@ order by table_name, ordinal_position;
 - **DoD**：根目錄只剩一份 `src/`，build 仍正常。
 - **需要我**：可請我先幫你做一次「無引用」確認掃描。
 
-### [ ] 2.2 封面圖／記帳照片改存 Supabase Storage（停止 base64-in-JSON）
+### [~] 2.2 封面圖／記帳照片改存 Supabase Storage（停止 base64-in-JSON）（進行中）
+- ✅ 2026-06-29 封面圖：建立 trip-media bucket + 3 條 storage policy；services/storage.ts（upload/delete/批次 signPaths）；
+  types 加 coverImagePath；App 載入解析 signed URL、儲存還原路徑；TripSettingsModal 上傳改走 Storage、換圖刪舊。
+  驗收：trip-media 出現檔案、trip_data 只存路徑(coverImage="")、換圖後舊檔自動刪除，皆通過。
+- [ ] 待辦：記帳照片 expenseImage（回憶錄 PDF 的核心資料）改走 Storage（同模式，巢狀於 activities 內，較複雜）。
+
+---
+原始 2.2 說明：
 - **為什麼**：圖片以 base64 塞進 `trip_data` JSON，使每張圖膨脹約 33%、每次儲存重傳整包、撐爆資料列。保管箱檔案已正確走 Storage + signed URL，封面圖卻沒有——收斂這個不一致。
 - **做什麼**：上傳圖片到 `vault`（或新 `covers` bucket）→ 只在 `trip_data` 存 `file_path` → 讀取時用 signed URL（沿用 `App.tsx` 既有模式）。
 - **DoD**：`trip_data` 內不再出現 `data:image/...;base64` 字串。

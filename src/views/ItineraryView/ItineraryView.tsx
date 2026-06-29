@@ -12,7 +12,7 @@ import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, W
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
 
-import { compressImage } from '../../utils/imageUtils';
+import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
 
 import { GlassCapsule } from '../../components/common/GlassCapsule';
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
@@ -403,8 +403,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         const file = e.target.files?.[0];
         if (file) { 
             try {
-                const compressedBase64 = await compressImage(file);
-                onUpdateTrip({ ...trip, coverImage: compressedBase64, coverImagePositionY: 50 }); 
+                const oldPath = trip.coverImagePath;                 // 記住舊路徑，稍後清除
+                const path = await uploadTripImage(file);             // 壓縮並上傳到 Storage
+                const urlMap = await signPaths([path]);               // 立刻換 signed URL 供顯示
+                onUpdateTrip({ ...trip, coverImage: urlMap[path] || '', coverImagePath: path, coverImagePositionY: 50 });
+                deleteTripImage(oldPath);                             // 清掉舊封面，避免孤兒檔（fire-and-forget）
             } catch (err) {
                 console.error(err);
                 alert("圖片上傳失敗");
