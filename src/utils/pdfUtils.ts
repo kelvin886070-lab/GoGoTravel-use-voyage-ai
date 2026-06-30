@@ -112,6 +112,18 @@ export const getTripStats = (trip: Trip) => {
     return { totalDays };
 };
 
+// 🪄 旅程數據頁：景點 / 美食 / 照片數
+export const getTripCounts = (trip: Trip) => {
+    let spots = 0, foods = 0, photos = 0;
+    trip.days.forEach(d => d.activities.forEach(a => {
+        const t = (a.type || '').toLowerCase();
+        if (t === 'sightseeing' || t === 'culture') spots++;
+        if (t === 'food' || t === 'cafe' || t === 'snacks') foods++;
+        if (a.expenseImage) photos++;
+    }));
+    return { spots, foods, photos };
+};
+
 /**
  * 💰 7.0 新增：花費加總計算機 (防禦型)
  */

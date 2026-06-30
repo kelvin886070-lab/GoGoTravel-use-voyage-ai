@@ -10,6 +10,7 @@ import {
     getActivityLabel,
     isSignificantTransport,
     getTripStats,
+    getTripCounts,
     getFeaturedHotels,
     getFeaturedTransports,
     getGalleryImages,
@@ -33,6 +34,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
     
     // 數據萃取
     const { totalDays } = getTripStats(trip);
+    const counts = getTripCounts(trip);
     const featuredHotels = getFeaturedHotels(trip);
     const featuredTransports = getFeaturedTransports(trip);
     const galleryImages = getGalleryImages(trip);
@@ -101,24 +103,24 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                 
                 <View style={s.coverBottom}>
                     <View style={s.coverTitleGroup}>
-                        <View style={s.coverTag}>
-                            <Text style={s.coverTagText}>{`FROM ${originCity}`}</Text>
-                        </View>
+                        <Text style={s.coverRoute}>{`FROM ${originCity}`}</Text>
                         <Text style={s.coverTitle}>{sanitizedDestination}</Text>
                         <Text style={s.coverSubtitle}>
                             {`${formatPDFDate(trip.startDate)}  ${formatPDFDate(trip.endDate)}`}
                         </Text>
-                        <Text style={{ fontSize: 9, letterSpacing: 2, color: '#45846D', marginTop: 8 }}>
+                        <Text style={s.coverMode}>
                             {isMemoir ? '回憶錄 · MEMOIR' : '行程書 · ITINERARY'}
                         </Text>
                     </View>
-                    
+
+                    {/* 🎨 旅伴在分隔線「上方」，中文標籤（未來 i18n 可切換語言） */}
                     <View style={s.coverMetaGroup}>
                         {trip.members && trip.members.length > 0 ? (
                             <Text style={s.coverCompanion}>
-                                {`COMPANION: ${sanitizeTextForPDF(trip.members.map(m => m.name).join(', '))}`}
+                                {`旅伴 · ${sanitizeTextForPDF(trip.members.map(m => m.name).join(', '))}`}
                             </Text>
                         ) : null}
+                        <View style={s.coverDivider} />
                     </View>
                 </View>
                 
@@ -141,12 +143,26 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                 <View style={s.dashboardGrid}>
                     <View style={s.dashboardRow}>
                         <View style={s.dashboardCard}>
-                            <Text style={s.statsNumber}>{totalDays.toString()}</Text>
+                            <Text style={s.statsNumberBig}>{totalDays.toString()}</Text>
                             <Text style={s.statsLabel}>Total Days / 總天數</Text>
                         </View>
                         <View style={s.dashboardCard}>
-                            <Text style={s.statsNumber}>{totalCostString}</Text>
+                            {/* 有金額用襯線（與其他數字一致）；"尚未估算"(中文) 才退回黑體 */}
+                            <Text style={totalCostString === '尚未估算' ? s.statsNumber : [s.statsNumberBig, { fontSize: 26 }]}>
+                                {totalCostString}
+                            </Text>
                             <Text style={s.statsLabel}>Estimated Cost / 預估總花費</Text>
+                        </View>
+                    </View>
+                    {/* 🪄 旅程數據（Wrapped 感）：景點 / 美食 大數字 */}
+                    <View style={s.dashboardRow}>
+                        <View style={s.dashboardCard}>
+                            <Text style={s.statsNumberBig}>{counts.spots.toString()}</Text>
+                            <Text style={s.statsLabel}>Spots / 景點探索</Text>
+                        </View>
+                        <View style={s.dashboardCard}>
+                            <Text style={s.statsNumberBig}>{counts.foods.toString()}</Text>
+                            <Text style={s.statsLabel}>Foodie / 美食尋味</Text>
                         </View>
                     </View>
 

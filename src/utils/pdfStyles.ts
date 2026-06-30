@@ -68,16 +68,33 @@ export const pdfStyles = StyleSheet.create({
     },
     coverSubtitle: {
         fontSize: 12,
-        color: '#A1A1AA', 
+        color: '#A1A1AA',
         letterSpacing: 2,
     },
+    // 🎨 封面改版：優雅的路線標題（取代綠色方塊）
+    coverRoute: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: '#6F9E8C',
+        letterSpacing: 4,
+        marginBottom: 16,
+    },
+    coverMode: {
+        fontSize: 9,
+        letterSpacing: 2,
+        color: '#6F9E8C',
+        marginTop: 10,
+    },
+    // 旅伴在上、分隔線在下（直向）
     coverMetaGroup: {
+        flexDirection: 'column',
+        width: '100%',
+    },
+    coverDivider: {
         borderTopWidth: 1,
-        borderTopColor: '#3F3F46', 
-        paddingTop: 15,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        borderTopColor: '#3F3F46',
+        marginTop: 12,
+        width: '100%',
     },
     coverCompanion: {
         fontSize: 10,
@@ -131,6 +148,14 @@ export const pdfStyles = StyleSheet.create({
     },
     statsNumber: {
         fontSize: 24, // 🛡️ 微調縮小以容納 "TWD 45,000" 長字串
+        fontWeight: 'bold',
+        color: '#45846D',
+        marginBottom: 4,
+    },
+    // 🪄 旅程數據：純整數的大數字用拉丁襯線（雜誌 Wrapped 感）
+    statsNumberBig: {
+        fontSize: 32,
+        fontFamily: 'Times-Roman',
         fontWeight: 'bold',
         color: '#45846D',
         marginBottom: 4,
@@ -198,7 +223,8 @@ export const pdfStyles = StyleSheet.create({
         width: '100%',
     },
     dayDividerTitle: {
-        fontSize: 46, 
+        fontSize: 46,
+        fontFamily: 'Times-Roman', // 🪄 拉丁襯線：DAY 標題（純英數）
         fontWeight: 'bold',
         color: '#1D1D1B',
         marginRight: 16, // 與靈魂標籤的間距
