@@ -6,7 +6,8 @@ import { registerPDFFonts } from '../../utils/pdfFonts';
 import { 
     sanitizeTextForPDF, 
     formatPDFDate, 
-    getActivityTheme, 
+    getActivityTheme,
+    getActivityLabel,
     isSignificantTransport,
     getTripStats,
     getFeaturedHotels,
@@ -43,6 +44,44 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
     const totalCostString = getTripTotalCost(trip, currentCurrency);
     const tripDNA = getTripDNA(trip);
 
+    // 🪄 Phase B：旅程結束後（今天 > endDate）自動切換為「回憶錄」模式
+    const isMemoir = (() => {
+        if (!trip.endDate) return false;
+        const end = new Date(trip.endDate);
+        end.setHours(23, 59, 59, 999);
+        return new Date().getTime() > end.getTime();
+    })();
+
+    // 回憶錄照片頁（memoir 模式前移到封面後讓照片先登場；否則放最後）
+    const galleryPage = galleryImages.length > 0 ? (
+        <Page size="A4" style={s.page}>
+            <View style={s.galleryTitleGroup}>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1D1D1B' }}>
+                    {isMemoir ? '旅途回憶錄' : 'MEMORY GALLERY'}
+                </Text>
+                <Text style={{ fontSize: 10, color: '#71717A', marginTop: 2, letterSpacing: 1 }}>旅途精彩回憶集錦</Text>
+            </View>
+
+            <View style={s.galleryGrid}>
+                {galleryImages.map((img, idx) => (
+                    <View key={idx} style={s.polaroidCard} wrap={false}>
+                        <Image
+                            src={img.url}
+                            style={{ ...s.polaroidImage, objectPosition: `50% ${img.positionY}%` }}
+                        />
+                        <Text style={s.polaroidCaption}>
+                            {truncateText(`Day ${img.day}  ${img.caption}`, 12)}
+                        </Text>
+                    </View>
+                ))}
+            </View>
+
+            <Text style={s.footer} render={({ pageNumber }) => (
+                `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    PAGE ${pageNumber}`
+            )} fixed />
+        </Page>
+    ) : null;
+
     return (
         <Document title={`${sanitizedDestination} 行程表 - Kelvin Trip`}>
             
@@ -69,6 +108,9 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                         <Text style={s.coverSubtitle}>
                             {`${formatPDFDate(trip.startDate)}  ${formatPDFDate(trip.endDate)}`}
                         </Text>
+                        <Text style={{ fontSize: 9, letterSpacing: 2, color: '#45846D', marginTop: 8 }}>
+                            {isMemoir ? '回憶錄 · MEMOIR' : '行程書 · ITINERARY'}
+                        </Text>
                     </View>
                     
                     <View style={s.coverMetaGroup}>
@@ -84,6 +126,9 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                     {`KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    COVER`}
                 </Text>
             </Page>
+
+            {/* 🪄 回憶錄模式：照片頁前移，打開先看到回憶 */}
+            {isMemoir ? galleryPage : null}
 
             {/* === 2. 核心資訊頁 === */}
             <Page size="A4" style={s.page}>
@@ -157,7 +202,8 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
 
             {/* === 3. 每日行程頁 (9.1 修正：全面阻斷斷頁時間分離) === */}
             {trip.days.map((day, dIdx) => {
-                const validActivities = day.activities.filter(isSignificantTransport);
+                // 🪄 Phase B：隱藏「當地點到點移動」(type === 'transport')，只留景點/美食/住宿與跨城市飛機/火車
+                const validActivities = day.activities.filter(a => isSignificantTransport(a) && a.type !== 'transport');
                 if (validActivities.length === 0) return null;
 
                 return (
@@ -201,7 +247,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                                                         {sanitizeTextForPDF(act.title)}
                                                     </Text>
                                                     <Text style={[s.activityTypeTag, { color: theme.color, backgroundColor: theme.bgColor }]}>
-                                                        {act.type.toUpperCase()}
+                                                        {getActivityLabel(act.type)}
                                                     </Text>
                                                 </View>
                                                 
@@ -215,7 +261,15 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                                                     <View style={s.descContainer}>
                                                         {act.expenseImage ? (
                                                             <View style={s.imageContainer}>
-                                                                <Image src={act.expenseImage} style={s.image} />
+                                                                <Image
+                                                                    src={act.expenseImage}
+                                                                    style={{
+                                                                        ...s.image,
+                                                                        height: 160,          // 固定框景，objectPosition 才會生效
+                                                                        objectFit: 'cover',
+                                                                        objectPosition: `50% ${act.imagePositionY ?? 50}%`,
+                                                                    }}
+                                                                />
                                                             </View>
                                                         ) : null}
                                                         {act.description ? (
@@ -239,30 +293,8 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
                 );
             })}
 
-            {/* === 4. 餘韻頁 === */}
-            {galleryImages.length > 0 ? (
-                <Page size="A4" style={s.page}>
-                    <View style={s.galleryTitleGroup}>
-                        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1D1D1B' }}>MEMORY GALLERY</Text>
-                        <Text style={{ fontSize: 10, color: '#71717A', marginTop: 2, letterSpacing: 1 }}>旅途精彩回憶集錦</Text>
-                    </View>
-                    
-                    <View style={s.galleryGrid}>
-                        {galleryImages.map((img, idx) => (
-                            <View key={idx} style={s.polaroidCard} wrap={false}>
-                                <Image src={img.url} style={s.polaroidImage} />
-                                <Text style={s.polaroidCaption}>
-                                    {truncateText(`Day ${img.day}  ${img.caption}`, 12)}
-                                </Text>
-                            </View>
-                        ))}
-                    </View>
-
-                    <Text style={s.footer} render={({ pageNumber }) => (
-                        `KELVIN TRIP  |  ${sanitizedDestination.toUpperCase()}    PAGE ${pageNumber}`
-                    )} fixed />
-                </Page>
-            ) : null}
+            {/* === 4. 餘韻頁（非回憶錄模式時放最後） === */}
+            {!isMemoir ? galleryPage : null}
         </Document>
     );
 };

@@ -42,6 +42,20 @@ export interface ActivityTheme {
     bgColor: string;
 }
 
+// 🪄 Phase B：PDF 類別標籤用「App 裡的中文」（對應 CATEGORIES）。
+// 未來做語言切換時，這裡可改成依語系回傳對應語言。
+const ACTIVITY_LABELS_ZH: Record<string, string> = {
+    food: '美食', commute: '交通費', shopping: '購物', sightseeing: '景點',
+    hotel: '住宿', gift: '伴手禮', bar: '酒吧', activity: '體驗', tickets: '票券',
+    snacks: '點心', health: '藥妝', expense: '一般支出', other: '其他',
+    cafe: '咖啡', relax: '放鬆', culture: '文化',
+    transport: '移動', flight: '航班', train: '火車', note: '備註', process: '程序',
+};
+export const getActivityLabel = (type?: string): string => {
+    if (!type) return '其他';
+    return ACTIVITY_LABELS_ZH[type.toLowerCase()] || type;
+};
+
 export const getActivityTheme = (type: string): ActivityTheme => {
     const normalizedType = type.toLowerCase();
     switch (normalizedType) {
@@ -174,6 +188,7 @@ export interface GalleryImage {
     url: string;
     caption: string;
     day: number;
+    positionY: number; // 使用者在 App 拖曳調整的 Y 軸裁切位置
 }
 
 export const getGalleryImages = (trip: Trip): GalleryImage[] => {
@@ -184,7 +199,8 @@ export const getGalleryImages = (trip: Trip): GalleryImage[] => {
                 images.push({
                     url: act.expenseImage,
                     caption: sanitizeTextForPDF(act.title),
-                    day: day.day
+                    day: day.day,
+                    positionY: act.imagePositionY ?? 50
                 });
             }
         });

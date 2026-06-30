@@ -206,17 +206,15 @@ export const pdfStyles = StyleSheet.create({
     },
     // 🛡️ 7.0 更新：無 Emoji 版本的高級極簡標籤
     dayDividerVibe: {
-        backgroundColor: '#FAFAFA',
+        backgroundColor: '#45846D', // 🪄 雜誌風：實心主題綠
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 4,
-        borderWidth: 1,
-        borderColor: '#E4E2DD',
     },
     dayDividerVibeText: {
         fontSize: 10,
         fontWeight: 'bold',
-        color: '#52525B', // 沉穩的深灰色
+        color: '#FFFFFF',
         letterSpacing: 1,
     },
     dayDividerDate: {
@@ -247,9 +245,9 @@ export const pdfStyles = StyleSheet.create({
     timeText: {
         fontSize: 11,
         fontWeight: 'bold',
-        color: '#1D1D1B',
+        color: '#45846D', // 🪄 雜誌風：時間用主題綠點綴
         marginTop: 14,
-        backgroundColor: '#FAFAFA', 
+        backgroundColor: '#FAFAFA',
         paddingVertical: 3,
         zIndex: 2,
     },
@@ -261,11 +259,12 @@ export const pdfStyles = StyleSheet.create({
         flexDirection: 'column',
     },
     activityCard: {
-        backgroundColor: '#FFFFFF',
+        // 🪄 雜誌風：柔和紙感卡片——保留「分組」邊界，但用暖米色淡底+極淡細線取代冷硬灰框
+        backgroundColor: '#FBFAF6',
         borderRadius: 8,
         padding: 14,
         borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderColor: '#EDEAE2',
         width: '100%',
     },
     activityHeader: {
@@ -290,16 +289,16 @@ export const pdfStyles = StyleSheet.create({
         fontWeight: 'bold',
     },
     descContainer: {
-        marginTop: 10, 
-        padding: 10, 
-        backgroundColor: '#F9FAFB', 
-        borderRadius: 5,
+        // 🪄 雜誌風：移除灰底框，改乾淨內文
+        marginTop: 8,
+        backgroundColor: 'transparent',
+        borderRadius: 0,
         width: '100%',
     },
     descText: {
         fontSize: 11,
-        color: '#71717A',
-        lineHeight: 1.6, 
+        color: '#52525B',
+        lineHeight: 1.7,
         width: '100%',
     },
     transportCard: {
