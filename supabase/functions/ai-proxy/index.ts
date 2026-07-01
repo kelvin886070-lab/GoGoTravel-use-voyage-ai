@@ -65,6 +65,8 @@ Deno.serve(async (req) => {
         return json(await timezone(payload));
       case "geocode":
         return json(await geocode(payload, user.id));
+      case "directions":
+        return json(await directions(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -255,4 +257,57 @@ async function geocode(
   }
 
   return { results };
+}
+
+// ---------- Directions（沿道路的路線）----------
+// payload: { coords: [{lat,lng}, ...] } → 回傳 { polyline: 編碼折線 | null }
+// 快取(cached_routes) + 每日限額共用；失敗回 null，前端退回直線
+async function directions(
+  payload: { coords?: { lat: number; lng: number }[] },
+  userId: string,
+) {
+  const coords = (payload.coords || []).filter(
+    (c) => c && typeof c.lat === "number" && typeof c.lng === "number",
+  );
+  if (coords.length < 2) return { polyline: null };
+
+  const key = coords.map((c) => `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`).join(";");
+
+  // 1) 查路線快取
+  const { data: cached } = await admin
+    .from("cached_routes")
+    .select("polyline")
+    .eq("route_key", key)
+    .maybeSingle();
+  if (cached?.polyline) return { polyline: cached.polyline };
+
+  // 2) 每日限額（與 geocode 共用計數）
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: usage } = await admin
+    .from("geocode_usage")
+    .select("count")
+    .eq("user_id", userId)
+    .eq("day", today)
+    .maybeSingle();
+  const used = usage?.count ?? 0;
+  if (used >= GEOCODE_DAILY_LIMIT) return { polyline: null };
+
+  if (!GOOGLE_GEOCODING_KEY) return { polyline: null };
+
+  // 3) 呼叫 Google Directions
+  const origin = `${coords[0].lat},${coords[0].lng}`;
+  const destination = `${coords[coords.length - 1].lat},${coords[coords.length - 1].lng}`;
+  const waypoints = coords.slice(1, -1).map((c) => `${c.lat},${c.lng}`).join("|");
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}${
+    waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ""
+  }&mode=driving&key=${GOOGLE_GEOCODING_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status === "OK" && data.routes?.[0]?.overview_polyline?.points) {
+    const polyline = data.routes[0].overview_polyline.points;
+    await admin.from("cached_routes").upsert({ route_key: key, polyline });
+    await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + 1 });
+    return { polyline };
+  }
+  return { polyline: null };
 }

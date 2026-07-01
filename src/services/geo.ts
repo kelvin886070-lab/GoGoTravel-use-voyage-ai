@@ -22,6 +22,20 @@ export async function geocodeItems(
     return (data?.results || {}) as Record<string, GeoResult | null>;
 }
 
+// 🛣️ 取「沿道路」的路線（回傳 Google 編碼折線字串；失敗回 null → 前端退回直線）
+export async function getRoutePolyline(coords: { lat: number; lng: number }[]): Promise<string | null> {
+    if (coords.length < 2) return null;
+    try {
+        const { data, error } = await supabase.functions.invoke('ai-proxy', {
+            body: { action: 'directions', payload: { coords } },
+        });
+        if (error) return null;
+        return (data?.polyline as string) ?? null;
+    } catch {
+        return null;
+    }
+}
+
 // 補齊行程中「可上地圖但還沒座標」的活動；回傳更新後的 trip 與是否有變動
 export async function ensureTripGeocoded(trip: Trip): Promise<{ trip: Trip; changed: boolean }> {
     const need: { location: string; context?: string }[] = [];

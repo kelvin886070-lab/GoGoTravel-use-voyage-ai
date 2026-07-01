@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { Loader2, Navigation } from 'lucide-react';
 import type { Trip, Activity, WeatherInfo } from '../../../types';
-import { ensureTripGeocoded, isMappable } from '../../../services/geo';
+import { ensureTripGeocoded, isMappable, getRoutePolyline } from '../../../services/geo';
 import { CATEGORIES } from '../shared';
 import { getWeatherForecast } from '../../../services/gemini';
 
@@ -213,22 +213,42 @@ export const TripMapView: React.FC<Props> = ({ trip, onUpdateTrip }) => {
     );
 };
 
-// 依序連接景點的路線
+// 依序連接景點的路線：優先畫「沿道路」的品牌綠折線，失敗退回直線
 const RouteLine: React.FC<{ points: { lat: number; lng: number }[] }> = ({ points }) => {
     const map = useMap();
     const mapsLib = useMapsLibrary('maps');
+    const geometryLib = useMapsLibrary('geometry');
+    const [path, setPath] = useState<{ lat: number; lng: number }[] | null>(null);
+
+    // 取沿道路的路線（需 geometry 函式庫解碼；未就緒前先用直線）
     useEffect(() => {
-        if (!map || !mapsLib || points.length < 2) return;
+        let cancelled = false;
+        if (points.length < 2) { setPath(null); return; }
+        if (!geometryLib) { setPath(points); return; }
+        getRoutePolyline(points).then(encoded => {
+            if (cancelled) return;
+            if (encoded) {
+                const raw = geometryLib.encoding.decodePath(encoded) as Array<{ lat(): number; lng(): number }>;
+                setPath(raw.map(p => ({ lat: p.lat(), lng: p.lng() })));
+            } else {
+                setPath(points); // 直線退回
+            }
+        }).catch(() => { if (!cancelled) setPath(points); });
+        return () => { cancelled = true; };
+    }, [points, geometryLib]);
+
+    useEffect(() => {
+        if (!map || !mapsLib || !path || path.length < 2) return;
         const line = new mapsLib.Polyline({
-            path: points,
+            path,
             geodesic: true,
             strokeColor: '#45846D',
             strokeOpacity: 0.9,
-            strokeWeight: 3,
+            strokeWeight: 4,
         });
         line.setMap(map);
         return () => line.setMap(null);
-    }, [map, mapsLib, points]);
+    }, [map, mapsLib, path]);
     return null;
 };
 
