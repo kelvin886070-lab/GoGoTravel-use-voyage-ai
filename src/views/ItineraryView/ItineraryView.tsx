@@ -19,7 +19,7 @@ import { GhostInsertButton } from '../../components/common/GhostInsertButton';
 import { isSystemType } from './shared';
 
 import { ExpenseDashboard } from './components/ExpenseDashboard';
-import { DayRouteCard } from './components/DayRouteCard';
+import { TripMapView } from './components/TripMapView';
 import { VaultCard } from './components/VaultCard'; 
 
 import { ActivityItem } from './items/ActivityItem';
@@ -838,11 +838,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                         </div>
                     </DragDropContext>
                 ) : (
-                    <div className="space-y-6 pb-24 mt-6">
-                        {trip.days.map((day) => (
-                            <DayRouteCard key={day.day} day={day} startDate={trip.startDate} destination={trip.destination} />
-                        ))}
-                    </div>
+                    <TripMapView trip={trip} onUpdateTrip={onUpdateTrip} />
                 )}
             </div>
             

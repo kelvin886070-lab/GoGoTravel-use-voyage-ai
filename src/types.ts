@@ -90,8 +90,13 @@ export interface Activity {
   imagePositionY?: number;
   items?: ExpenseItem[]; 
   
-  image?: string;              
-  wishItemId?: string;         
+  image?: string;
+  wishItemId?: string;
+
+  // 🗺️ Phase D：geocoding 後填入的座標（供地圖使用；沒有座標的活動地圖略過）
+  lat?: number;
+  lng?: number;
+  placeId?: string;
 }
 
 export interface TripDay {

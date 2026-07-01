@@ -9,6 +9,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const GEMINI_KEY = Deno.env.get("GEMINI_KEY") ?? "";
 const WEATHER_KEY = Deno.env.get("WEATHER_KEY") ?? "";
+const GOOGLE_GEOCODING_KEY = Deno.env.get("GOOGLE_GEOCODING_KEY") ?? "";
+const GEOCODE_DAILY_LIMIT = 200; // 每使用者每日「新」geocode 上限（快取命中不計費、不計數）
+
+// service role client：專門讀寫快取表與用量表（繞過 RLS，前端永遠碰不到這些表）
+const admin = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+);
 
 // CORS：目前先放寬，上線後請收斂成你的網域 (見部署說明)
 const corsHeaders = {
@@ -55,6 +63,8 @@ Deno.serve(async (req) => {
         return json(await weather(payload));
       case "timezone":
         return json(await timezone(payload));
+      case "geocode":
+        return json(await geocode(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -142,4 +152,107 @@ async function timezone({ location }: { location: string }) {
   const data = await res.json();
   if (!res.ok) return { error: "時區 API 失敗" };
   return { data };
+}
+
+// ---------- Geocoding（名稱 → 座標）----------
+// 三道防線：全域快取(cached_locations) + 每使用者每日限額(geocode_usage) + 只有此代理能呼叫 Google
+function normalizeQuery(location: string, context?: string): string {
+  return `${location.trim()}${context ? "|" + context.trim() : ""}`.toLowerCase();
+}
+
+async function geocodeOne(
+  query: string,
+): Promise<{ lat: number; lng: number; placeId?: string } | null> {
+  if (!GOOGLE_GEOCODING_KEY) return null;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${
+    encodeURIComponent(query)
+  }&key=${GOOGLE_GEOCODING_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status === "OK" && data.results?.[0]) {
+    const r = data.results[0];
+    return {
+      lat: r.geometry.location.lat,
+      lng: r.geometry.location.lng,
+      placeId: r.place_id,
+    };
+  }
+  return null;
+}
+
+// payload: { items: [{ location: "識名園", context: "沖繩" }, ...] }
+// 回傳 { results: { "識名園": {lat,lng,placeId} | null, ... } }
+async function geocode(
+  payload: { items?: { location: string; context?: string }[] },
+  userId: string,
+) {
+  const items = (payload.items || []).slice(0, 100).filter((it) => it?.location);
+  const keyed = items.map((it) => ({
+    raw: it.location,
+    key: normalizeQuery(it.location, it.context),
+  }));
+  const results: Record<string, { lat: number; lng: number; placeId?: string } | null> = {};
+
+  // 1) 批次查快取
+  const keys = [...new Set(keyed.map((k) => k.key))];
+  const { data: cachedRows } = await admin
+    .from("cached_locations")
+    .select("query,lat,lng,place_id")
+    .in("query", keys);
+  const cacheMap = new Map((cachedRows || []).map((r: any) => [r.query, r]));
+
+  const missKeyed: { raw: string; key: string }[] = [];
+  for (const k of keyed) {
+    const c = cacheMap.get(k.key);
+    if (c) results[k.raw] = { lat: c.lat, lng: c.lng, placeId: c.place_id };
+    else missKeyed.push(k);
+  }
+
+  // 2) 去重 miss；查今日用量、算剩餘額度
+  const uniqueMiss = [...new Map(missKeyed.map((m) => [m.key, m])).values()];
+  if (uniqueMiss.length > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: usage } = await admin
+      .from("geocode_usage")
+      .select("count")
+      .eq("user_id", userId)
+      .eq("day", today)
+      .maybeSingle();
+    const used = usage?.count ?? 0;
+    const remaining = Math.max(0, GEOCODE_DAILY_LIMIT - used);
+    const toDo = uniqueMiss.slice(0, remaining);
+    const skipped = uniqueMiss.slice(remaining);
+
+    // 3) 並行呼叫 Google，寫回快取
+    const geos = await Promise.all(toDo.map((m) => geocodeOne(m.key)));
+    const upserts: any[] = [];
+    let newCount = 0;
+    toDo.forEach((m, i) => {
+      const geo = geos[i];
+      missKeyed.filter((mk) => mk.key === m.key).forEach((mk) => {
+        results[mk.raw] = geo;
+      });
+      if (geo) {
+        upserts.push({ query: m.key, lat: geo.lat, lng: geo.lng, place_id: geo.placeId });
+        newCount++;
+      }
+    });
+    // 超過每日額度的：回 null（地圖略過），不呼叫 Google
+    skipped.forEach((m) => {
+      missKeyed.filter((mk) => mk.key === m.key).forEach((mk) => {
+        results[mk.raw] = null;
+      });
+    });
+
+    if (upserts.length) await admin.from("cached_locations").upsert(upserts);
+    if (newCount) {
+      await admin.from("geocode_usage").upsert({
+        user_id: userId,
+        day: today,
+        count: used + newCount,
+      });
+    }
+  }
+
+  return { results };
 }
