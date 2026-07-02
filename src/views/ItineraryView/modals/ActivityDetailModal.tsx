@@ -214,7 +214,7 @@ export const ActivityDetailModal: React.FC<{
                             {/* 1. Hero Photo (Interactive Crop) */}
                             <div 
                                 ref={imageContainerRef}
-                                className={`relative w-full h-48 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 hover:bg-[#45846D]/5 ${isEditing ? 'cursor-ns-resize' : ''}`}
+                                className={`relative w-full h-48 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 hover:bg-[#45846D]/5 ${isEditing ? 'cursor-ns-resize touch-none' : ''}`}
                                 onMouseDown={handleImageMouseDown}
                                 onMouseMove={handleImageMouseMove}
                                 onTouchStart={handleImageMouseDown}
@@ -233,7 +233,7 @@ export const ActivityDetailModal: React.FC<{
                                         {isEditing && (
                                             <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <div className="bg-black/60 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md shadow-lg pointer-events-none">
-                                                    <MoveVertical className="w-3 h-3" /> 拖曳調整位置
+                                                    <MoveVertical className="w-3 h-3" /> 上下拖曳調整
                                                 </div>
                                             </div>
                                         )}

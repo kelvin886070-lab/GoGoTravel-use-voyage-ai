@@ -89,20 +89,23 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
         }
     };
 
-    // --- Handlers: Drag ---
-    const handleMouseDown = (e: React.MouseEvent) => {
+    // --- Handlers: Drag（同時支援滑鼠與觸控）---
+    const getClientY = (e: React.MouseEvent | React.TouchEvent) =>
+        'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isRepositioning) return;
         isDraggingRef.current = true;
-        startYRef.current = e.clientY;
+        startYRef.current = getClientY(e);
     };
-    
-    const handleMouseMove = (e: React.MouseEvent) => {
+
+    const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
         if (!isDraggingRef.current || !isRepositioning) return;
-        e.preventDefault(); 
-        const delta = e.clientY - startYRef.current;
+        const y = getClientY(e);
+        const delta = y - startYRef.current;
         const sensitivity = 0.3;
         setImagePositionY(prev => Math.min(100, Math.max(0, prev - delta * sensitivity)));
-        startYRef.current = e.clientY; 
+        startYRef.current = y;
     };
 
     const handleMouseUp = () => { isDraggingRef.current = false; };
@@ -168,12 +171,15 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                     
                     {/* === BLOCK A: Cover Identity === */}
                     <div className="w-full h-52 bg-white rounded-[24px] overflow-hidden relative group shadow-sm border border-white select-none">
-                        <div 
-                            className={`absolute inset-0 ${isRepositioning ? 'cursor-ns-resize active:cursor-grabbing' : ''}`}
+                        <div
+                            className={`absolute inset-0 ${isRepositioning ? 'cursor-ns-resize active:cursor-grabbing touch-none' : ''}`}
                             onMouseDown={handleMouseDown}
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
                             onMouseLeave={handleMouseUp}
+                            onTouchStart={handleMouseDown}
+                            onTouchMove={handleMouseMove}
+                            onTouchEnd={handleMouseUp}
                         >
                             <img 
                                 src={coverImage} 
