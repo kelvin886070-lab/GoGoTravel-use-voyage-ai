@@ -8,7 +8,7 @@ import {
     Check, Trash2, Undo
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem } from '../../types'; 
+import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem, TripTodoItem } from '../../types';
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
 
@@ -39,6 +39,7 @@ import { TripRemindersModal } from './modals/TripRemindersModal';
 import { VibeTagEditModal } from './modals/VibeTagEditModal';
 import { IOSShareSheet } from '../../components/UI';
 import { ShareBottomSheet } from './modals/ShareBottomSheet';
+import { toast } from '../../components/Toast';
 
 // ============================================================================
 // 9.3 專屬：雙向兩段式極限位移手勢卡片 (SwipeableWishCard)
@@ -203,15 +204,6 @@ const SwipeableWishCard: React.FC<{
     );
 };
 
-export interface TripTodoItem {
-    id: string;
-    text: string;
-    isCompleted: boolean;
-    time?: string;
-    date?: string;
-    category?: 'tasks' | 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
-}
-
 const DEFAULT_TODOS: TripTodoItem[] = [
     { id: 't1', text: '預訂來回機票', isCompleted: false, category: 'tasks' },
     { id: 't2', text: '預訂住宿飯店', isCompleted: false, category: 'tasks' },
@@ -315,7 +307,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [actionStagedWish, setActionStagedWish] = useState<WishItem | null>(null);
     const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-    const currentTodos: TripTodoItem[] = (trip as any).todos || DEFAULT_TODOS;
+    const currentTodos: TripTodoItem[] = trip.todos || DEFAULT_TODOS;
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showVault, setShowVault] = useState(false);
@@ -410,7 +402,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 deleteTripImage(oldPath);                             // 清掉舊封面，避免孤兒檔（fire-and-forget）
             } catch (err) {
                 console.error(err);
-                alert("圖片上傳失敗");
+                toast("圖片上傳失敗");
             }
         } 
     };
@@ -495,7 +487,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             setAiLoading(true);
             const spot = await suggestNextSpot(prevAct?.location || trip.destination, nextTime, 'food, sightseeing');
             setAiLoading(false);
-            if (spot) newAct = spot; else { alert('AI 暫時無法提供靈感'); return; }
+            if (spot) newAct = spot; else { toast('AI 暫時無法提供靈感'); return; }
         } else if (type === 'transport') {
             newAct = { time: nextTime, title: '移動', type: 'transport', description: '', transportDetail: { mode: 'bus', duration: '30 min', instruction: '搭乘交通工具' } };
         } else if (type === 'note') {
@@ -773,9 +765,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                                         onClick={() => setEditingVibeDay(day.day)}
                                                         className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 hover:bg-gray-200/60 text-gray-600 transition-colors pointer-events-auto normal-case tracking-normal font-sans text-[10px] border border-gray-200/40 shadow-sm active:scale-95"
                                                     >
-                                                        {(day as any).vibeTag ? (
+                                                        {day.vibeTag ? (
                                                             <>
-                                                                <span className="text-gray-700 font-bold">{`[ ${(day as any).vibeTag} ]`}</span>
+                                                                <span className="text-gray-700 font-bold">{`[ ${day.vibeTag} ]`}</span>
                                                                 <span className="text-[9px] opacity-70">✏️</span>
                                                             </>
                                                         ) : (
@@ -856,9 +848,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             {editingDoc && <DocumentEditModal doc={editingDoc} folders={folders} onClose={() => setEditingDoc(null)} onSave={handleDocumentSave} />}
             
             {isRemindersOpen && (
-                <TripRemindersModal 
-                    todos={currentTodos as any} 
-                    onUpdateTodos={(newTodos) => onUpdateTrip({ ...trip, todos: newTodos } as any)} 
+                <TripRemindersModal
+                    todos={currentTodos}
+                    onUpdateTodos={(newTodos) => onUpdateTrip({ ...trip, todos: newTodos })}
                     startDate={trip.startDate}
                     onClose={() => setIsRemindersOpen(false)} 
                 />
@@ -867,7 +859,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             {editingVibeDay !== null && (
                 <VibeTagEditModal
                     dayNumber={editingVibeDay}
-                    initialValue={(trip.days.find((d: any) => d.day === editingVibeDay) as any)?.vibeTag || ''}
+                    initialValue={trip.days.find((d) => d.day === editingVibeDay)?.vibeTag || ''}
                     onClose={() => setEditingVibeDay(null)}
                     onSave={(newTag) => handleSaveVibeTag(editingVibeDay, newTag)}
                 />

@@ -9,16 +9,10 @@ import {
 // ============================================================================
 // ✨ 階段四：體驗收斂與防禦機制 (Keyboard Avoidance & Scroll Locking)
 // ============================================================================
-type CategoryType = 'tasks' | 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
-
-export interface TripTodoItem {
-    id: string;
-    text: string;
-    isCompleted: boolean;
-    time?: string;
-    date?: string;
-    category?: CategoryType;
-}
+// 🧱 3.2 TripTodoItem 已統一收斂於 types.ts；此處類別型別由共用型別衍生，避免重複定義漂移
+import type { TripTodoItem } from '../../../types';
+type CategoryType = NonNullable<TripTodoItem['category']>;
+export type { TripTodoItem };
 
 interface TripRemindersModalProps {
     todos: TripTodoItem[];

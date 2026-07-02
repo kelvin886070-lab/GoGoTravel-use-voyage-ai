@@ -132,8 +132,19 @@ export interface Trip {
   currency?: string; 
   members?: Member[];
   linkedDocumentIds?: string[];
-  
-  stagedWishes?: WishItem[]; 
+  todos?: TripTodoItem[];        // 🧱 3.2 行前待辦（原本以 (trip as any).todos 存取，改為正式欄位）
+
+  stagedWishes?: WishItem[];
+}
+
+// 🧱 3.2 行前待辦清單項目（原本重複定義於 ItineraryView / TripRemindersModal，統一收斂於此）
+export interface TripTodoItem {
+  id: string;
+  text: string;
+  isCompleted: boolean;
+  time?: string;
+  date?: string;
+  category?: 'tasks' | 'documents' | 'clothes' | 'toiletries' | 'gadgets' | 'others';
 }
 
 // ==========================================

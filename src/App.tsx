@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Home, Compass, Briefcase, FileText, Sparkles } from 'lucide-react';
 import { AppView } from './types';
 import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './types';
+import type { TripRow, VaultFolderRow, VaultFileRow } from './db-types';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
@@ -130,6 +131,11 @@ const App: React.FC = () => {
       return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
+  // 🔔 3.4 告訴全域 Toast 目前底部導覽列高度：主分頁有列(70px)→Toast 抬到列上方；行程頁無列→0
+  useEffect(() => {
+      document.documentElement.style.setProperty('--bottom-nav-h', selectedTrip ? '0px' : '70px');
+  }, [selectedTrip]);
+
   const fetchTrips = async (userId?: string) => {
       const currentUserId = userId || user?.id;
       if (!currentUserId) return;
@@ -137,7 +143,7 @@ const App: React.FC = () => {
       setIsSyncing(true);
       const { data } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
       if (data) {
-          const loadedTrips: Trip[] = data.map((row: any) => ({
+          const loadedTrips: Trip[] = (data as TripRow[]).map((row) => ({
               ...row.trip_data,
               id: row.id,
               isDeleted: row.trip_data.isDeleted || false
@@ -170,7 +176,7 @@ const App: React.FC = () => {
               if (!error) {
                   const { data: newFolders } = await supabase.from('vault_folders').select('*').order('created_at', { ascending: false });
                   if (newFolders) {
-                      setVaultFolders(newFolders.map((row: any) => ({
+                      setVaultFolders((newFolders as VaultFolderRow[]).map((row) => ({
                           id: row.id,
                           name: row.name,
                           parentId: row.parent_id || null,
@@ -182,7 +188,7 @@ const App: React.FC = () => {
               isInitializingVaultRef.current = false;
           }
       } else if (folderData) {
-          setVaultFolders(folderData.map((row: any) => ({
+          setVaultFolders((folderData as VaultFolderRow[]).map((row) => ({
               id: row.id,
               name: row.name,
               parentId: row.parent_id || null,
@@ -193,14 +199,15 @@ const App: React.FC = () => {
 
       const { data: fileData } = await supabase.from('vault_files').select('*').order('created_at', { ascending: false });
       if (fileData) {
-          const activeFiles = fileData.filter((f:any) => !f.is_deleted);
+          const rows = fileData as VaultFileRow[];
+          const activeFiles = rows.filter((f) => !f.is_deleted);
           const signedUrlMap: Record<string, string> = {};
 
           if (activeFiles.length > 0) {
               const { data: signedData } = await supabase
                   .storage
                   .from('vault')
-                  .createSignedUrls(activeFiles.map((f:any) => f.file_path), 60 * 60 * 24);
+                  .createSignedUrls(activeFiles.map((f) => f.file_path), 60 * 60 * 24);
               if (signedData) {
                   signedData.forEach(item => {
                       if (item.path && item.signedUrl) {
@@ -210,19 +217,19 @@ const App: React.FC = () => {
               }
           }
 
-          setVaultFiles(fileData.map((row: any) => ({
+          setVaultFiles(rows.map((row) => ({
               id: row.id,
               name: row.name,
-              type: row.type as any,
+              type: row.type as VaultFile['type'],
               size: row.size,
               date: new Date(row.created_at).toLocaleDateString(),
               parentId: row.parent_id || null,
-              data: signedUrlMap[row.file_path] || '', 
+              data: signedUrlMap[row.file_path] || '',
               file_path: row.file_path,
-              isDeleted: !!row.is_deleted, 
+              isDeleted: !!row.is_deleted,
               isPinned: !!row.is_pinned,
-              category: row.category,
-              documentNumber: row.document_number, 
+              category: row.category as VaultFile['category'],
+              documentNumber: row.document_number,
               notes: row.notes
           })));
       }
