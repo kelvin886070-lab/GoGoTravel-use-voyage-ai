@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'voyage-ai-v3';
+const CACHE_NAME = 'voyage-ai-v4';
 
 // Install Event: Cache critical assets immediately
 self.addEventListener('install', (event) => {
