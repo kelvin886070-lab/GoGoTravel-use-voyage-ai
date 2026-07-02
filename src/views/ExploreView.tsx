@@ -243,7 +243,7 @@ const CarSearch = () => {
              alert('請輸入取車地點');
              return;
         }
-        const url = `http://googleusercontent.com/maps.google.com/?q=car+rental+in+${encodeURIComponent(location)}`;
+        const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('租車 ' + location)}`;
         window.open(url, '_blank');
     };
 

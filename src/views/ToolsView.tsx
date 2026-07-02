@@ -616,7 +616,7 @@ const TransportTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <ToolLayout title="當地交通" onBack={onBack}>
             <div className="space-y-4">
-                <a href="http://googleusercontent.com/maps.google.com/?q=bus+stop+near+me" target="_blank" rel="noreferrer" className="block group">
+                <a href="https://www.google.com/maps/search/?api=1&query=bus+stop+near+me" target="_blank" rel="noreferrer" className="block group">
                     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 transition-all active:scale-95 group-hover:shadow-md">
                         <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
                             <Bus className="w-7 h-7" />
