@@ -7,6 +7,8 @@ import {
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, VaultFolder, VaultFile } from '../types';
 import { supabase } from '../services/supabase';
+import { toast } from '../components/Toast';
+import { confirmDialog } from '../components/ConfirmDialog';
 
 // 定義介面：接收從 App.tsx 傳下來的真實資料與刷新函式
 interface VaultViewProps {
@@ -80,7 +82,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
             onRefresh(); // 通知 App.tsx 更新
         } catch (e) {
             console.error(e);
-            alert("建立資料夾失敗");
+            toast("建立資料夾失敗");
         }
     };
 
@@ -117,9 +119,9 @@ export const VaultView: React.FC<VaultViewProps> = ({
         if(folder) updateFolderStatus(id, { isPinned: !folder.isPinned });
     };
 
-    const handleDeleteFolder = (id: string, e: React.MouseEvent) => {
+    const handleDeleteFolder = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if(confirm("確定將此資料夾移至垃圾桶？")) {
+        if(await confirmDialog({ title: '移至垃圾桶？', message: '資料夾會移到垃圾桶，之後可再還原。', confirmText: '移至垃圾桶' })) {
             updateFolderStatus(id, { isDeleted: true });
         }
     };
@@ -129,7 +131,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
     };
 
     const handlePermanentDeleteFolder = async (id: string) => {
-        if(confirm("確定要永久刪除此資料夾？此動作無法復原。")) {
+        if(await confirmDialog({ title: '永久刪除這個資料夾？', message: '刪除後將無法復原，資料會永久消失。', confirmText: '刪除', tone: 'danger' })) {
             setLocalFolders(prev => prev.filter(f => f.id !== id));
             await supabase.from('vault_folders').delete().eq('id', id);
             onRefresh();
@@ -139,7 +141,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if(!file) return;
-        if (file.size > 10 * 1024 * 1024) { alert("檔案過大！上限 10MB"); return; }
+        if (file.size > 10 * 1024 * 1024) { toast("檔案過大！上限 10MB"); return; }
         
         setIsUploading(true);
         try {
@@ -169,9 +171,9 @@ export const VaultView: React.FC<VaultViewProps> = ({
             if (dbError) throw dbError;
             
             onRefresh(); // 通知更新
-            alert("上傳成功！");
+            toast("上傳成功！", 'success');
         } catch (error: any) { 
-            alert("上傳失敗：" + error.message); 
+            toast("上傳失敗：" + error.message); 
         } finally { 
             setIsUploading(false);
         }
@@ -196,7 +198,7 @@ export const VaultView: React.FC<VaultViewProps> = ({
             if (data) window.open(data.signedUrl, '_blank');
         } catch (e) { 
             console.error("無法開啟檔案", e);
-            alert("無法開啟檔案：權限不足或檔案不存在");
+            toast("無法開啟檔案：權限不足或檔案不存在");
         }
     };
 
@@ -215,10 +217,10 @@ export const VaultView: React.FC<VaultViewProps> = ({
     };
 
     const handlePermanentDeleteFile = async (id: string, filePath?: string) => {
-        if(confirm("確定要永久刪除？無法復原。")) {
+        if(await confirmDialog({ title: '永久刪除這個檔案？', message: '刪除後將無法復原，檔案會永久消失。', confirmText: '刪除', tone: 'danger' })) {
             setLocalFiles(prev => prev.filter(f => f.id !== id));
             const { error } = await supabase.from('vault_files').delete().eq('id', id);
-            if (error) { alert("刪除失敗"); onRefresh(); return; }
+            if (error) { toast("刪除失敗"); onRefresh(); return; }
             if (filePath) await supabase.storage.from('vault').remove([filePath]);
             onRefresh();
         }

@@ -3,6 +3,7 @@ import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, P
 import { IOSHeader, IOSButton, IOSInput } from '../components/UI';
 import { translateText, getCurrencyRate, getLocalEmergencyInfo, getPlugInfo } from '../services/gemini';
 import { ToolType, type VoltageInfo, type ChecklistItem, type ChecklistCategory } from '../types';
+import { confirmDialog } from '../components/ConfirmDialog';
 
 interface ToolsViewProps {
     onUpdateBackground?: (image: string) => void;
@@ -152,8 +153,8 @@ const PackingListTool: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setItems(items.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
     };
 
-    const deleteItem = (id: string) => {
-        if(confirm('確定刪除此項目？')) {
+    const deleteItem = async (id: string) => {
+        if(await confirmDialog({ title: '刪除這個項目？', confirmText: '刪除', tone: 'danger' })) {
             setItems(items.filter(i => i.id !== id));
         }
     };

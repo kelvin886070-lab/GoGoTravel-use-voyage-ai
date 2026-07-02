@@ -11,6 +11,8 @@ import { CATEGORIES, getMemberName, getMemberAvatarColor, isSystemType, Tag } fr
 import type { Activity, Member, ExpenseItem } from '../../../types';
 // 🖼️ 2.2b 記帳照片改走 Storage
 import { uploadTripImage, signPaths, deleteTripImage } from '../../../services/storage';
+import { toast } from '../../../components/Toast';
+import { confirmDialog } from '../../../components/ConfirmDialog';
 
 export const ActivityDetailModal: React.FC<{ 
     act: Activity; 
@@ -112,7 +114,7 @@ export const ActivityDetailModal: React.FC<{
             setEdited(prev => ({ ...prev, expenseImage: urlMap[path] || '', expenseImagePath: path }));
         } catch (err) {
             console.error('記帳照片上傳失敗', err);
-            alert('圖片上傳失敗，請再試一次。');
+            toast('圖片上傳失敗，請再試一次。');
         }
     };
 
@@ -195,7 +197,7 @@ export const ActivityDetailModal: React.FC<{
                     <div className="flex gap-2">
                         {!isEditing ? (
                             <>
-                                <button onClick={() => { if(confirm('確定刪除此行程？')) onDelete(); }} className="bg-red-50 p-2 rounded-full text-red-500 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                <button onClick={async () => { if(await confirmDialog({ title: '刪除這個項目？', confirmText: '刪除', tone: 'danger' })) onDelete(); }} className="bg-red-50 p-2 rounded-full text-red-500 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
                                 <button onClick={() => setIsEditing(true)} className="bg-[#1D1D1B] p-2 rounded-full text-white hover:bg-gray-800 transition-colors shadow-md"><Edit3 className="w-4 h-4" /></button>
                             </>
                         ) : (

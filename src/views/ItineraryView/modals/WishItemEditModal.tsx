@@ -4,6 +4,8 @@ import {
     Link as LinkIcon, Image as ImageIcon, Tag as TagIcon, Save, Globe
 } from 'lucide-react';
 import type { WishItem, WishItemType } from '../../../types';
+import { toast } from '../../../components/Toast';
+import { confirmDialog } from '../../../components/ConfirmDialog';
 
 interface WishItemEditModalProps {
     item?: WishItem | null; // 傳入 item 代表編輯，不傳代表新增
@@ -92,7 +94,7 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
 
     const handleSave = () => {
         if (!edited.title.trim() || !edited.country.trim()) {
-            alert('請至少填寫「國家」與「名稱」喔！');
+            toast('請至少填寫「國家」與「名稱」喔！');
             return;
         }
         onSave(edited);
@@ -330,7 +332,7 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                 <div className="p-4 border-t border-gray-200/50 bg-white pb-safe flex gap-3 z-20 rounded-b-[32px]">
                     {isEditing && onDelete && (
                         <button 
-                            onClick={() => { if(confirm('確定要刪除此心願嗎？')) onDelete(edited.id); }}
+                            onClick={async () => { if(await confirmDialog({ title: '刪除這個心願？', confirmText: '刪除', tone: 'danger' })) onDelete(edited.id); }}
                             className="px-4 py-3.5 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
                         >
                             <X className="w-5 h-5" />

@@ -8,6 +8,7 @@ import {
 import type { Trip, Member, User } from '../../../types';
 // 🖼️ 2.2 改走 Storage：上傳→存路徑，不再存 base64
 import { uploadTripImage, signPaths, deleteTripImage } from '../../../services/storage';
+import { toast } from '../../../components/Toast';
 
 interface TripSettingsModalProps {
     trip: Trip;
@@ -84,7 +85,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                 setIsRepositioning(true);
             } catch (error) {
                 console.error("Image upload failed:", error);
-                alert("圖片處理失敗，請嘗試其他照片。");
+                toast("圖片處理失敗，請嘗試其他照片。");
             }
         }
     };
@@ -319,7 +320,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                     <div className="mx-5 my-2 h-px bg-gray-300" />
 
                     {/* === BLOCK E: Delete === */}
-                    <button onClick={() => { if(confirm('確定要刪除此行程嗎？此動作無法復原。')) onDelete(); }} className="w-full h-12 px-5 rounded-[24px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center hover:bg-red-100 active:scale-[0.99] transition-all">
+                    <button onClick={onDelete} className="w-full h-12 px-5 rounded-[24px] bg-red-50 text-red-500 text-sm font-bold flex items-center justify-center hover:bg-red-100 active:scale-[0.99] transition-all">
                         <span>刪除整個行程</span>
                     </button>
                 </div>

@@ -4,6 +4,7 @@ import { Home, Compass, Briefcase, FileText, Sparkles } from 'lucide-react';
 import { AppView } from './types';
 import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './types';
 import type { TripRow, VaultFolderRow, VaultFileRow } from './db-types';
+import { confirmDialog } from './components/ConfirmDialog';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
@@ -304,7 +305,8 @@ const App: React.FC = () => {
   };
   
   const handleLogout = async () => {
-      if(confirm("確定要登出嗎？")) {
+      const ok = await confirmDialog({ title: '確定要登出嗎？', message: '你隨時可以再次登入這個帳號。', confirmText: '登出' });
+      if (ok) {
           flushTripSave(); // 登出前補存最後編輯
           await supabase.auth.signOut();
       }
@@ -324,8 +326,9 @@ const App: React.FC = () => {
     scheduleTripSave(updatedTrip); // 🚀 2.3 改為防抖儲存
   };
 
-  const handleSoftDeleteTrip = (id: string) => {
-    if(confirm('確定要將此行程移至保管箱嗎？')) {
+  const handleSoftDeleteTrip = async (id: string) => {
+    const ok = await confirmDialog({ title: '移至保管箱？', message: '行程會移到保管箱，之後可再還原。', confirmText: '移至保管箱' });
+    if (ok) {
         cancelPendingSave(); // 避免尚未寫出的舊版覆蓋掉刪除狀態
         const targetTrip = trips.find(t => t.id === id);
         if (targetTrip) {
@@ -346,8 +349,9 @@ const App: React.FC = () => {
       }
   };
 
-  const handlePermanentDeleteTrip = (id: string) => {
-      if(confirm('確定要永久刪除嗎？此動作無法復原。')) {
+  const handlePermanentDeleteTrip = async (id: string) => {
+      const ok = await confirmDialog({ title: '永久刪除這個行程？', message: '刪除後將無法復原，資料會永久消失。', confirmText: '刪除', tone: 'danger' });
+      if (ok) {
           cancelPendingSave(); // 取消殘留排程，避免覆蓋刪除
           const target = trips.find(t => t.id === id);
           if (target) deleteTripImages(collectTripImagePaths(target)); // 🖼️ 2.2 連帶刪除該行程所有圖（封面+記帳照片）

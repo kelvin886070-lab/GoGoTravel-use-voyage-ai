@@ -40,6 +40,7 @@ import { VibeTagEditModal } from './modals/VibeTagEditModal';
 import { IOSShareSheet } from '../../components/UI';
 import { ShareBottomSheet } from './modals/ShareBottomSheet';
 import { toast } from '../../components/Toast';
+import { confirmDialog } from '../../components/ConfirmDialog';
 
 // ============================================================================
 // 9.3 專屬：雙向兩段式極限位移手勢卡片 (SwipeableWishCard)
@@ -425,8 +426,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setIsDocPickerOpen(false);
     };
 
-    const handleUnlinkDocument = (docId: string) => {
-        if(confirm('確定要從此行程移除這份文件連結嗎？(檔案仍會保留在保管箱中)')) {
+    const handleUnlinkDocument = async (docId: string) => {
+        if(await confirmDialog({ title: '移除這份文件連結？', message: '檔案仍會保留在保管箱中，只是取消與此行程的連結。', confirmText: '移除連結' })) {
             const newIds = (trip.linkedDocumentIds || []).filter(id => id !== docId);
             onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
         }
