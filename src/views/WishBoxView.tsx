@@ -81,16 +81,16 @@ const ShoppingRow: React.FC<{ item: WishItem; onToggle: () => void; onEdit: () =
             <button onClick={onToggle} className={`w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${bought ? 'bg-[#45846D] text-white' : 'border-[1.5px] border-gray-300 hover:border-[#45846D]'}`}>
                 {bought && <Check className="w-3.5 h-3.5" />}
             </button>
-            <div onClick={onEdit} className="flex-1 min-w-0 cursor-pointer">
+            <div className="flex-1 min-w-0">
                 <p className={`text-sm font-medium ${bought ? 'line-through text-gray-400' : 'text-[#1D1D1B]'}`}>{item.title}</p>
-                {(item.area || (item.tags && item.tags.length > 0)) && !bought && (
+                {(item.tags && item.tags.length > 0) && !bought && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                        {item.area && <span className="text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-md">{item.area}</span>}
                         {(item.tags || []).slice(0, 2).map(t => <span key={t} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${getTagColor(t)}`}>#{t}</span>)}
                     </div>
                 )}
             </div>
             {item.budget != null && <span className={`font-mono text-sm flex-shrink-0 ${bought ? 'line-through text-gray-400' : 'text-[#1D1D1B]'}`}>{item.currency || 'TWD'} {item.budget.toLocaleString()}</span>}
+            <button onClick={onEdit} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center flex-shrink-0 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
         </div>
     );
 };
