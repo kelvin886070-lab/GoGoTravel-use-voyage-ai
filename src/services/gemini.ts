@@ -93,8 +93,8 @@ export const generateItinerary = async (
     localTransportMode?: 'public' | 'car' | 'taxi'
 ): Promise<TripDay[]> => {
   
-  // 🛡️ 升級為 v8，強迫放棄舊版無 vibeTag 的快取
-  const cacheKey = `itinerary_v8_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
+  // 🛡️ 升級為 v9：#3 地理群聚，強迫放棄舊版「天南地北」的快取
+  const cacheKey = `itinerary_v9_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
   
   return fetchWithCache(cacheKey, async () => {
       let context = "";
@@ -143,26 +143,34 @@ export const generateItinerary = async (
         
         **CRITICAL REQUIREMENTS (DO NOT IGNORE):**
 
-        1. **Arrival Logic (Day 1)**:
+        1. **Geographic Clustering (MOST IMPORTANT — no zig-zag across the map)**:
+           - Divide ${destination} into distinct geographic zones/districts.
+           - Assign each day to ONE primary zone (adjacent zones allowed). Every spot that day MUST be geographically close (short transit / walkable). Consecutive days should cover neighbouring zones to cut commuting.
+           - Within a day, order the activities along an efficient one-way route (nearest-neighbour). NEVER bounce back and forth across the city.
+           - Leave the day's zone only when unavoidable; if so, put that spot at the day's START or END, not the middle.
+           - Respect any location constraint given above, and cluster WITHIN it.
+
+        2. **Arrival Logic (Day 1)**:
            - The first activity MUST be the arrival (Flight/Train).
            - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**. (e.g., "Exit North Gate to Bus Stop 5").
            - The NEXT activity should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
         
-        2. **Gap Connectors (Transport)**:
+        3. **Gap Connectors (Transport)**:
            - You MUST explicitly calculate travel time between spots.
            - Use 'type': 'transport' for these movements.
            - Fill 'transportDetail': { "mode": "bus"|"train"|"car"|"walk", "duration": "XX min" }.
-           
-        3. **Daily Vibe Tag (NEW & CRITICAL)**:
-           - For EACH day, you MUST generate a "vibeTag" summarizing the day's theme.
+           - Because each day is clustered in one zone, most gaps should be SHORT (walk / a few stops). A long transit in the middle of a day is a sign of bad clustering — fix the ordering instead.
+
+        4. **Daily Vibe Tag (NEW & CRITICAL)**:
+           - For EACH day, you MUST generate a "vibeTag" summarizing the day's theme, reflecting that day's zone/district.
            - Constraints: Maximum 15 characters. STRICTLY NO EMOJIS. Professional, high-end travel magazine tone.
            - MUST be uniquely tailored to the day's specific activities. DO NOT repeat the same tag across different days.
-           
-        4. **Data Integrity**:
+
+        5. **Data Integrity**:
            - **Currency**: Estimate costs in **${currency}** (Number only).
            - **Types**: Use strict types: "sightseeing", "food", "cafe", "shopping", "transport", "flight", "hotel", "relax", "bar", "culture", "activity".
         
-        5. **Format**: Output valid JSON only.
+        6. **Format**: Output valid JSON only.
         
         JSON Structure Example:
         [
