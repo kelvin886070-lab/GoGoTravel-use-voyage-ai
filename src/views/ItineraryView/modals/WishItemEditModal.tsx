@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { 
-    X, MapPin, ShoppingBag, ChevronDown, Camera, 
-    Link as LinkIcon, Image as ImageIcon, Tag as TagIcon, Save, Globe
+import {
+    X, MapPin, ShoppingBag, Camera, Store, Trash2,
+    Link as LinkIcon, Tag as TagIcon, Save, Globe
 } from 'lucide-react';
 import type { WishItem, WishItemType } from '../../../types';
 import { toast } from '../../../components/Toast';
@@ -99,249 +99,170 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
         onSave(edited);
     };
 
+    const isPlace = edited.type === 'place';
+
     return (
         <div className="fixed inset-0 z-[100] flex items-end justify-center">
             {/* 🛡️ 防禦 2：底層鎖定 (touch-none overscroll-none) 阻絕穿透 */}
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in touch-none overscroll-none" onClick={onClose} />
-            
-            <div className="bg-[#F2F2F2] w-full max-w-sm rounded-t-[32px] relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[90vh]">
+
+            <div className="bg-[#F2F1ED] w-full max-w-sm rounded-t-[32px] relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[90vh]">
                 
-                {/* === 抽屜 Header === */}
-                <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200/50 flex justify-between items-center bg-white rounded-t-[32px]">
-                    <h3 className="text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯心願' : '收藏新靈感'}</h3>
-                    <button onClick={onClose} className="bg-gray-100 p-2 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
-                        <X className="w-4 h-4" />
-                    </button>
+                {/* === Header：標題 + 降級的類型切換 === */}
+                <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-black/5 flex justify-between items-center bg-white rounded-t-[32px]">
+                    <div className="flex items-center gap-2.5">
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                        <h3 className="font-serif text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯' : '新增'}</h3>
+                    </div>
+                    <div className="flex bg-[#767680]/10 rounded-lg p-[2px] text-xs font-bold">
+                        <button onClick={() => handleChange('type', 'place')} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md transition-colors ${isPlace ? 'bg-[#45846D] text-white' : 'text-gray-500'}`}><MapPin className="w-3 h-3" /> 地點</button>
+                        <button onClick={() => handleChange('type', 'item')} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md transition-colors ${!isPlace ? 'bg-[#45846D] text-white' : 'text-gray-500'}`}><ShoppingBag className="w-3 h-3" /> 購物</button>
+                    </div>
                 </div>
 
-                {/* === 抽屜內容 (可滾動區) === */}
-                <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-5 overscroll-contain">
-                    
-                    {/* 1. 分類切換 (地點 / 物品) */}
-                    <div className="bg-white p-1 rounded-2xl flex shadow-sm border border-gray-100">
-                        <button 
-                            onClick={() => handleChange('type', 'place')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-colors ${edited.type === 'place' ? 'bg-[#45846D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
-                        >
-                            <MapPin className="w-4 h-4" /> 想去的地方
-                        </button>
-                        <button 
-                            onClick={() => handleChange('type', 'item')}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-colors ${edited.type === 'item' ? 'bg-[#45846D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
-                        >
-                            <ShoppingBag className="w-4 h-4" /> 想買的東西
-                        </button>
-                    </div>
+                {/* === 內容 === */}
+                <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-4 overscroll-contain">
 
-                    {/* 2. 國家 + 城市 (Grid Layout) */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                <Globe className="w-3 h-3" /> 國家 <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                onFocus={handleFocus}
-                                value={edited.country}
-                                onChange={e => handleChange('country', e.target.value)}
-                                placeholder="例: 日本"
-                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" /> 城市
-                            </label>
-                            <input
-                                type="text"
-                                onFocus={handleFocus}
-                                value={edited.city || ''}
-                                onChange={e => handleChange('city', e.target.value)}
-                                placeholder="例: 東京"
-                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
-                            />
-                        </div>
-                    </div>
-
-                    {/* 2b. 自訂分區（含歷史下拉） */}
-                    <div className="space-y-1.5 relative">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> 自訂分區
+                    {/* 主區塊：圖片縮圖 + 名稱 */}
+                    <div className="flex gap-3 items-center">
+                        <label className="w-16 h-16 rounded-2xl bg-[#E9E5DC] flex-shrink-0 flex items-center justify-center overflow-hidden cursor-pointer relative text-[#B0AA9E] hover:text-[#45846D] transition-colors">
+                            {edited.customImage ? (
+                                <>
+                                    <img src={edited.customImage} alt="preview" className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">更換</span>
+                                </>
+                            ) : <Camera className="w-6 h-6" />}
+                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                         </label>
-                        <input
-                            type="text"
-                            value={edited.area || ''}
-                            onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
-                            onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
-                            onChange={e => handleChange('area', e.target.value)}
-                            placeholder="例: 澀谷區"
-                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
-                        />
-                        {/* 💡 智慧歷史分區下拉選單 */}
-                        {showAreaDropdown && availableAreas.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 max-h-32 overflow-y-auto animate-in fade-in zoom-in-95">
-                                {availableAreas.map(area => (
-                                    <button
-                                        key={area}
-                                        onMouseDown={(e) => { e.preventDefault(); handleChange('area', area); setShowAreaDropdown(false); }}
-                                        className="w-full text-left px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-[#45846D] transition-colors"
-                                    >
-                                        {area}
-                                    </button>
+                        <div className="flex-1 min-w-0">
+                            <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider">名稱 <span className="text-red-400">*</span></label>
+                            <input
+                                onFocus={handleFocus}
+                                value={edited.title}
+                                onChange={e => handleChange('title', e.target.value)}
+                                placeholder={isPlace ? '例: Blue Bottle' : '例: 白色戀人'}
+                                className="w-full bg-transparent text-lg font-bold text-[#1D1D1B] outline-none border-b border-[#E2DFD8] focus:border-[#45846D] py-1 transition-colors"
+                            />
+                        </div>
+                    </div>
+
+                    {/* 國家 + 城市 */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
+                            <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><Globe className="w-3 h-3" /> 國家 <span className="text-red-400">*</span></label>
+                            <input onFocus={handleFocus} value={edited.country} onChange={e => handleChange('country', e.target.value)} placeholder="例: 日本" className="w-full bg-transparent text-sm font-bold text-[#1D1D1B] outline-none pt-0.5" />
+                        </div>
+                        <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
+                            <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><MapPin className="w-3 h-3" /> 城市</label>
+                            <input onFocus={handleFocus} value={edited.city || ''} onChange={e => handleChange('city', e.target.value)} placeholder="例: 東京" className="w-full bg-transparent text-sm font-bold text-[#1D1D1B] outline-none pt-0.5" />
+                        </div>
+                    </div>
+
+                    {/* 類型專屬區塊 */}
+                    {isPlace ? (
+                        <>
+                            {/* 分區（含歷史下拉） */}
+                            <div className="relative bg-white rounded-2xl px-4 py-2.5 shadow-sm">
+                                <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><MapPin className="w-3 h-3" /> 自訂分區</label>
+                                <input
+                                    value={edited.area || ''}
+                                    onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
+                                    onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
+                                    onChange={e => handleChange('area', e.target.value)}
+                                    placeholder="例: 澀谷區"
+                                    className="w-full bg-transparent text-sm font-bold text-[#1D1D1B] outline-none pt-0.5"
+                                />
+                                {showAreaDropdown && availableAreas.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 max-h-32 overflow-y-auto animate-in fade-in zoom-in-95">
+                                        {availableAreas.map(area => (
+                                            <button key={area} onMouseDown={(e) => { e.preventDefault(); handleChange('area', area); setShowAreaDropdown(false); }}
+                                                    className="w-full text-left px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-[#45846D] transition-colors">{area}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {/* 網址 */}
+                            <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
+                                <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><LinkIcon className="w-3 h-3" /> 網址連結</label>
+                                <input type="url" onFocus={handleFocus} value={edited.url || ''} onChange={e => handleChange('url', e.target.value)} placeholder="貼上 Google Maps / IG 連結…" className="w-full bg-transparent text-sm font-medium text-blue-500 outline-none pt-0.5" />
+                            </div>
+                        </>
+                    ) : (
+                        /* 購物：類別/店家 + 預算 */
+                        <div className="bg-[#EDF2F0] border border-[#45846D]/15 rounded-2xl p-4 space-y-3">
+                            <div className="relative">
+                                <label className="text-[10px] font-bold text-[#45846D] tracking-wider flex items-center gap-1"><Store className="w-3 h-3" /> 類別 / 店家</label>
+                                <input
+                                    value={edited.area || ''}
+                                    onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
+                                    onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
+                                    onChange={e => handleChange('area', e.target.value)}
+                                    placeholder="例: Lawson、生鮮、Uniqlo"
+                                    className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40"
+                                />
+                                {showAreaDropdown && availableAreas.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 max-h-32 overflow-y-auto animate-in fade-in zoom-in-95">
+                                        {availableAreas.map(area => (
+                                            <button key={area} onMouseDown={(e) => { e.preventDefault(); handleChange('area', area); setShowAreaDropdown(false); }}
+                                                    className="w-full text-left px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-[#45846D] transition-colors">{area}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="w-1/3">
+                                    <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">幣別</label>
+                                    <select value={edited.currency || 'TWD'} onChange={e => handleChange('currency', e.target.value)}
+                                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 appearance-none">
+                                        <option value="TWD">TWD</option><option value="JPY">JPY</option><option value="KRW">KRW</option><option value="USD">USD</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">預算（選填）</label>
+                                    <input type="number" onFocus={handleFocus} value={edited.budget || ''} onChange={e => handleChange('budget', Number(e.target.value))} placeholder="例: 1500"
+                                           className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 標籤（共用） */}
+                    <div>
+                        <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider pl-1 flex items-center gap-1"><TagIcon className="w-3 h-3" /> 標籤</label>
+                        {edited.tags && edited.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2 my-2">
+                                {edited.tags.map(tag => (
+                                    <span key={tag} className={`text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${getTagColor(tag)}`}>
+                                        #{tag}
+                                        <button onClick={() => handleChange('tags', edited.tags?.filter(t => t !== tag))} className="ml-1 opacity-50 hover:opacity-100"><X className="w-3 h-3" /></button>
+                                    </span>
                                 ))}
                             </div>
                         )}
-                    </div>
-
-                    {/* 3. 名稱 */}
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
-                            名稱 <span className="text-red-400">*</span>
-                        </label>
-                        <input 
-                            type="text"
-                            onFocus={handleFocus}
-                            value={edited.title}
-                            onChange={e => handleChange('title', e.target.value)}
-                            placeholder="例: Blue Bottle Coffee"
-                            className="w-full bg-white text-lg font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
-                        />
-                    </div>
-
-                    {/* 4. 網址 (Google Maps / IG) */}
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                            <LinkIcon className="w-3 h-3" /> 網址連結
-                        </label>
-                        <input 
-                            type="url"
-                            onFocus={handleFocus}
-                            value={edited.url || ''}
-                            onChange={e => handleChange('url', e.target.value)}
-                            placeholder="貼上 Google Maps 或 IG 連結..."
-                            className="w-full bg-white text-sm font-medium text-blue-500 px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
-                        />
-                    </div>
-
-                    {/* 詳細設定（照片 / 備註 / 購物欄位）— 一律展開，不再多一層 */}
-                    <div className="space-y-5 pt-4 mt-2 border-t border-dashed border-gray-300/50">
-
-                            {/* 5. 自訂圖片 (優雅降級) */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                    <ImageIcon className="w-3 h-3" /> 自訂首圖
-                                </label>
-                                <div className="relative w-full h-32 bg-white rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-[#45846D]/30 shadow-sm">
-                                    {edited.customImage ? (
-                                        <>
-                                            <img src={edited.customImage} alt="Preview" className="w-full h-full object-cover" />
-                                            <label className="absolute bottom-2 right-2 bg-black/60 hover:bg-black/80 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm cursor-pointer backdrop-blur-md transition-all active:scale-95">
-                                                更換圖片
-                                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                                            </label>
-                                        </>
-                                    ) : (
-                                        <label className="text-gray-400 flex flex-col items-center justify-center w-full h-full cursor-pointer hover:text-[#45846D] transition-colors">
-                                            <Camera className="w-6 h-6 mb-2 opacity-50" />
-                                            <span className="text-xs font-bold">上傳照片 / 截圖</span>
-                                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                                        </label>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* 6. 備註 */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
-                                    備註
-                                </label>
-                                <textarea 
-                                    onFocus={handleFocus}
-                                    value={edited.notes || ''}
-                                    onChange={e => handleChange('notes', e.target.value)}
-                                    placeholder="寫下為什麼想存這個靈感..."
-                                    className="w-full bg-white text-sm font-medium text-[#1D1D1B] p-4 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all min-h-[80px] resize-none"
-                                />
-                            </div>
-
-                            {/* 7. 購物專屬：預算與標籤 */}
-                            {edited.type === 'item' && (
-                                <div className="bg-[#EDF2F0] p-4 rounded-2xl border border-[#45846D]/15 space-y-4">
-                                    <div className="flex gap-3">
-                                        <div className="w-1/3 space-y-1.5">
-                                            <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1">幣別</label>
-                                            <select
-                                                value={edited.currency || 'TWD'}
-                                                onChange={e => handleChange('currency', e.target.value)}
-                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-3 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm appearance-none"
-                                            >
-                                                <option value="TWD">TWD</option>
-                                                <option value="JPY">JPY</option>
-                                                <option value="KRW">KRW</option>
-                                                <option value="USD">USD</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex-1 space-y-1.5">
-                                            <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1">預算（選填）</label>
-                                            <input
-                                                type="number"
-                                                onFocus={handleFocus}
-                                                value={edited.budget || ''}
-                                                onChange={e => handleChange('budget', Number(e.target.value))}
-                                                placeholder="例: 1500"
-                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1 flex items-center gap-1">
-                                            <TagIcon className="w-3 h-3" /> 標籤
-                                        </label>
-                                        {edited.tags && edited.tags.length > 0 && (
-                                            <div className="flex flex-wrap gap-2 mb-2">
-                                                {edited.tags.map(tag => (
-                                                    <span key={tag} className={`text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${getTagColor(tag)}`}>
-                                                        #{tag}
-                                                        <button onClick={() => handleChange('tags', edited.tags?.filter(t => t !== tag))} className="ml-1 opacity-50 hover:opacity-100"><X className="w-3 h-3" /></button>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                onFocus={handleFocus}
-                                                value={tagInput}
-                                                onChange={e => setTagInput(e.target.value)}
-                                                onKeyDown={e => e.key === 'Enter' && handleAddTag()}
-                                                placeholder="輸入標籤 (如: 藥妝、伴手禮)"
-                                                className="flex-1 bg-white text-xs font-bold text-[#1D1D1B] px-3 py-2.5 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm"
-                                            />
-                                            <button onClick={handleAddTag} className="bg-[#45846D]/10 text-[#45846D] px-3 rounded-xl text-xs font-bold hover:bg-[#45846D]/20 transition-colors">
-                                                新增
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        <div className="flex gap-2 mt-1.5">
+                            <input onFocus={handleFocus} value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddTag()} placeholder="輸入標籤（如: 咖啡、藥妝）"
+                                   className="flex-1 bg-white text-xs font-bold text-[#1D1D1B] px-3 py-2.5 rounded-xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm" />
+                            <button onClick={handleAddTag} className="bg-[#45846D]/10 text-[#45846D] px-3 rounded-xl text-xs font-bold hover:bg-[#45846D]/20 transition-colors">新增</button>
                         </div>
+                    </div>
+
+                    {/* 備註（共用） */}
+                    <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+                        <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider">備註</label>
+                        <textarea onFocus={handleFocus} value={edited.notes || ''} onChange={e => handleChange('notes', e.target.value)} placeholder="寫下細節…"
+                                  className="w-full bg-transparent text-sm font-medium text-[#1D1D1B] outline-none min-h-[64px] resize-none pt-1" />
+                    </div>
                 </div>
 
                 {/* === Footer === */}
-                <div className="p-4 border-t border-gray-200/50 bg-white pb-safe flex gap-3 z-20 rounded-b-[32px]">
+                <div className="flex-shrink-0 p-4 border-t border-black/5 bg-white pb-safe flex gap-3 rounded-b-[32px]">
                     {isEditing && onDelete && (
-                        <button 
-                            onClick={async () => { if(await confirmDialog({ title: '刪除這個心願？', confirmText: '刪除', tone: 'danger' })) onDelete(edited.id); }}
-                            className="px-4 py-3.5 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
-                        >
-                            <X className="w-5 h-5" />
+                        <button onClick={async () => { if(await confirmDialog({ title: '刪除這個心願？', confirmText: '刪除', tone: 'danger' })) onDelete(edited.id); }}
+                                className="w-12 flex items-center justify-center rounded-xl bg-[#FBE9E4] text-[#C0573E] hover:bg-[#F6D9D0] transition-colors">
+                            <Trash2 className="w-5 h-5" />
                         </button>
                     )}
-                    <button 
-                        onClick={handleSave} 
-                        className="flex-1 py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm shadow-xl shadow-black/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
+                    <button onClick={handleSave} className="flex-1 py-3.5 rounded-xl bg-[#1D1D1B] text-white font-bold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2">
                         <Save className="w-4 h-4" /> {isEditing ? '儲存變更' : '收藏心願'}
                     </button>
                 </div>

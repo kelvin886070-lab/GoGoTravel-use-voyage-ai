@@ -6,7 +6,7 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import { MarkerClusterer, type Marker } from '@googlemaps/markerclusterer';
 import {
     MapPin, ShoppingBag, Plus, ArrowLeft, Globe, Sparkles, X,
-    Map as MapIcon, List, Navigation, Edit3, Check,
+    Map as MapIcon, List, Navigation, Edit3, Check, Store,
     Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
@@ -366,11 +366,23 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                             ))}
                         </div>
                     ) : (
-                        /* 購物：收據風清單（已買沉底 + 刪除線） */
-                        <div className="bg-white rounded-2xl shadow-sm px-4 py-1">
-                            {[...displayItems].sort((a, b) => (a.isPurchased ? 1 : 0) - (b.isPurchased ? 1 : 0)).map(item => (
-                                <ShoppingRow key={item.id} item={item} onToggle={() => onTogglePurchased(item.id)} onEdit={() => onEditClick(item)} />
-                            ))}
+                        /* 購物：依「類別/店家」分組的收據風清單（已買沉底 + 刪除線） */
+                        <div className="space-y-3">
+                            {(() => {
+                                const sorted = [...displayItems].sort((a, b) => (a.isPurchased ? 1 : 0) - (b.isPurchased ? 1 : 0));
+                                const groups: Record<string, WishItem[]> = {};
+                                sorted.forEach(it => { const k = it.area || '其他'; (groups[k] = groups[k] || []).push(it); });
+                                return Object.entries(groups).map(([cat, items]) => (
+                                    <div key={cat} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                                        <div className="px-4 pt-3 pb-0.5 flex items-center gap-1.5 text-[12px] font-bold text-[#45846D]"><Store className="w-3.5 h-3.5" /> {cat}</div>
+                                        <div className="px-4 pb-1">
+                                            {items.map(item => (
+                                                <ShoppingRow key={item.id} item={item} onToggle={() => onTogglePurchased(item.id)} onEdit={() => onEditClick(item)} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ));
+                            })()}
                         </div>
                     )}
                 </div>

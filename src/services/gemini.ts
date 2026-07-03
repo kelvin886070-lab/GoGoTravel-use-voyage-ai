@@ -116,7 +116,9 @@ Rules:
 - "note": extra remarks, e.g. parenthetical text like "(只有外帶)" or "鹹蛋黃巴斯克好吃".
 - "country": the NATION in Traditional Chinese (台灣, 日本, 韓國, 泰國, ...).
 - "city": the CITY (臺南市 → 台南; 台北 → 台北; 東京/Tokyo → 東京; 大阪/Osaka → 大阪).
-- "area": the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).
+- "area": ${mode === 'place'
+        ? 'the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).'
+        : 'the store or category to buy from — where/what kind (e.g. Lawson, 唐吉訶德, 業務超市, 生鮮, 藥妝, 服飾, 伴手禮).'}
 - "tags": 1-2 short helpful tags in Traditional Chinese inferred from content (e.g. 咖啡, 甜點, 藥妝).
 - "budget"/"currency": only for shopping items if a price is stated.
 - Keep the original language of names and notes. Skip lines that are not a real ${mode}.
