@@ -38,6 +38,7 @@ export interface WishItemRow {
     lng: number | null;
     place_id: string | null;
     is_favorite: boolean | null;
+    is_purchased: boolean | null;
     url: string | null;
     custom_image_path: string | null; // 對應前端 WishItem.customImage
     budget: number | null;

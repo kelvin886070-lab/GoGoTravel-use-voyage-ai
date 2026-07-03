@@ -45,6 +45,7 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     lng: r.lng ?? undefined,
     placeId: r.place_id || undefined,
     isFavorite: !!r.is_favorite,
+    isPurchased: !!r.is_purchased,
     createdAt: r.created_at,
 });
 
@@ -61,6 +62,7 @@ const wishToRow = (w: WishItem, userId: string) => ({
     lng: w.lng ?? null,
     place_id: w.placeId ?? null,
     is_favorite: !!w.isFavorite,
+    is_purchased: !!w.isPurchased,
     url: w.url ?? null,
     custom_image_path: w.customImage ?? null,
     budget: w.budget ?? null,
@@ -429,6 +431,14 @@ const App: React.FC = () => {
       if (error) { console.error('最愛切換失敗', error); fetchWishItems(); }
   };
 
+  // 🧱 C2-2 切換購物「已買完」
+  const toggleWishPurchased = async (id: string) => {
+      let next = false;
+      setWishItems(prev => prev.map(w => { if (w.id === id) { next = !w.isPurchased; return { ...w, isPurchased: next }; } return w; }));
+      const { error } = await supabase.from('wish_items').update({ is_purchased: next }).eq('id', id);
+      if (error) { console.error('已買切換失敗', error); fetchWishItems(); }
+  };
+
   // 🧱 Phase C1-0：貼上匯入。批次 geocode（地址，一次呼叫走全域快取）→ 一次寫入 wish_items。
   const importWishItems = async (rows: ParsedWish[]) => {
       if (!user || rows.length === 0) return;
@@ -550,6 +560,7 @@ const App: React.FC = () => {
                     onEditClick={(item) => setEditingWishItem(item)}
                     onOpenImport={() => setShowImportModal(true)}
                     onToggleFavorite={toggleWishFavorite}
+                    onTogglePurchased={toggleWishPurchased}
                 />
             )}
 

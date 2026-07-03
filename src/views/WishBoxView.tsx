@@ -6,7 +6,7 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import { MarkerClusterer, type Marker } from '@googlemaps/markerclusterer';
 import {
     MapPin, ShoppingBag, Plus, ArrowLeft, Globe, Sparkles, X,
-    Map as MapIcon, List, Navigation, Edit3,
+    Map as MapIcon, List, Navigation, Edit3, Check,
     Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
@@ -55,7 +55,45 @@ interface WishBoxViewProps {
     onEditClick: (item: WishItem) => void;
     onOpenImport: () => void;
     onToggleFavorite: (id: string) => void;
+    onTogglePurchased: (id: string) => void;
 }
+
+// 小進度環
+const ProgressRing: React.FC<{ done: number; total: number; size?: number }> = ({ done, total, size = 46 }) => {
+    const r = (size - 6) / 2;
+    const circ = 2 * Math.PI * r;
+    const pct = total ? done / total : 0;
+    return (
+        <svg width={size} height={size} className="flex-shrink-0">
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E2DFD8" strokeWidth={4} />
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#45846D" strokeWidth={4} strokeLinecap="round"
+                    strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+            <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fill="#45846D" style={{ fontSize: 11, fontWeight: 700 }}>{done}/{total}</text>
+        </svg>
+    );
+};
+
+// 收據風購物列（勾選=已買，刪除線）
+const ShoppingRow: React.FC<{ item: WishItem; onToggle: () => void; onEdit: () => void }> = ({ item, onToggle, onEdit }) => {
+    const bought = !!item.isPurchased;
+    return (
+        <div className={`flex items-center gap-3 py-3 border-b border-dashed border-[#EFECE5] last:border-b-0 transition-opacity ${bought ? 'opacity-50' : ''}`}>
+            <button onClick={onToggle} className={`w-[22px] h-[22px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${bought ? 'bg-[#45846D] text-white' : 'border-[1.5px] border-gray-300 hover:border-[#45846D]'}`}>
+                {bought && <Check className="w-3.5 h-3.5" />}
+            </button>
+            <div onClick={onEdit} className="flex-1 min-w-0 cursor-pointer">
+                <p className={`text-sm font-medium ${bought ? 'line-through text-gray-400' : 'text-[#1D1D1B]'}`}>{item.title}</p>
+                {(item.area || (item.tags && item.tags.length > 0)) && !bought && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                        {item.area && <span className="text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-md">{item.area}</span>}
+                        {(item.tags || []).slice(0, 2).map(t => <span key={t} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${getTagColor(t)}`}>#{t}</span>)}
+                    </div>
+                )}
+            </div>
+            {item.budget != null && <span className={`font-mono text-sm flex-shrink-0 ${bought ? 'line-through text-gray-400' : 'text-[#1D1D1B]'}`}>{item.currency || 'TWD'} {item.budget.toLocaleString()}</span>}
+        </div>
+    );
+};
 
 // 自動框住地圖上所有圖釘
 const FitBounds: React.FC<{ points: { lat: number; lng: number }[] }> = ({ points }) => {
@@ -186,7 +224,7 @@ const WishCard: React.FC<{ item: WishItem; selected?: boolean; onSelect: () => v
 };
 
 export const WishBoxView: React.FC<WishBoxViewProps> = ({
-    wishItems, trips, onAddWishToTrip, onEditClick, onOpenImport, onToggleFavorite
+    wishItems, trips, onAddWishToTrip, onEditClick, onOpenImport, onToggleFavorite, onTogglePurchased
 }) => {
     const [activeTab, setActiveTab] = useState<WishItemType>('place');
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
@@ -233,11 +271,12 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
 
     // Level 1：依國家彙整
     const countryStats = useMemo(() => {
-        const m: Record<string, { count: number; cities: Record<string, number> }> = {};
+        const m: Record<string, { count: number; done: number; cities: Record<string, number> }> = {};
         tabItems.forEach(it => {
             const c = it.country || '其他';
-            if (!m[c]) m[c] = { count: 0, cities: {} };
+            if (!m[c]) m[c] = { count: 0, done: 0, cities: {} };
             m[c].count++;
+            if (it.isPurchased) m[c].done++;
             if (it.city) m[c].cities[it.city] = (m[c].cities[it.city] || 0) + 1;
         });
         return Object.entries(m).sort((a, b) => b[1].count - a[1].count);
@@ -315,19 +354,44 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                 <div className="flex-1 overflow-y-auto no-scrollbar px-4 pt-3 pb-32">
                     {displayItems.length === 0 ? (
                         <div className="text-center text-gray-400 text-sm py-16">這個分類還沒有收藏</div>
-                    ) : (
+                    ) : isPlace ? (
                         <div className="space-y-2.5">
                             {displayItems.map(item => (
                                 <WishCard key={item.id} item={item} selected={selectedPin === item.id}
                                           refCb={el => { cardRefs.current[item.id] = el; }}
-                                          onSelect={() => (isPlace && viewMode === 'map') ? setSelectedPin(item.id) : onEditClick(item)}
+                                          onSelect={() => (viewMode === 'map') ? setSelectedPin(item.id) : onEditClick(item)}
                                           onEdit={() => onEditClick(item)}
                                           onAdd={() => setActionWish(item)}
                                           onFavorite={() => onToggleFavorite(item.id)} />
                             ))}
                         </div>
+                    ) : (
+                        /* 購物：收據風清單（已買沉底 + 刪除線） */
+                        <div className="bg-white rounded-2xl shadow-sm px-4 py-1">
+                            {[...displayItems].sort((a, b) => (a.isPurchased ? 1 : 0) - (b.isPurchased ? 1 : 0)).map(item => (
+                                <ShoppingRow key={item.id} item={item} onToggle={() => onTogglePurchased(item.id)} onEdit={() => onEditClick(item)} />
+                            ))}
+                        </div>
                     )}
                 </div>
+
+                {/* 購物：底部購買進度條 */}
+                {!isPlace && displayItems.length > 0 && (
+                    <div className="flex-shrink-0 px-5 pb-safe pt-2 pb-4 bg-white/95 backdrop-blur border-t border-black/5">
+                        {(() => {
+                            const done = displayItems.filter(i => i.isPurchased).length;
+                            const total = displayItems.length;
+                            return (
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-2 rounded-full bg-[#E2DFD8] overflow-hidden">
+                                        <div className="h-full bg-[#45846D] rounded-full transition-all" style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
+                                    </div>
+                                    <span className="text-xs font-bold text-[#45846D] flex-shrink-0">{done === total ? '全部買完 🎉' : `已買 ${done} / ${total}`}</span>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
 
                 {actionWish && <InjectSheet wish={actionWish} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
             </div>
@@ -393,17 +457,26 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                         {countryStats.map(([country, stats]) => {
                             const ink = inkOf(country);
                             const topCities = Object.entries(stats.cities).sort((a, b) => b[1] - a[1]).slice(0, 3);
+                            const isShop = activeTab === 'item';
                             return (
                                 <button key={country} onClick={() => openCountry(country)}
                                         className="w-full flex items-center gap-4 bg-[#F3EFE7] border border-[#1D1D1B]/10 rounded-[22px] p-4 text-left active:scale-[0.99] transition-transform">
-                                    <div className="w-[58px] h-[58px] rounded-full flex flex-col items-center justify-center flex-shrink-0"
-                                         style={{ border: `2px dashed ${ink}`, color: ink, transform: `rotate(${STAMP_ANGLE}deg)` }}>
-                                        <Globe className="w-[18px] h-[18px]" />
-                                        {codeOf(country) && <span className="text-[9px] font-black tracking-[0.12em] mt-0.5">{codeOf(country)}</span>}
-                                    </div>
+                                    {isShop ? (
+                                        <div className="w-[52px] h-[52px] rounded-[16px] bg-[#EDF2F0] flex items-center justify-center flex-shrink-0 text-[#45846D]">
+                                            <ShoppingBag className="w-6 h-6" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-[58px] h-[58px] rounded-full flex flex-col items-center justify-center flex-shrink-0"
+                                             style={{ border: `2px dashed ${ink}`, color: ink, transform: `rotate(${STAMP_ANGLE}deg)` }}>
+                                            <Globe className="w-[18px] h-[18px]" />
+                                            {codeOf(country) && <span className="text-[9px] font-black tracking-[0.12em] mt-0.5">{codeOf(country)}</span>}
+                                        </div>
+                                    )}
                                     <div className="flex-1 min-w-0">
                                         <p className="font-serif text-[22px] font-bold text-[#1D1D1B] leading-tight">{country}</p>
-                                        {topCities.length > 0 && (
+                                        {isShop ? (
+                                            <p className="text-[12px] text-gray-500 mt-1">{stats.count} 項 · 已買 {stats.done}</p>
+                                        ) : topCities.length > 0 && (
                                             <div className="flex flex-wrap gap-1.5 mt-2">
                                                 {topCities.map(([city, n]) => (
                                                     <span key={city} className="text-[11px] font-bold text-[#57534E] bg-[#EAE6DD] px-2.5 py-0.5 rounded-full">{city} {n}</span>
@@ -411,10 +484,14 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex items-baseline gap-1 flex-shrink-0">
-                                        <span className="font-serif text-[26px] font-bold text-[#45846D] leading-none">{stats.count}</span>
-                                        <span className="text-[11px] text-gray-400">{unit}</span>
-                                    </div>
+                                    {isShop ? (
+                                        <ProgressRing done={stats.done} total={stats.count} />
+                                    ) : (
+                                        <div className="flex items-baseline gap-1 flex-shrink-0">
+                                            <span className="font-serif text-[26px] font-bold text-[#45846D] leading-none">{stats.count}</span>
+                                            <span className="text-[11px] text-gray-400">{unit}</span>
+                                        </div>
+                                    )}
                                 </button>
                             );
                         })}
