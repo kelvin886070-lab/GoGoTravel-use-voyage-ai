@@ -81,6 +81,59 @@ const parseJSON = <T>(text: string | undefined): T | null => {
 };
 
 // ==========================================================
+// 🧱 Phase C1-0：貼上匯入。把自由格式文字（LINE 記事本等）解析成結構化清單。
+// ==========================================================
+export interface ParsedWish {
+    type: 'place' | 'item';
+    title: string;
+    address?: string;
+    url?: string;
+    note?: string;
+    country?: string;
+    area?: string;
+    budget?: number;
+    currency?: string;
+    tags?: string[];
+}
+
+export const parseWishesFromText = async (text: string, mode: 'place' | 'item'): Promise<ParsedWish[]> => {
+    const modeHint = mode === 'place'
+        ? 'These are PLACES to visit (cafes, shops, restaurants, attractions). Extract full address and any map URL.'
+        : 'These are SHOPPING items to buy. Extract product name, price/budget if any, and where-to-buy if mentioned.';
+
+    const prompt = `
+You extract a clean structured list from a user's pasted freeform notes (e.g. LINE memo).
+${modeHint}
+
+Output a JSON ARRAY only, no prose. Each element:
+{ "type": "${mode}", "title": string, "address"?: string, "url"?: string, "note"?: string, "country"?: string, "area"?: string, "budget"?: number, "currency"?: string, "tags"?: string[] }
+
+Rules:
+- "title": the place/item name; strip leading numbering like "3." and keep the rest.
+- "address": the full postal address if present (place mode).
+- "url": any http(s) link such as maps.app.goo.gl.
+- "note": extra remarks, e.g. parenthetical text like "(只有外帶)" or "鹹蛋黃巴斯克好吃".
+- "country": prefer the CITY when identifiable (臺南市 → 台南; 台北 → 台北; 東京/Tokyo → 東京; 大阪/Osaka → 大阪). Only fall back to the nation (台灣/日本) when no city can be determined. This field is used to group saves, so city-level is preferred.
+- "area": the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).
+- "tags": 1-2 short helpful tags in Traditional Chinese inferred from content (e.g. 咖啡, 甜點, 藥妝).
+- "budget"/"currency": only for shopping items if a price is stated.
+- Keep the original language of names and notes. Skip lines that are not a real ${mode}.
+
+Pasted notes:
+"""
+${text}
+"""
+`;
+    const raw = await callGeminiDirectly(prompt);
+    const data = parseJSON<ParsedWish[]>(raw);
+    if (!Array.isArray(data)) return [];
+    // 防禦：確保 type 與 title 合法
+    return data
+        .filter(d => d && typeof d.title === 'string' && d.title.trim())
+        .map(d => ({ ...d, type: mode, title: d.title.trim() }));
+};
+
+// ==========================================================
 // 1. 行程生成 (8.0 終極升級版：注入單日靈魂標籤 vibeTag)
 // ==========================================================
 export const generateItinerary = async (

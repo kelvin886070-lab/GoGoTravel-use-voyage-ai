@@ -6,7 +6,8 @@ import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './t
 import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow } from './db-types';
 import { confirmDialog } from './components/ConfirmDialog';
 import { toast } from './components/Toast';
-import { geocodeWish } from './services/geo';
+import { geocodeWish, geocodeItems } from './services/geo';
+import type { ParsedWish } from './services/gemini';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
@@ -16,6 +17,7 @@ import { supabase } from './services/supabase';
 import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb } from './services/storage';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
+import { PasteImportModal } from './views/PasteImportModal';
 import { WishItemEditModal } from './views/ItineraryView/modals/WishItemEditModal';
 
 const DEFAULT_FOLDERS_CONFIG = [
@@ -74,6 +76,7 @@ const App: React.FC = () => {
   
   const [wishItems, setWishItems] = useState<WishItem[]>([]);
   const [editingWishItem, setEditingWishItem] = useState<WishItem | null | undefined>(undefined);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitializingVaultRef = useRef(false);
 
@@ -414,6 +417,47 @@ const App: React.FC = () => {
       if (error) { console.error('心願刪除失敗', error); fetchWishItems(); }
   };
 
+  // 🧱 Phase C1-0：貼上匯入。批次 geocode（地址，一次呼叫走全域快取）→ 一次寫入 wish_items。
+  const importWishItems = async (rows: ParsedWish[]) => {
+      if (!user || rows.length === 0) return;
+      const geoQuery = (r: ParsedWish) => (r.address || [r.title, r.area, r.country].filter(Boolean).join(' ')).trim();
+
+      // 只對「地點」批次地理編碼
+      let geoMap: Record<string, { lat: number; lng: number; placeId?: string } | null> = {};
+      const placeQueries = Array.from(new Set(rows.filter(r => r.type === 'place').map(geoQuery).filter(Boolean)));
+      if (placeQueries.length > 0) {
+          try {
+              geoMap = await geocodeItems(placeQueries.map(q => ({ location: q })));
+          } catch (e) { console.error('批次 geocode 失敗', e); }
+      }
+
+      const now = Date.now();
+      const items: WishItem[] = rows.map((r, i) => {
+          const geo = r.type === 'place' ? geoMap[geoQuery(r)] : null;
+          return {
+              id: crypto.randomUUID(),
+              type: r.type,
+              title: r.title,
+              country: r.country || '',
+              area: r.area || undefined,
+              url: r.url || undefined,
+              notes: r.note || undefined,
+              budget: r.budget ?? undefined,
+              currency: r.currency || undefined,
+              tags: r.tags && r.tags.length > 0 ? r.tags : undefined,
+              lat: geo?.lat,
+              lng: geo?.lng,
+              placeId: geo?.placeId,
+              createdAt: new Date(now - i).toISOString(),
+          };
+      });
+
+      setWishItems(prev => [...items, ...prev]);
+      const { error } = await supabase.from('wish_items').insert(items.map(w => wishToRow(w, user.id)));
+      if (error) { console.error('匯入失敗', error); toast('匯入失敗，請再試一次。'); fetchWishItems(); return; }
+      toast(`已匯入 ${items.length} 個${rows[0]?.type === 'item' ? '項目' : '地點'}`, 'success');
+  };
+
   // 🛡️ 9.2 升級：實作將心願推入至特定行程暫存區的函式
   const handleAddWishToTrip = (wish: WishItem, tripId: string) => {
       const targetTrip = trips.find(t => t.id === tripId);
@@ -486,14 +530,22 @@ const App: React.FC = () => {
 
             {/* 心願盒主視覺 */}
             {currentView === AppView.WISHBOX && (
-                <WishBoxView 
+                <WishBoxView
                     wishItems={wishItems}
                     trips={trips.filter(t => !t.isDeleted)} // 🛡️ 9.2 傳入活躍行程名單
                     onAddWishToTrip={handleAddWishToTrip}   // 🛡️ 9.2 傳入注入回呼函式
                     onAddClick={() => setEditingWishItem(null)}
                     onEditClick={(item) => setEditingWishItem(item)}
+                    onOpenImport={() => setShowImportModal(true)}
                 />
             )}
+
+            {/* 🧱 C1-0 貼上匯入 */}
+            <PasteImportModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImport={importWishItems}
+            />
 
             {/* 心願編輯抽屜 (Modal) */}
             {editingWishItem !== undefined && (

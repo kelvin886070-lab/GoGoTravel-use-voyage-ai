@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
     MapPin, ShoppingBag, Plus, ArrowLeft, 
-    Image as ImageIcon, Sparkles, Map, Globe, X
+    Image as ImageIcon, Sparkles, Map, Globe, X, ClipboardPaste
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
 
@@ -12,6 +12,7 @@ interface WishBoxViewProps {
     onAddWishToTrip: (wish: WishItem, tripId: string) => void; // 🛡️ 9.2 注入推入函式
     onAddClick: () => void;
     onEditClick: (item: WishItem) => void;
+    onOpenImport: () => void; // 🧱 C1-0 開啟貼上匯入
 }
 
 const getTagColor = (tag: string) => {
@@ -26,8 +27,8 @@ const getTagColor = (tag: string) => {
     return colors[hash % colors.length];
 };
 
-export const WishBoxView: React.FC<WishBoxViewProps> = ({ 
-    wishItems, trips, onAddWishToTrip, onAddClick, onEditClick 
+export const WishBoxView: React.FC<WishBoxViewProps> = ({
+    wishItems, trips, onAddWishToTrip, onAddClick, onEditClick, onOpenImport
 }) => {
     const [activeTab, setActiveTab] = useState<WishItemType>('place');
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
@@ -273,7 +274,11 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
             )}
 
             {/* === 頂級懸浮按鈕 === */}
-            <div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] right-5 z-[60]">
+            <div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] right-5 z-[60] flex flex-col items-end gap-3">
+                {/* 🧱 C1-0 貼上匯入 */}
+                <button onClick={onOpenImport} className="flex items-center gap-1.5 pl-3 pr-4 h-11 bg-white rounded-full shadow-lg border border-white/40 text-[#45846D] text-sm font-bold active:scale-95 transition-transform">
+                    <ClipboardPaste className="w-4 h-4" /> 貼上匯入
+                </button>
                 <button onClick={onAddClick} className="relative group transition-transform active:scale-95">
                     <div className="absolute inset-0 bg-[#45846D]/40 rounded-[20px] blur-md group-hover:bg-[#45846D]/60 transition-all duration-300"></div>
                     <div className="relative w-14 h-14 bg-[#45846D] rounded-[20px] flex items-center justify-center text-white shadow-2xl border-2 border-white/20">
