@@ -43,7 +43,6 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
     });
 
     // UX 狀態
-    const [showDetails, setShowDetails] = useState(isEditing); // 編輯模式預設展開，新增模式預設極簡
     const [showAreaDropdown, setShowAreaDropdown] = useState(false);
     const [tagInput, setTagInput] = useState('');
 
@@ -224,19 +223,9 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                         />
                     </div>
 
-                    {/* === 漸進式揭露 (Progressive Disclosure) === */}
-                    {!showDetails && (
-                        <button 
-                            onClick={() => setShowDetails(true)}
-                            className="w-full py-3 mt-2 text-xs font-bold text-gray-400 hover:text-[#45846D] bg-gray-200/50 hover:bg-gray-200 rounded-xl transition-colors border border-dashed border-gray-300"
-                        >
-                            📝 展開詳細設定 (備註、圖片、標籤...)
-                        </button>
-                    )}
+                    {/* 詳細設定（照片 / 備註 / 購物欄位）— 一律展開，不再多一層 */}
+                    <div className="space-y-5 pt-4 mt-2 border-t border-dashed border-gray-300/50">
 
-                    {showDetails && (
-                        <div className="animate-in fade-in slide-in-from-top-4 space-y-5 pt-4 mt-2 border-t border-dashed border-gray-300/50">
-                            
                             {/* 5. 自訂圖片 (優雅降級) */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
@@ -277,14 +266,14 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
 
                             {/* 7. 購物專屬：預算與標籤 */}
                             {edited.type === 'item' && (
-                                <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100 space-y-4">
+                                <div className="bg-[#EDF2F0] p-4 rounded-2xl border border-[#45846D]/15 space-y-4">
                                     <div className="flex gap-3">
                                         <div className="w-1/3 space-y-1.5">
-                                            <label className="text-[10px] font-bold text-orange-400 uppercase tracking-wider pl-1">幣別</label>
-                                            <select 
+                                            <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1">幣別</label>
+                                            <select
                                                 value={edited.currency || 'TWD'}
                                                 onChange={e => handleChange('currency', e.target.value)}
-                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-3 rounded-xl outline-none border border-orange-100 focus:border-orange-300 shadow-sm appearance-none"
+                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-3 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm appearance-none"
                                             >
                                                 <option value="TWD">TWD</option>
                                                 <option value="JPY">JPY</option>
@@ -293,24 +282,22 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                             </select>
                                         </div>
                                         <div className="flex-1 space-y-1.5">
-                                            <label className="text-[10px] font-bold text-orange-400 uppercase tracking-wider pl-1">預算金額</label>
-                                            <input 
+                                            <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1">預算（選填）</label>
+                                            <input
                                                 type="number"
                                                 onFocus={handleFocus}
                                                 value={edited.budget || ''}
                                                 onChange={e => handleChange('budget', Number(e.target.value))}
                                                 placeholder="例: 1500"
-                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3 rounded-xl outline-none border border-orange-100 focus:border-orange-300 shadow-sm"
+                                                className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm"
                                             />
                                         </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-orange-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                            <TagIcon className="w-3 h-3" /> 風格標籤
+                                        <label className="text-[10px] font-bold text-[#45846D] uppercase tracking-wider pl-1 flex items-center gap-1">
+                                            <TagIcon className="w-3 h-3" /> 標籤
                                         </label>
-                                        
-                                        {/* 標籤視覺繼承 ActivityDetailModal */}
                                         {edited.tags && edited.tags.length > 0 && (
                                             <div className="flex flex-wrap gap-2 mb-2">
                                                 {edited.tags.map(tag => (
@@ -321,18 +308,17 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                                 ))}
                                             </div>
                                         )}
-
                                         <div className="flex gap-2">
-                                            <input 
+                                            <input
                                                 type="text"
                                                 onFocus={handleFocus}
                                                 value={tagInput}
                                                 onChange={e => setTagInput(e.target.value)}
                                                 onKeyDown={e => e.key === 'Enter' && handleAddTag()}
                                                 placeholder="輸入標籤 (如: 藥妝、伴手禮)"
-                                                className="flex-1 bg-white text-xs font-bold text-[#1D1D1B] px-3 py-2.5 rounded-xl outline-none border border-orange-100 focus:border-orange-300 shadow-sm"
+                                                className="flex-1 bg-white text-xs font-bold text-[#1D1D1B] px-3 py-2.5 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 shadow-sm"
                                             />
-                                            <button onClick={handleAddTag} className="bg-orange-100 text-orange-600 px-3 rounded-xl text-xs font-bold hover:bg-orange-200 transition-colors">
+                                            <button onClick={handleAddTag} className="bg-[#45846D]/10 text-[#45846D] px-3 rounded-xl text-xs font-bold hover:bg-[#45846D]/20 transition-colors">
                                                 新增
                                             </button>
                                         </div>
@@ -340,7 +326,6 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                 </div>
                             )}
                         </div>
-                    )}
                 </div>
 
                 {/* === Footer === */}

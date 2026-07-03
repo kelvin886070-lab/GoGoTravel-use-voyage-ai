@@ -6,8 +6,8 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import { MarkerClusterer, type Marker } from '@googlemaps/markerclusterer';
 import {
     MapPin, ShoppingBag, Plus, ArrowLeft, Globe, Sparkles, X,
-    ClipboardPaste, Map as MapIcon, List, Navigation, Edit3,
-    Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star, PenLine
+    Map as MapIcon, List, Navigation, Edit3,
+    Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
 import { toast } from '../components/Toast';
@@ -52,7 +52,6 @@ interface WishBoxViewProps {
     wishItems: WishItem[];
     trips: Trip[];
     onAddWishToTrip: (wish: WishItem, tripId: string) => void;
-    onAddClick: () => void;
     onEditClick: (item: WishItem) => void;
     onOpenImport: () => void;
     onToggleFavorite: (id: string) => void;
@@ -102,8 +101,8 @@ const ClusteredWishMarkers: React.FC<{ pins: WishItem[]; selectedId: string | nu
         else delete markersRef.current[key];
     }, []);
 
-    // 圖釘清單變動時才同步聚合器
-    const pinKey = pins.map(p => p.id).join(',');
+    // 圖釘「集合」變動時才同步聚合器（與順序無關 → 排序不會重建 marker、不掉自訂內容）
+    const pinKey = pins.map(p => p.id).slice().sort().join(',');
     useEffect(() => {
         const c = clustererRef.current;
         if (!c) return;
@@ -187,9 +186,8 @@ const WishCard: React.FC<{ item: WishItem; selected?: boolean; onSelect: () => v
 };
 
 export const WishBoxView: React.FC<WishBoxViewProps> = ({
-    wishItems, trips, onAddWishToTrip, onAddClick, onEditClick, onOpenImport, onToggleFavorite
+    wishItems, trips, onAddWishToTrip, onEditClick, onOpenImport, onToggleFavorite
 }) => {
-    const [fabOpen, setFabOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<WishItemType>('place');
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
     const [selectedCity, setSelectedCity] = useState<string | null>(null);
@@ -426,23 +424,9 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
 
             {actionWish && <InjectSheet wish={actionWish} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
 
-            {/* 速控展開 FAB */}
-            {fabOpen && <div className="absolute inset-0 z-[55] bg-[#1D1D1B]/5" onClick={() => setFabOpen(false)} />}
-            <div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] right-5 z-[60] flex flex-col items-end gap-3">
-                {fabOpen && (
-                    <div className="flex flex-col items-end gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                        <button onClick={() => { setFabOpen(false); onOpenImport(); }} className="flex items-center gap-2.5">
-                            <span className="text-xs font-bold text-[#1D1D1B] bg-white px-3 py-1.5 rounded-lg shadow-md">貼上匯入</span>
-                            <span className="w-11 h-11 bg-white rounded-full flex items-center justify-center text-[#45846D] shadow-lg"><ClipboardPaste className="w-5 h-5" /></span>
-                        </button>
-                        <button onClick={() => { setFabOpen(false); onAddClick(); }} className="flex items-center gap-2.5">
-                            <span className="text-xs font-bold text-[#1D1D1B] bg-white px-3 py-1.5 rounded-lg shadow-md">手動新增</span>
-                            <span className="w-11 h-11 bg-white rounded-full flex items-center justify-center text-[#45846D] shadow-lg"><PenLine className="w-5 h-5" /></span>
-                        </button>
-                    </div>
-                )}
-                <button onClick={() => setFabOpen(o => !o)}
-                        className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all active:scale-95 ${fabOpen ? 'bg-[#1D1D1B] rotate-45' : 'bg-[#45846D]'}`}>
+            {/* 單一新增 FAB → 開「新增收藏」面板 */}
+            <div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] right-5 z-[60]">
+                <button onClick={onOpenImport} className="w-14 h-14 rounded-full bg-[#45846D] flex items-center justify-center text-white shadow-2xl active:scale-95 transition-transform">
                     <Plus className="w-6 h-6" strokeWidth={2.5} />
                 </button>
             </div>

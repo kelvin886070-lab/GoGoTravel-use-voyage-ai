@@ -20,9 +20,10 @@ interface PasteImportModalProps {
     isOpen: boolean;
     onClose: () => void;
     onImport: (rows: ParsedWish[]) => Promise<void> | void;
+    onManual: () => void;
 }
 
-export const PasteImportModal: React.FC<PasteImportModalProps> = ({ isOpen, onClose, onImport }) => {
+export const PasteImportModal: React.FC<PasteImportModalProps> = ({ isOpen, onClose, onImport, onManual }) => {
     const [mode, setMode] = useState<Mode>('place');
     const [text, setText] = useState('');
     const [parsing, setParsing] = useState(false);
@@ -114,7 +115,7 @@ export const PasteImportModal: React.FC<PasteImportModalProps> = ({ isOpen, onCl
                         <button onClick={rows ? () => setRows(null) : handleClose} className="text-gray-400 hover:text-gray-600 -ml-1">
                             {rows ? <ChevronLeft className="w-6 h-6" /> : <X className="w-5 h-5" />}
                         </button>
-                        <h2 className="font-serif text-xl font-bold text-[#1D1D1B]">貼上匯入</h2>
+                        <h2 className="font-serif text-xl font-bold text-[#1D1D1B]">新增收藏</h2>
                     </div>
 
                     {/* 模式切換 */}
@@ -159,13 +160,17 @@ export const PasteImportModal: React.FC<PasteImportModalProps> = ({ isOpen, onCl
                                 value={text}
                                 onChange={e => setText(e.target.value)}
                                 placeholder={mode === 'place'
-                                    ? '貼上你的地點清單，例如：\n\n3. 冬日Dongri\n708臺南市安平區效忠街7號之5\nhttps://maps.app.goo.gl/...'
-                                    : '貼上你想買的清單，例如：\n\nEVE 止痛藥（藥妝店必買）\n資生堂洗面乳 約 1200 日圓'}
-                                className="w-full h-52 bg-white rounded-2xl p-4 text-sm text-[#1D1D1B] outline-none border border-transparent focus:border-[#45846D]/30 resize-none leading-relaxed"
+                                    ? '貼上一整份清單，或直接輸入一個地點名稱…\n\n例如：\n冬日Dongri 台南安平區\n或貼上 LINE 記事本整批清單'
+                                    : '貼上一整份清單，或直接輸入一個品項…\n\n例如：\nEVE 止痛藥（藥妝店必買）\n資生堂洗面乳 約 1200 日圓'}
+                                className="w-full h-48 bg-white rounded-2xl p-4 text-sm text-[#1D1D1B] outline-none border border-transparent focus:border-[#45846D]/30 resize-none leading-relaxed"
                             />
                             <button onClick={pasteFromClipboard}
                                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white text-gray-500 text-sm font-bold border border-gray-100 hover:bg-gray-50 transition-colors">
                                 <ClipboardPaste className="w-4 h-4" /> 從剪貼簿貼上
+                            </button>
+                            <button onClick={() => { handleClose(); onManual(); }}
+                                    className="w-full text-center text-xs text-gray-400 hover:text-gray-600 py-1 transition-colors">
+                                改用表單詳細填寫（含照片、預算）
                             </button>
                         </div>
                     ) : (

@@ -547,7 +547,6 @@ const App: React.FC = () => {
                     wishItems={wishItems}
                     trips={trips.filter(t => !t.isDeleted)} // 🛡️ 9.2 傳入活躍行程名單
                     onAddWishToTrip={handleAddWishToTrip}   // 🛡️ 9.2 傳入注入回呼函式
-                    onAddClick={() => setEditingWishItem(null)}
                     onEditClick={(item) => setEditingWishItem(item)}
                     onOpenImport={() => setShowImportModal(true)}
                     onToggleFavorite={toggleWishFavorite}
@@ -559,6 +558,7 @@ const App: React.FC = () => {
                 isOpen={showImportModal}
                 onClose={() => setShowImportModal(false)}
                 onImport={importWishItems}
+                onManual={() => { setShowImportModal(false); setEditingWishItem(null); }}
             />
 
             {/* 心願編輯抽屜 (Modal) */}
