@@ -150,22 +150,27 @@ export interface TripTodoItem {
 // ==========================================
 // 4. 心願盒 (Wish Box) 資料結構
 // ==========================================
-export type WishItemType = 'place' | 'item';
+export type WishItemType = 'place' | 'item' | 'link';
 
 export interface WishItem {
   id: string;
-  type: WishItemType;      
-  country: string;         
-  title: string;           
-  location?: string;       
-  area?: string;           
-  url?: string;            
-  notes?: string;          
-  customImage?: string;    
-  budget?: number;         
-  currency?: string;       
-  tags?: string[];         
-  createdAt: string;       
+  type: WishItemType;
+  country: string;
+  title: string;
+  location?: string;
+  area?: string;
+  url?: string;
+  notes?: string;
+  customImage?: string;
+  budget?: number;
+  currency?: string;
+  tags?: string[];
+  createdAt: string;
+
+  // 🧱 Phase C0：地理座標（存檔時 geocode 補上），供地圖圖釘與鄰近雷達使用
+  lat?: number;
+  lng?: number;
+  placeId?: string;
 
   // 🛡️ 9.3 新增：行程內購物清單的獨立狀態追蹤
   isPurchased?: boolean;   // 標記是否已純勾選購買 (觸發金流移轉與刪除線)

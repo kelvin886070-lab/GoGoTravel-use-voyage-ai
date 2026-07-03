@@ -24,6 +24,26 @@ export interface VaultFolderRow {
     created_at?: string;
 }
 
+/** wish_items 資料表（心願盒收藏） */
+export interface WishItemRow {
+    id: string;
+    user_id?: string;
+    type: string;
+    title: string;
+    note: string | null;              // 對應前端 WishItem.notes
+    country: string | null;
+    area: string | null;
+    lat: number | null;
+    lng: number | null;
+    place_id: string | null;
+    url: string | null;
+    custom_image_path: string | null; // 對應前端 WishItem.customImage
+    budget: number | null;
+    currency: string | null;
+    tags: string[] | null;
+    created_at: string;
+}
+
 /** vault_files 資料表 */
 export interface VaultFileRow {
     id: string;

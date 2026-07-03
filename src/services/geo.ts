@@ -22,6 +22,18 @@ export async function geocodeItems(
     return (data?.results || {}) as Record<string, GeoResult | null>;
 }
 
+// 🧱 Phase C0：單一心願地點 → 座標（重用 geocode 全域快取 + 每日限額）
+export async function geocodeWish(query: string, context?: string): Promise<GeoResult | null> {
+    const q = query.trim();
+    if (!q) return null;
+    try {
+        const results = await geocodeItems([{ location: q, context }]);
+        return results[q] ?? null;
+    } catch {
+        return null; // geocode 失敗不擋存檔，之後可重試
+    }
+}
+
 // 🛣️ 取「沿道路」的路線（回傳 Google 編碼折線字串；失敗回 null → 前端退回直線）
 export async function getRoutePolyline(coords: { lat: number; lng: number }[]): Promise<string | null> {
     if (coords.length < 2) return null;

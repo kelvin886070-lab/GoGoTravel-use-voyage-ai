@@ -3,8 +3,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Home, Compass, Briefcase, FileText, Sparkles } from 'lucide-react';
 import { AppView } from './types';
 import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './types';
-import type { TripRow, VaultFolderRow, VaultFileRow } from './db-types';
+import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow } from './db-types';
 import { confirmDialog } from './components/ConfirmDialog';
+import { toast } from './components/Toast';
+import { geocodeWish } from './services/geo';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
 import { VaultView } from './views/VaultView';
@@ -23,37 +25,43 @@ const DEFAULT_FOLDERS_CONFIG = [
     { name: '行程參考圖', isPinned: true },
 ];
 
-const MOCK_WISH_ITEMS: WishItem[] = [
-    {
-        id: 'w1',
-        type: 'place',
-        country: '日本',
-        title: '澀谷 Blue Bottle Coffee',
-        area: '澀谷區',
-        url: 'https://maps.app.goo.gl/example1',
-        createdAt: new Date().toISOString()
-    },
-    {
-        id: 'w2',
-        type: 'item',
-        country: '日本',
-        title: 'EVE 止痛藥',
-        area: '藥妝店',
-        budget: 1500,
-        currency: 'JPY',
-        tags: ['藥妝', '必買'],
-        createdAt: new Date(Date.now() - 86400000).toISOString()
-    },
-    {
-        id: 'w3',
-        type: 'place',
-        country: '台灣',
-        title: '波哥茶飲',
-        area: '中西區',
-        notes: '朋友強推，記得點綜合新味！',
-        createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
-    }
-];
+// 🧱 Phase C0：心願盒改雲端（wish_items 表）。以下為 DB 列 ↔ 前端模型的對映。
+const rowToWish = (r: WishItemRow): WishItem => ({
+    id: r.id,
+    type: (r.type as WishItem['type']) || 'place',
+    country: r.country || '',
+    title: r.title,
+    area: r.area || undefined,
+    url: r.url || undefined,
+    notes: r.note || undefined,
+    customImage: r.custom_image_path || undefined,
+    budget: r.budget ?? undefined,
+    currency: r.currency || undefined,
+    tags: r.tags || undefined,
+    lat: r.lat ?? undefined,
+    lng: r.lng ?? undefined,
+    placeId: r.place_id || undefined,
+    createdAt: r.created_at,
+});
+
+const wishToRow = (w: WishItem, userId: string) => ({
+    id: w.id,
+    user_id: userId,
+    type: w.type,
+    title: w.title,
+    note: w.notes ?? null,
+    country: w.country || null,
+    area: w.area ?? null,
+    lat: w.lat ?? null,
+    lng: w.lng ?? null,
+    place_id: w.placeId ?? null,
+    url: w.url ?? null,
+    custom_image_path: w.customImage ?? null,
+    budget: w.budget ?? null,
+    currency: w.currency ?? null,
+    tags: w.tags ?? [],
+    created_at: w.createdAt,
+});
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -64,7 +72,7 @@ const App: React.FC = () => {
   const [vaultFolders, setVaultFolders] = useState<VaultFolder[]>([]);
   const [vaultFiles, setVaultFiles] = useState<VaultFile[]>([]);
   
-  const [wishItems, setWishItems] = useState<WishItem[]>(MOCK_WISH_ITEMS);
+  const [wishItems, setWishItems] = useState<WishItem[]>([]);
   const [editingWishItem, setEditingWishItem] = useState<WishItem | null | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitializingVaultRef = useRef(false);
@@ -99,11 +107,13 @@ const App: React.FC = () => {
           
           fetchTrips(session.user.id);
           fetchVaultData(session.user.id);
+          fetchWishItems(session.user.id);
       } else {
           setUser(null);
           setTrips([]);
           setVaultFolders([]);
           setVaultFiles([]);
+          setWishItems([]);
       }
   };
 
@@ -375,6 +385,35 @@ const App: React.FC = () => {
       saveTripToCloud(tripWithUuid);
   }
 
+  // 🧱 Phase C0：心願盒雲端讀取
+  const fetchWishItems = async (userId?: string) => {
+      const currentUserId = userId || user?.id;
+      if (!currentUserId) return;
+      const { data } = await supabase.from('wish_items').select('*').order('created_at', { ascending: false });
+      if (data) setWishItems((data as WishItemRow[]).map(rowToWish));
+  };
+
+  // 新增/編輯心願（樂觀更新 + upsert；place 類自動 geocode 補座標）
+  const saveWishItem = async (wish: WishItem, isNew: boolean) => {
+      if (!user) return;
+      let toSave = wish;
+      // 🧭 C0-4：place 類且尚無座標 → geocode 補上（失敗不擋存檔）
+      if (wish.type === 'place' && (wish.lat === undefined || wish.lng === undefined)) {
+          const query = [wish.title, wish.area, wish.country].filter(Boolean).join(' ');
+          const geo = await geocodeWish(query, wish.country);
+          if (geo) toSave = { ...wish, lat: geo.lat, lng: geo.lng, placeId: geo.placeId };
+      }
+      setWishItems(prev => isNew ? [toSave, ...prev] : prev.map(w => w.id === toSave.id ? toSave : w));
+      const { error } = await supabase.from('wish_items').upsert(wishToRow(toSave, user.id));
+      if (error) { console.error('心願儲存失敗', error); toast('心願儲存失敗，請再試一次。'); fetchWishItems(); }
+  };
+
+  const deleteWishItem = async (id: string) => {
+      setWishItems(prev => prev.filter(w => w.id !== id));
+      const { error } = await supabase.from('wish_items').delete().eq('id', id);
+      if (error) { console.error('心願刪除失敗', error); fetchWishItems(); }
+  };
+
   // 🛡️ 9.2 升級：實作將心願推入至特定行程暫存區的函式
   const handleAddWishToTrip = (wish: WishItem, tripId: string) => {
       const targetTrip = trips.find(t => t.id === tripId);
@@ -462,15 +501,11 @@ const App: React.FC = () => {
                     item={editingWishItem}
                     allWishItems={wishItems}
                     onSave={(savedItem) => {
-                        if (editingWishItem === null) {
-                            setWishItems([savedItem, ...wishItems]);
-                        } else {
-                            setWishItems(wishItems.map(w => w.id === savedItem.id ? savedItem : w));
-                        }
+                        saveWishItem(savedItem, editingWishItem === null);
                         setEditingWishItem(undefined);
                     }}
                     onDelete={(id) => {
-                        setWishItems(wishItems.filter(w => w.id !== id));
+                        deleteWishItem(id);
                         setEditingWishItem(undefined);
                     }}
                     onClose={() => setEditingWishItem(undefined)}
