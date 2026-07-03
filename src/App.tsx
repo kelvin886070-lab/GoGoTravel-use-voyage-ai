@@ -32,6 +32,7 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     id: r.id,
     type: (r.type as WishItem['type']) || 'place',
     country: r.country || '',
+    city: r.city || undefined,
     title: r.title,
     area: r.area || undefined,
     url: r.url || undefined,
@@ -43,6 +44,7 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     lat: r.lat ?? undefined,
     lng: r.lng ?? undefined,
     placeId: r.place_id || undefined,
+    isFavorite: !!r.is_favorite,
     createdAt: r.created_at,
 });
 
@@ -53,10 +55,12 @@ const wishToRow = (w: WishItem, userId: string) => ({
     title: w.title,
     note: w.notes ?? null,
     country: w.country || null,
+    city: w.city ?? null,
     area: w.area ?? null,
     lat: w.lat ?? null,
     lng: w.lng ?? null,
     place_id: w.placeId ?? null,
+    is_favorite: !!w.isFavorite,
     url: w.url ?? null,
     custom_image_path: w.customImage ?? null,
     budget: w.budget ?? null,
@@ -417,10 +421,18 @@ const App: React.FC = () => {
       if (error) { console.error('心願刪除失敗', error); fetchWishItems(); }
   };
 
+  // 🧱 C1-1 切換「我的最愛」（星星，置頂）
+  const toggleWishFavorite = async (id: string) => {
+      let next = false;
+      setWishItems(prev => prev.map(w => { if (w.id === id) { next = !w.isFavorite; return { ...w, isFavorite: next }; } return w; }));
+      const { error } = await supabase.from('wish_items').update({ is_favorite: next }).eq('id', id);
+      if (error) { console.error('最愛切換失敗', error); fetchWishItems(); }
+  };
+
   // 🧱 Phase C1-0：貼上匯入。批次 geocode（地址，一次呼叫走全域快取）→ 一次寫入 wish_items。
   const importWishItems = async (rows: ParsedWish[]) => {
       if (!user || rows.length === 0) return;
-      const geoQuery = (r: ParsedWish) => (r.address || [r.title, r.area, r.country].filter(Boolean).join(' ')).trim();
+      const geoQuery = (r: ParsedWish) => (r.address || [r.title, r.area, r.city, r.country].filter(Boolean).join(' ')).trim();
 
       // 只對「地點」批次地理編碼
       let geoMap: Record<string, { lat: number; lng: number; placeId?: string } | null> = {};
@@ -439,6 +451,7 @@ const App: React.FC = () => {
               type: r.type,
               title: r.title,
               country: r.country || '',
+              city: r.city || undefined,
               area: r.area || undefined,
               url: r.url || undefined,
               notes: r.note || undefined,
@@ -537,6 +550,7 @@ const App: React.FC = () => {
                     onAddClick={() => setEditingWishItem(null)}
                     onEditClick={(item) => setEditingWishItem(item)}
                     onOpenImport={() => setShowImportModal(true)}
+                    onToggleFavorite={toggleWishFavorite}
                 />
             )}
 

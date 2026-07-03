@@ -124,23 +124,23 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                             onClick={() => handleChange('type', 'place')}
                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-colors ${edited.type === 'place' ? 'bg-[#45846D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
                         >
-                            <MapPin className="w-4 h-4" /> 地點景點
+                            <MapPin className="w-4 h-4" /> 想去的地方
                         </button>
                         <button 
                             onClick={() => handleChange('type', 'item')}
                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-colors ${edited.type === 'item' ? 'bg-[#45846D] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
                         >
-                            <ShoppingBag className="w-4 h-4" /> 購物清單
+                            <ShoppingBag className="w-4 h-4" /> 想買的東西
                         </button>
                     </div>
 
-                    {/* 2. 國家與分區 (Grid Layout) */}
+                    {/* 2. 國家 + 城市 (Grid Layout) */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                <Globe className="w-3 h-3" /> 國家/城市 <span className="text-red-400">*</span>
+                                <Globe className="w-3 h-3" /> 國家 <span className="text-red-400">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="text"
                                 onFocus={handleFocus}
                                 value={edited.country}
@@ -149,34 +149,49 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                 className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
                             />
                         </div>
-                        <div className="space-y-1.5 relative">
+                        <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" /> 自訂分區
+                                <MapPin className="w-3 h-3" /> 城市
                             </label>
-                            <input 
+                            <input
                                 type="text"
-                                value={edited.area || ''}
-                                onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
-                                onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
-                                onChange={e => handleChange('area', e.target.value)}
-                                placeholder="例: 澀谷區"
+                                onFocus={handleFocus}
+                                value={edited.city || ''}
+                                onChange={e => handleChange('city', e.target.value)}
+                                placeholder="例: 東京"
                                 className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
                             />
-                            {/* 💡 智慧歷史分區下拉選單 */}
-                            {showAreaDropdown && availableAreas.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 max-h-32 overflow-y-auto animate-in fade-in zoom-in-95">
-                                    {availableAreas.map(area => (
-                                        <button
-                                            key={area}
-                                            onMouseDown={(e) => { e.preventDefault(); handleChange('area', area); setShowAreaDropdown(false); }}
-                                            className="w-full text-left px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-[#45846D] transition-colors"
-                                        >
-                                            {area}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                         </div>
+                    </div>
+
+                    {/* 2b. 自訂分區（含歷史下拉） */}
+                    <div className="space-y-1.5 relative">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> 自訂分區
+                        </label>
+                        <input
+                            type="text"
+                            value={edited.area || ''}
+                            onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
+                            onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
+                            onChange={e => handleChange('area', e.target.value)}
+                            placeholder="例: 澀谷區"
+                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-3.5 rounded-2xl outline-none border border-transparent focus:border-[#45846D]/30 shadow-sm transition-all"
+                        />
+                        {/* 💡 智慧歷史分區下拉選單 */}
+                        {showAreaDropdown && availableAreas.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-20 max-h-32 overflow-y-auto animate-in fade-in zoom-in-95">
+                                {availableAreas.map(area => (
+                                    <button
+                                        key={area}
+                                        onMouseDown={(e) => { e.preventDefault(); handleChange('area', area); setShowAreaDropdown(false); }}
+                                        className="w-full text-left px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-[#45846D] transition-colors"
+                                    >
+                                        {area}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* 3. 名稱 */}

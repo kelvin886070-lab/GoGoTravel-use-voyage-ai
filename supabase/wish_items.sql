@@ -8,10 +8,12 @@ create table if not exists public.wish_items (
     title             text not null,
     note              text,                 -- 「想玩什麼」等備註
     country           text,
+    city              text,                 -- 🧱 C1-1 城市（既有資料庫請另跑：alter table public.wish_items add column if not exists city text;）
     area              text,
     lat               double precision,     -- 存檔時 geocode 補上
     lng               double precision,
     place_id          text,                 -- Google Place ID（去重/快取用）
+    is_favorite       boolean not null default false,  -- 🧱 C1-1 我的最愛（既有資料庫請另跑：alter table public.wish_items add column if not exists is_favorite boolean not null default false;）
     url               text,                 -- link 類型或參考連結
     custom_image_path text,                 -- Storage 路徑（沿用 trip-media 慣例）
     budget            numeric,

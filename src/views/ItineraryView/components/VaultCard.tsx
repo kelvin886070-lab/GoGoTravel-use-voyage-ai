@@ -4,6 +4,7 @@ import {
     Shield, Map, Eye, X, Pencil, Plus 
 } from 'lucide-react';
 import type { Document } from '../../../types';
+import { toast } from '../../../components/Toast';
 
 type ExtendedDocument = Document & { folderName?: string };
 
@@ -60,7 +61,7 @@ export const VaultCard: React.FC<{
         if (doc.fileUrl) {
             window.open(doc.fileUrl, '_blank');
         } else {
-            alert('預覽功能：此文件無檔案連結。');
+            toast('預覽功能：此文件無檔案連結。');
         }
     };
 

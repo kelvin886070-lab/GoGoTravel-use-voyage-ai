@@ -155,10 +155,11 @@ export type WishItemType = 'place' | 'item' | 'link';
 export interface WishItem {
   id: string;
   type: WishItemType;
-  country: string;
+  country: string;      // 國家（台灣/日本）
+  city?: string;        // 🧱 C1-1 城市（台南/東京）
   title: string;
   location?: string;
-  area?: string;
+  area?: string;        // 分區（東區/澀谷區）
   url?: string;
   notes?: string;
   customImage?: string;
@@ -171,6 +172,7 @@ export interface WishItem {
   lat?: number;
   lng?: number;
   placeId?: string;
+  isFavorite?: boolean;   // 🧱 C1-1 我的最愛（星星，置頂）
 
   // 🛡️ 9.3 新增：行程內購物清單的獨立狀態追蹤
   isPurchased?: boolean;   // 標記是否已純勾選購買 (觸發金流移轉與刪除線)

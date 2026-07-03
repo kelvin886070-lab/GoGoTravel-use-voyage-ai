@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../services/supabase';
 import type { Document, VaultFolder, VaultFile } from '../../../types';
+import { toast } from '../../../components/Toast';
 
 interface DocumentEditModalProps {
     doc: Document & { folderName?: string }; 
@@ -72,7 +73,7 @@ export const DocumentEditModal: React.FC<DocumentEditModalProps> = ({
             onClose();
         } catch (e: any) {
             console.error("更新失敗", e);
-            alert("更新失敗：" + e.message);
+            toast("更新失敗：" + e.message);
         } finally {
             setIsSaving(false);
         }

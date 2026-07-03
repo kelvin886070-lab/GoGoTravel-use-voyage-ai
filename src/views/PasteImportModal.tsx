@@ -195,6 +195,7 @@ export const PasteImportModal: React.FC<PasteImportModalProps> = ({ isOpen, onCl
                                                 <p className="text-[11px] font-bold text-[#1D1D1B] mt-0.5 font-mono">{r.currency || ''} {r.budget.toLocaleString()}</p>
                                             )}
                                             <div className="flex flex-wrap gap-1 mt-1.5">
+                                                {r.city && <span className="text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded-md">{r.city}</span>}
                                                 {r.area && <span className="text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded-md">{r.area}</span>}
                                                 {r.note && <span className="text-[10px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-md">{r.note}</span>}
                                                 {(r.tags || []).map(t => <span key={t} className="text-[10px] text-gray-500 bg-[#F1EFE8] px-2 py-0.5 rounded-md">#{t}</span>)}

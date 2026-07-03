@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, MapPin, Clock } from 'lucide-react';
 import { IOSButton, IOSInput } from '../../../components/UI';
 import type { Trip } from '../../../types';
+import { toast } from '../../../components/Toast';
 
 interface EditTripModalProps {
     trip: Trip;
@@ -18,7 +19,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({ trip, onClose, onU
 
     const handleSave = async () => {
         if (!destination || !startDate || daysCount < 1) {
-            alert("請檢查輸入內容是否完整");
+            toast("請檢查輸入內容是否完整");
             return;
         }
 
@@ -76,7 +77,7 @@ export const EditTripModal: React.FC<EditTripModalProps> = ({ trip, onClose, onU
 
         } catch (error) {
             console.error("Failed to update trip:", error);
-            alert("更新失敗，請稍後再試");
+            toast("更新失敗，請稍後再試");
         } finally {
             setIsLoading(false);
         }

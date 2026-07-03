@@ -13,6 +13,7 @@ import { recalculateTimeline } from '../../../services/timeline';
 import type { Trip, TripDay } from '../../../types';
 import { INTEREST_DATA, CURRENCIES, DESTINATION_DICTIONARY } from '../shared';
 import type { DestinationNode } from '../shared';
+import { toast } from '../../../components/Toast';
 
 // ============================================================================
 // 動態主題設定 (Chameleon Theme Mechanism)
@@ -285,8 +286,8 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
 
     const handleCreate = async () => {
         const tripDays = durationDays;
-        if (!tripDays || tripDays <= 0) { alert("請確認日期範圍"); return; }
-        if (destinations.length === 0) { alert("請至少輸入一個目的地"); return; }
+        if (!tripDays || tripDays <= 0) { toast("請確認日期範圍"); return; }
+        if (destinations.length === 0) { toast("請至少輸入一個目的地"); return; }
         
         setLoading(true);
         try {
@@ -313,12 +314,12 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                 coverImage: coverImage || bgImage || `https://picsum.photos/800/600?random=${Date.now()}`, days: daysWithTime, isDeleted: false, currency: currency
             };
             onAddTrip(newTrip); onClose();
-        } catch (e) { alert("無法生成行程，請檢查網路或稍後再試。"); } finally { setLoading(false); }
+        } catch (e) { toast("無法生成行程，請檢查網路或稍後再試。"); } finally { setLoading(false); }
     };
 
     const handleManualCreate = () => {
         const tripDays = durationDays;
-        if (!tripDays || tripDays <= 0) { alert("請確認日期範圍"); return; }
+        if (!tripDays || tripDays <= 0) { toast("請確認日期範圍"); return; }
         const finalDestination = destinations.length > 0 ? destinations.join(' + ') : '未命名行程';
         const emptyDays: TripDay[] = Array.from({length: tripDays}, (_, i) => ({ day: i + 1, activities: [] }));
         const newTrip: Trip = { 
@@ -872,8 +873,8 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                 <IOSButton 
                                     fullWidth 
                                     onClick={() => { 
-                                        if (step===2 && destinations.length === 0) return alert('請至少輸入一個目的地');
-                                        if (step===2 && (!durationDays || durationDays <= 0)) return alert('請確認日期範圍');
+                                        if (step===2 && destinations.length === 0) return toast('請至少輸入一個目的地');
+                                        if (step===2 && (!durationDays || durationDays <= 0)) return toast('請確認日期範圍');
                                         setStep(s => s + 1); 
                                     }}
                                     className={`${theme.bg} border-none transition-colors duration-500`}

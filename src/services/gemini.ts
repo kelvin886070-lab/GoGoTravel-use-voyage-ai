@@ -90,6 +90,7 @@ export interface ParsedWish {
     url?: string;
     note?: string;
     country?: string;
+    city?: string;
     area?: string;
     budget?: number;
     currency?: string;
@@ -106,14 +107,15 @@ You extract a clean structured list from a user's pasted freeform notes (e.g. LI
 ${modeHint}
 
 Output a JSON ARRAY only, no prose. Each element:
-{ "type": "${mode}", "title": string, "address"?: string, "url"?: string, "note"?: string, "country"?: string, "area"?: string, "budget"?: number, "currency"?: string, "tags"?: string[] }
+{ "type": "${mode}", "title": string, "address"?: string, "url"?: string, "note"?: string, "country"?: string, "city"?: string, "area"?: string, "budget"?: number, "currency"?: string, "tags"?: string[] }
 
 Rules:
 - "title": the place/item name; strip leading numbering like "3." and keep the rest.
 - "address": the full postal address if present (place mode).
 - "url": any http(s) link such as maps.app.goo.gl.
 - "note": extra remarks, e.g. parenthetical text like "(只有外帶)" or "鹹蛋黃巴斯克好吃".
-- "country": prefer the CITY when identifiable (臺南市 → 台南; 台北 → 台北; 東京/Tokyo → 東京; 大阪/Osaka → 大阪). Only fall back to the nation (台灣/日本) when no city can be determined. This field is used to group saves, so city-level is preferred.
+- "country": the NATION in Traditional Chinese (台灣, 日本, 韓國, 泰國, ...).
+- "city": the CITY (臺南市 → 台南; 台北 → 台北; 東京/Tokyo → 東京; 大阪/Osaka → 大阪).
 - "area": the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).
 - "tags": 1-2 short helpful tags in Traditional Chinese inferred from content (e.g. 咖啡, 甜點, 藥妝).
 - "budget"/"currency": only for shopping items if a price is stated.

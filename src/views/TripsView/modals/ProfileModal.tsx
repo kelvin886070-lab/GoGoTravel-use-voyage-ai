@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Camera, PenTool, Lock, CheckCircle, Loader2, LogOut } from 'lucide-react';
 import { supabase } from '../../../services/supabase';
 import type { User } from '../../../types';
+import { toast } from '../../../components/Toast';
 
 export const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: () => void, onLogout: () => void }> = ({ user, tripCount, onClose, onLogout }) => {
     const [newPassword, setNewPassword] = useState('');
@@ -15,7 +16,7 @@ export const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: ()
             setUploading(true); 
             if (!e.target.files || e.target.files.length === 0) return;
             const file = e.target.files[0]; 
-            if (file.size > 2 * 1024 * 1024) { alert('圖片太大了！請上傳小於 2MB 的照片。'); return; } 
+            if (file.size > 2 * 1024 * 1024) { toast('圖片太大了！請上傳小於 2MB 的照片。'); return; } 
             const fileExt = file.name.split('.').pop(); 
             const fileName = `avatar_${Date.now()}.${fileExt}`; 
             const filePath = `${user.id}/${fileName}`;
@@ -24,19 +25,19 @@ export const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: ()
             const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath); 
             const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
             if (updateError) throw updateError; 
-            alert('頭貼更新成功！'); window.location.reload(); 
+            toast('頭貼更新成功！', 'success'); window.location.reload(); 
         } catch (error: any) { 
-            console.error(error); alert('上傳失敗：' + error.message); 
+            console.error(error); toast('上傳失敗：' + error.message); 
         } finally { setUploading(false); } 
     };
 
     const handleChangePassword = async () => { 
-        if (newPassword.length < 6) { alert("密碼長度至少需要 6 碼"); return; } 
+        if (newPassword.length < 6) { toast("密碼長度至少需要 6 碼"); return; } 
         setLoading(true);
         const { error } = await supabase.auth.updateUser({ password: newPassword }); 
         setLoading(false); 
         if (error) { 
-            alert("修改失敗：" + error.message);
+            toast("修改失敗：" + error.message);
         } else { 
             setMsg("密碼修改成功！"); setNewPassword(''); setTimeout(() => { setIsChanging(false); setMsg(''); }, 1500); 
         } 

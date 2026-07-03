@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plane, Hotel, Car, Ticket, Search, MapPin, Calendar, Users, ArrowRight } from 'lucide-react';
 import { IOSHeader, IOSButton, IOSDateInput, IOSDatePicker } from '../components/UI';
+import { toast } from '../components/Toast';
 
 type BookingType = 'flight' | 'hotel' | 'car' | 'ticket';
 
@@ -88,7 +89,7 @@ const FlightSearch = () => {
     const [pickerOpen, setPickerOpen] = useState<'start' | 'end' | null>(null);
     const handleSearch = () => {
         if (!dest) {
-            alert('請輸入目的地');
+            toast('請輸入目的地');
             return;
         }
         const query = `flights from ${origin} to ${dest} ${dates.start ? 'on ' + dates.start : ''}`;
@@ -169,7 +170,7 @@ const HotelSearch = () => {
     const [pickerOpen, setPickerOpen] = useState<'start' | 'end' | null>(null);
     const handleSearch = () => {
         if (!dest) {
-            alert('請輸入目的地');
+            toast('請輸入目的地');
             return;
         }
         const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(dest)}`;
@@ -240,7 +241,7 @@ const CarSearch = () => {
     const [pickerOpen, setPickerOpen] = useState<'start' | 'end' | null>(null);
     const handleSearch = () => {
         if (!location) {
-             alert('請輸入取車地點');
+             toast('請輸入取車地點');
              return;
         }
         const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('租車 ' + location)}`;
@@ -302,7 +303,7 @@ const TicketSearch = () => {
     const handleSearch = (term?: string) => {
         const query = term || keyword;
         if (!query) {
-             alert('請輸入關鍵字');
+             toast('請輸入關鍵字');
              return;
         }
         window.open(`https://www.klook.com/zh-TW/search/?text=${encodeURIComponent(query)}`, '_blank');

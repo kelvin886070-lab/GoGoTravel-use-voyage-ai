@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, MessageCircle, FileDown, Loader2, Share } from 'lucide-react';
 import type { Trip } from '../../../types';
+import { toast } from '../../../components/Toast';
 
 interface ShareBottomSheetProps {
     trip: Trip;
@@ -16,7 +17,7 @@ export const ShareBottomSheet: React.FC<ShareBottomSheetProps> = ({ trip, isOpen
     const handleCopyLink = () => {
         // 模擬複製連結功能
         navigator.clipboard.writeText(`https://kelvintrip.app/share/${trip.id}`);
-        alert('連結已複製！');
+        toast('連結已複製！', 'success');
         onClose();
     };
 
@@ -43,7 +44,7 @@ export const ShareBottomSheet: React.FC<ShareBottomSheetProps> = ({ trip, isOpen
             setTimeout(() => URL.revokeObjectURL(url), 10000);
         } catch (err) {
             console.error('PDF 匯出失敗', err);
-            alert('PDF 匯出失敗，可能是照片過多或裝置記憶體不足，請稍後再試。');
+            toast('PDF 匯出失敗，可能是照片過多或裝置記憶體不足，請稍後再試。');
         } finally {
             setIsGenerating(false);
         }

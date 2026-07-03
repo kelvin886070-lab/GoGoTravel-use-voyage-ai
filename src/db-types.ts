@@ -32,10 +32,12 @@ export interface WishItemRow {
     title: string;
     note: string | null;              // 對應前端 WishItem.notes
     country: string | null;
+    city: string | null;              // 🧱 C1-1 城市
     area: string | null;
     lat: number | null;
     lng: number | null;
     place_id: string | null;
+    is_favorite: boolean | null;
     url: string | null;
     custom_image_path: string | null; // 對應前端 WishItem.customImage
     budget: number | null;

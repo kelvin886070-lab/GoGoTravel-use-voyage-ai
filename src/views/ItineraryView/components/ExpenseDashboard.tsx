@@ -4,6 +4,7 @@ import { RefreshCw, Globe, BarChart3, Scale, Copy } from 'lucide-react';
 import type { Trip } from '../../../types';
 import { getCurrencyRate } from '../../../services/gemini';
 import { CURRENCY_SYMBOLS, CATEGORIES, parseCost, getMemberName, getMemberAvatarColor } from '../shared';
+import { toast } from '../../../components/Toast';
 
 // 定義需要的型別，避免 TypeScript 報錯
 type CurrencyCode = keyof typeof CURRENCY_SYMBOLS;
@@ -82,7 +83,7 @@ export const ExpenseDashboard: React.FC<{ trip: Trip; onCurrencyChange?: (curr: 
             else if (amount < 0) text += `• 我應付給 ${name}: $${Math.round(Math.abs(amount))}\n`;
         });
         navigator.clipboard.writeText(text);
-        alert('結算明細已複製！');
+        toast('結算明細已複製！', 'success');
     };
 
     return (
