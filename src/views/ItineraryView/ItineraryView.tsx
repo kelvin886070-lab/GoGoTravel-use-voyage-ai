@@ -264,8 +264,9 @@ interface ItineraryViewProps {
     trip: Trip;
     folders?: VaultFolder[];
     files?: VaultFile[];
-    documents?: Document[]; 
-    user?: User; 
+    documents?: Document[];
+    user?: User;
+    wishItems?: WishItem[]; // 🧱 C1-2 全域收藏圖書館（供「從收藏加入」）
     onBack: () => void;
     onDelete: () => void;
     onUpdateTrip: (t: Trip) => void;
@@ -277,10 +278,11 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     trip, 
     folders = [], 
     files = [], 
-    documents = [], 
+    documents = [],
     user,
-    onBack, 
-    onDelete, 
+    wishItems = [],
+    onBack,
+    onDelete,
     onUpdateTrip,
     onRefreshVault,
     onLocalFileUpdate
@@ -307,6 +309,44 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [wishTrayTab, setWishTrayTab] = useState<'place' | 'item'>('place');
     const [actionStagedWish, setActionStagedWish] = useState<WishItem | null>(null);
     const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+    // 🧱 C1-2 從我的收藏加入（多選挑選器）
+    const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+    const [pickerScope, setPickerScope] = useState<'trip' | 'all'>('trip');
+    const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
+
+    const matchesTrip = (w: WishItem) => {
+        const dest = (trip.destination || '').toLowerCase();
+        if (!dest) return false;
+        return [w.city, w.country].filter(Boolean).some(v => {
+            const s = (v as string).toLowerCase();
+            return dest.includes(s) || s.includes(dest);
+        });
+    };
+    const stagedIds = useMemo(() => new Set((trip.stagedWishes || []).map(w => w.id)), [trip.stagedWishes]);
+    const pickerItems = useMemo(() => {
+        return wishItems
+            .filter(w => w.type === wishTrayTab)
+            .filter(w => pickerScope === 'all' || matchesTrip(w));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wishItems, wishTrayTab, pickerScope, trip.destination]);
+
+    const togglePick = (id: string) => setPickerSelected(prev => {
+        const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+    });
+
+    const openLibraryPicker = () => { setPickerSelected(new Set()); setPickerScope('trip'); setLibraryPickerOpen(true); };
+
+    const handleAddFromLibrary = () => {
+        const toAdd = wishItems.filter(w => pickerSelected.has(w.id) && !stagedIds.has(w.id));
+        if (toAdd.length === 0) { setLibraryPickerOpen(false); return; }
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.stagedWishes = [...(newTrip.stagedWishes || []), ...toAdd];
+        onUpdateTrip(newTrip);
+        setLibraryPickerOpen(false);
+        setPickerSelected(new Set());
+        toast(`已加入 ${toAdd.length} 項到行程`, 'success');
+    };
 
     const currentTodos: TripTodoItem[] = trip.todos || DEFAULT_TODOS;
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
@@ -924,122 +964,172 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                 </button>
                             </div>
 
-                            {/* 精品級動態雙金流計量表 */}
-                            {wishTrayTab === 'item' && (
-                                <div className="bg-white/60 rounded-xl p-3 text-[10px] font-black tracking-wider text-gray-500 flex flex-col gap-1.5 shadow-sm border border-white">
-                                    <div className="flex justify-between items-center">
-                                        <span>🛍️ 購物尚需預算</span>
-                                        <span className="font-mono text-[#1D1D1B] text-xs">{shoppingBudgetStats.remaining}</span>
-                                    </div>
-                                    <div className="w-full h-[3px] bg-gray-100 rounded-full overflow-hidden">
-                                        <div className="h-full bg-[#45846D] transition-all duration-500" style={{ width: '45%' }}></div>
-                                    </div>
-                                    <div className="flex justify-between items-center mt-0.5 text-gray-400">
-                                        <span>💰 行程已納入花費</span>
-                                        <span className="font-mono text-gray-600">{shoppingBudgetStats.allocated}</span>
-                                    </div>
-                                </div>
-                            )}
+                            {/* 🧱 C1-2 從我的收藏加入 */}
+                            <button onClick={openLibraryPicker} className="w-full mb-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#45846D]/10 text-[#45846D] text-xs font-bold hover:bg-[#45846D]/20 transition-colors">
+                                <Plus className="w-4 h-4" /> 從我的收藏加入
+                            </button>
+
                         </div>
                         
                         {/* 心願項目內容流 */}
                         <div className="flex-1 overflow-y-auto no-scrollbar pt-4 pb-safe">
                             {displayedStagedWishes.length === 0 ? (
-                                <div className="py-12 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center opacity-70">
+                                <div className="py-10 border-2 border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center">
                                     <Sparkles className="w-8 h-8 text-gray-300 mb-2" />
-                                    <p className="text-sm font-bold text-gray-400">此類別目前沒有任何心願</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">請前往主分頁收藏新的旅行靈感</p>
+                                    <p className="text-sm font-bold text-gray-400">這趟行程還沒有心願</p>
+                                    <button onClick={openLibraryPicker} className="mt-3 flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#45846D] text-white text-xs font-bold active:scale-95 transition-transform">
+                                        <Plus className="w-4 h-4" /> 從我的收藏加入
+                                    </button>
+                                </div>
+                            ) : wishTrayTab === 'place' ? (
+                                /* === 地點：待排入 + 已排入行程（明確按鈕，無滑動） === */
+                                <div className="flex flex-col gap-4">
+                                    {(() => {
+                                        const pending = displayedStagedWishes.filter(w => w.assignedDay === undefined);
+                                        const assigned = displayedStagedWishes.filter(w => w.assignedDay !== undefined);
+                                        return (
+                                            <>
+                                                <div>
+                                                    <p className="text-[11px] font-bold text-gray-400 mb-2 px-1">待排入 · {pending.length}</p>
+                                                    {pending.length === 0 ? (
+                                                        <p className="text-xs text-gray-400 px-1 py-2">都排好了 👍</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {pending.map(wish => (
+                                                                <div key={wish.id} className="bg-white rounded-2xl p-2.5 shadow-sm flex items-center gap-3">
+                                                                    {wish.customImage
+                                                                        ? <img src={wish.customImage} className="w-11 h-11 rounded-xl object-cover shrink-0" alt="" />
+                                                                        : <div className="w-11 h-11 rounded-xl bg-[#E9E5DC] flex items-center justify-center shrink-0 text-[#45846D]"><MapPin className="w-5 h-5" /></div>}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <h4 className="font-bold text-sm text-[#1D1D1B] truncate">{wish.title}</h4>
+                                                                        {wish.area && <p className="text-[11px] text-gray-400 mt-0.5">{wish.area}</p>}
+                                                                    </div>
+                                                                    <button onClick={() => setActionStagedWish(wish)} className="flex items-center gap-1 bg-[#45846D] text-white text-xs font-bold px-3 h-8 rounded-full active:scale-95 transition-transform shrink-0">
+                                                                        <Plus className="w-3.5 h-3.5" /> 排入
+                                                                    </button>
+                                                                    <button onClick={() => handleLocalDeleteWish(wish.id)} className="w-8 h-8 rounded-full bg-[#F3EFE7] text-gray-400 hover:text-[#C0573E] flex items-center justify-center shrink-0 transition-colors">
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {assigned.length > 0 && (
+                                                    <div>
+                                                        <p className="text-[11px] font-bold text-gray-400 mb-2 px-1">已排入行程</p>
+                                                        <div className="space-y-2">
+                                                            {assigned.map(wish => (
+                                                                <div key={wish.id} className="bg-[#F6F5F2] rounded-2xl p-2.5 flex items-center gap-3">
+                                                                    <div className="w-11 h-11 rounded-xl bg-[#E9E5DC] flex items-center justify-center shrink-0 text-[#45846D]"><MapPin className="w-5 h-5" /></div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <h4 className="font-bold text-sm text-[#1D1D1B] truncate">{wish.title}</h4>
+                                                                        <span className="inline-block mt-1 text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded">已排入 DAY {wish.assignedDay}</span>
+                                                                    </div>
+                                                                    <button onClick={() => handleRollbackWish(wish.id)} className="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-[#C0573E] flex items-center justify-center shrink-0 transition-colors">
+                                                                        <X className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             ) : (
-                                <>
-                                    {wishTrayTab === 'item' ? (
-                                        <div className="flex flex-col gap-5">
-                                            {/* A 區：未指派 */}
-                                            <div>
-                                                <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">未指派清單 (滑動：右👉指派 ｜ 左👈移除)</h4>
-                                                {displayedStagedWishes.filter(w => w.assignedDay === undefined).length === 0 ? (
-                                                    <p className="text-xs text-gray-400 font-medium py-2">目前無未指派之購物清單</p>
-                                                ) : (
-                                                    displayedStagedWishes.filter(w => w.assignedDay === undefined).map(wish => (
-                                                        <SwipeableWishCard
-                                                            key={wish.id}
-                                                            wish={wish}
-                                                            isAssigned={false}
-                                                            onToggleCheck={() => handleTogglePurchase(wish.id)}
-                                                            onDelete={() => handleLocalDeleteWish(wish.id)}
-                                                            onAssign={() => setActionStagedWish(wish)}
-                                                            onRollback={() => {}}
-                                                        />
-                                                    ))
-                                                )}
-                                            </div>
-
-                                            {/* B 區：已排入行程 */}
-                                            {displayedStagedWishes.filter(w => w.assignedDay !== undefined).length > 0 && (
-                                                <div>
-                                                    <h4 className="text-[10px] font-black text-gray-400 mb-2 tracking-widest uppercase">已排入行程 (左👈滑動可抽離還原)</h4>
-                                                    {displayedStagedWishes.filter(w => w.assignedDay !== undefined).map(wish => (
-                                                        <SwipeableWishCard
-                                                            key={wish.id}
-                                                            wish={wish}
-                                                            isAssigned={true}
-                                                            onToggleCheck={() => handleTogglePurchase(wish.id)}
-                                                            onDelete={() => {}}
-                                                            onAssign={() => {}}
-                                                            onRollback={() => handleRollbackWish(wish.id)}
-                                                        />
-                                                    ))}
+                                /* === 購物：依類別/店家分組的勾選清單 + 進度 === */
+                                <div>
+                                    <div className="space-y-3">
+                                        {(() => {
+                                            const sorted = [...displayedStagedWishes].sort((a, b) => (a.isPurchased ? 1 : 0) - (b.isPurchased ? 1 : 0));
+                                            const groups: Record<string, WishItem[]> = {};
+                                            sorted.forEach(it => { const k = it.area || '其他'; (groups[k] = groups[k] || []).push(it); });
+                                            return Object.entries(groups).map(([cat, items]) => (
+                                                <div key={cat} className="bg-white rounded-2xl shadow-sm px-4 pt-2 pb-1">
+                                                    <p className="text-[12px] font-bold text-[#45846D] pt-1 pb-0.5 flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5" /> {cat}</p>
+                                                    {items.map(item => {
+                                                        const bought = !!item.isPurchased;
+                                                        return (
+                                                            <div key={item.id} className={`flex items-center gap-3 py-2.5 border-b border-dashed border-[#EFECE5] last:border-b-0 ${bought ? 'opacity-50' : ''}`}>
+                                                                <button onClick={() => handleTogglePurchase(item.id)} className={`w-[22px] h-[22px] rounded-full flex items-center justify-center shrink-0 transition-colors ${bought ? 'bg-[#45846D] text-white' : 'border-[1.5px] border-gray-300 hover:border-[#45846D]'}`}>
+                                                                    {bought && <Check className="w-3.5 h-3.5" />}
+                                                                </button>
+                                                                <span className={`flex-1 text-sm font-medium ${bought ? 'line-through text-gray-400' : 'text-[#1D1D1B]'}`}>{item.title}</span>
+                                                                {item.budget != null && <span className={`font-mono text-xs shrink-0 ${bought ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{item.currency || 'TWD'} {item.budget.toLocaleString()}</span>}
+                                                                <button onClick={() => handleLocalDeleteWish(item.id)} className="w-7 h-7 rounded-full bg-[#F3EFE7] text-gray-400 hover:text-[#C0573E] flex items-center justify-center shrink-0 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            )}
+                                            ));
+                                        })()}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-4 px-1">
+                                        <div className="flex-1 h-2 rounded-full bg-[#E2DFD8] overflow-hidden">
+                                            <div className="h-full bg-[#45846D] rounded-full transition-all" style={{ width: `${displayedStagedWishes.length ? (displayedStagedWishes.filter(w => w.isPurchased).length / displayedStagedWishes.length) * 100 : 0}%` }} />
                                         </div>
-                                    ) : (
-                                        /* 地點模式宇宙：維持原本的操作邏輯 */
-                                        <div className="flex flex-col gap-3">
-                                            {displayedStagedWishes.map(wish => {
-                                                const isAssigned = wish.assignedDay !== undefined;
-                                                return (
-                                                    <div 
-                                                        key={wish.id} 
-                                                        className={`bg-white rounded-2xl p-3 shadow-sm border border-transparent transition-all flex items-center gap-3
-                                                            ${isAssigned ? 'opacity-40 bg-gray-50/50' : 'hover:border-[#45846D]/30'}
-                                                        `}
-                                                    >
-                                                        {wish.customImage ? (
-                                                            <img src={wish.customImage} className="w-14 h-14 rounded-xl object-cover shrink-0" alt="" />
-                                                        ) : (
-                                                            <div className="w-14 h-14 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
-                                                                <MapPin className="w-5 h-5 text-gray-300"/>
-                                                            </div>
-                                                        )}
-                                                        <div className="flex-1 min-w-0">
-                                                            <h4 className={`font-bold text-sm text-[#1D1D1B] truncate ${isAssigned ? 'line-through text-gray-400 font-normal' : ''}`}>
-                                                                {wish.title}
-                                                            </h4>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                {wish.area && <span className="text-[10px] text-gray-400 truncate font-medium">{wish.area}</span>}
-                                                            </div>
-                                                            {isAssigned && (
-                                                                <span className="inline-block mt-1 text-[9px] font-black tracking-wider text-[#45846D] bg-[#45846D]/10 px-1.5 py-0.5 rounded uppercase">
-                                                                    已排入 DAY {wish.assignedDay}
-                                                                </span>
-                                                            )}
-                                                        </div>
-
-                                                        {!isAssigned && (
-                                                            <button 
-                                                                onClick={() => setActionStagedWish(wish)} 
-                                                                className="w-9 h-9 shrink-0 rounded-full bg-[#45846D]/10 text-[#45846D] flex items-center justify-center hover:bg-[#45846D] hover:text-white transition-colors active:scale-95"
-                                                            >
-                                                                <Plus className="w-4 h-4" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </>
+                                        <span className="text-xs font-bold text-[#45846D] shrink-0">
+                                            {displayedStagedWishes.filter(w => w.isPurchased).length === displayedStagedWishes.length ? '全部買完 🎉' : `已買 ${displayedStagedWishes.filter(w => w.isPurchased).length} / ${displayedStagedWishes.length}`}
+                                        </span>
+                                    </div>
+                                </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* === 🧱 C1-2 從我的收藏加入 挑選器 === */}
+            {libraryPickerOpen && (
+                <div className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center p-4">
+                    <div className="absolute inset-0 bg-[#1D1D1B]/50 backdrop-blur-sm" onClick={() => setLibraryPickerOpen(false)} />
+                    <div className="w-full max-w-md bg-[#F2F2F2] rounded-[32px] relative z-10 animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[80vh]">
+                        <div className="shrink-0 p-5 pb-3">
+                            <div className="flex items-center gap-2.5 mb-3">
+                                <button onClick={() => setLibraryPickerOpen(false)} className="text-gray-400 hover:text-gray-600"><ArrowLeft className="w-5 h-5" /></button>
+                                <h3 className="font-serif text-lg font-bold text-[#1D1D1B]">從我的收藏加入</h3>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => setPickerScope('trip')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${pickerScope === 'trip' ? 'bg-[#45846D] text-white' : 'bg-[#EAE6DD] text-gray-600'}`}>此行程 · {trip.destination}</button>
+                                <button onClick={() => setPickerScope('all')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${pickerScope === 'all' ? 'bg-[#45846D] text-white' : 'bg-[#EAE6DD] text-gray-600'}`}>全部收藏</button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto no-scrollbar px-4 space-y-2">
+                            {pickerItems.length === 0 ? (
+                                <div className="text-center text-gray-400 text-sm py-16">{pickerScope === 'trip' ? `沒有與「${trip.destination}」相關的收藏，試試「全部收藏」` : '你的收藏是空的'}</div>
+                            ) : pickerItems.map(w => {
+                                const added = stagedIds.has(w.id);
+                                const picked = pickerSelected.has(w.id);
+                                return (
+                                    <button key={w.id} disabled={added} onClick={() => togglePick(w.id)}
+                                            className={`w-full flex items-center gap-3 bg-white rounded-2xl p-3 border text-left transition-all ${added ? 'opacity-60' : ''} ${picked ? 'border-[#45846D]' : 'border-white'}`}>
+                                        {added ? (
+                                            <span className="text-[10px] font-bold text-[#45846D] bg-[#EDF2F0] px-2 py-1 rounded-md flex-shrink-0">已加入</span>
+                                        ) : (
+                                            <span className={`w-[22px] h-[22px] rounded-[7px] flex items-center justify-center flex-shrink-0 ${picked ? 'bg-[#45846D] text-white' : 'border-[1.5px] border-gray-300'}`}>{picked && <Check className="w-3.5 h-3.5" />}</span>
+                                        )}
+                                        <span className="w-11 h-11 rounded-xl overflow-hidden bg-[#E9E5DC] flex-shrink-0 flex items-center justify-center text-[#45846D]">
+                                            {w.customImage ? <img src={w.customImage} alt={w.title} className="w-full h-full object-cover" /> : (w.type === 'place' ? <MapPin className="w-5 h-5" /> : <ShoppingBag className="w-5 h-5" />)}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-[#1D1D1B] truncate">{w.title}</p>
+                                            <div className="flex gap-1 mt-1">
+                                                {w.city && <span className="text-[10px] font-bold text-[#57534E] bg-[#EAE6DD] px-2 py-0.5 rounded-md">{w.city}</span>}
+                                                {w.area && <span className="text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded-md">{w.area}</span>}
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="shrink-0 p-4 pb-safe">
+                            <button onClick={handleAddFromLibrary} disabled={pickerSelected.size === 0}
+                                    className="w-full py-3.5 rounded-2xl bg-[#45846D] text-white font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.98] transition-all">
+                                <Plus className="w-5 h-5" /> 加入 {pickerSelected.size} 項到行程
+                            </button>
                         </div>
                     </div>
                 </div>
