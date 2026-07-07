@@ -5,12 +5,14 @@ import {
     Train, Plane, Ticket, Wallet, 
     MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
     Briefcase, PlusCircle, Share, ListChecks, X, ShoppingBag,
-    Check, Trash2, Undo
+    Check, Trash2, Undo, Clock, ChevronDown, CalendarPlus
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem, TripTodoItem } from '../../types';
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
+import { planArrangement, activityTypeOf } from '../../services/scheduler';
+import { TimePickerWheel } from '../../components/common/TimePickerWheel';
 
 import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
 
@@ -315,6 +317,23 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [pickerScope, setPickerScope] = useState<'trip' | 'all'>('trip');
     const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
 
+    // 🧭 C1-3 一鍵順路排入
+    const [arrangeOpen, setArrangeOpen] = useState(false);
+    const [arrangeAddDay, setArrangeAddDay] = useState(false);
+    const [timeOverrides, setTimeOverrides] = useState<Record<string, string>>({}); // 預覽中手動改的時間
+    // 統一的滾輪時間選擇器（預覽微調 / 手動排入設時間共用）
+    const [timeWheel, setTimeWheel] = useState<{ value: string; onPick: (v: string) => void } | null>(null);
+
+    // 🧭 C1-3 待排入卡設定「希望時段」（點 chip → 選單；寫入該行程的 staged 心願）
+    const [slotPickerWish, setSlotPickerWish] = useState<WishItem | null>(null);
+    const setStagedSlot = (wishId: string, slot: WishItem['preferredSlot']) => {
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w => w.id === wishId ? { ...w, preferredSlot: slot } : w);
+        onUpdateTrip(newTrip);
+        setSlotPickerWish(null);
+    };
+    const slotLabel = (s?: WishItem['preferredSlot']) => s === 'morning' ? '上午' : s === 'afternoon' ? '下午' : s === 'evening' ? '晚上' : '希望時段';
+
     const matchesTrip = (w: WishItem) => {
         const dest = (trip.destination || '').toLowerCase();
         if (!dest) return false;
@@ -346,6 +365,57 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setLibraryPickerOpen(false);
         setPickerSelected(new Set());
         toast(`已加入 ${toAdd.length} 項到行程`, 'success');
+    };
+
+    // 🧭 C1-3 一鍵順路排入
+    const pendingPlaceWishes = useMemo(
+        () => (trip.stagedWishes || []).filter(w => w.type === 'place' && w.assignedDay === undefined),
+        [trip.stagedWishes],
+    );
+    const arrangePlan = useMemo(() => {
+        const planTrip: Trip = arrangeAddDay
+            ? { ...trip, days: [...trip.days, { day: trip.days.length + 1, activities: [] }] }
+            : trip;
+        return planArrangement(planTrip, pendingPlaceWishes);
+    }, [trip, pendingPlaceWishes, arrangeAddDay]);
+
+    const openArrange = () => { setArrangeAddDay(false); setTimeOverrides({}); setArrangeOpen(true); };
+
+    const applyArrangement = () => {
+        const plan = arrangePlan;
+        if (plan.totalPlaced === 0) { setArrangeOpen(false); return; }
+        const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
+        const maxIdx = Math.max(...plan.byDay.map(d => d.dayIndex));
+        const start = new Date(trip.startDate);
+        while (newTrip.days.length <= maxIdx) {
+            const idx = newTrip.days.length;
+            const dt = new Date(start.getTime() + idx * 86400000);
+            const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+            newTrip.days.push({ day: idx + 1, date: dateStr, activities: [] });
+        }
+        const dayNumById: Record<string, number> = {};
+        plan.byDay.forEach(pd => {
+            const day = newTrip.days[pd.dayIndex];
+            if (!day) return;
+            pd.items.forEach(({ wish, time }) => {
+                const finalTime = timeOverrides[wish.id] || time;
+                day.activities.push({
+                    id: crypto.randomUUID(), time: finalTime, title: wish.title, description: wish.notes || '',
+                    type: activityTypeOf(wish), location: wish.area || wish.city || wish.country,
+                    image: wish.customImage, wishItemId: wish.id,
+                    lat: wish.lat, lng: wish.lng, placeId: wish.placeId,
+                } as Activity);
+                dayNumById[wish.id] = pd.dayIndex + 1;
+            });
+            Object.assign(day, recalculateTimeline(day));
+        });
+        newTrip.stagedWishes = (newTrip.stagedWishes || []).map(w =>
+            dayNumById[w.id] ? { ...w, assignedDay: dayNumById[w.id] } : w
+        );
+        onUpdateTrip(newTrip);
+        setArrangeOpen(false);
+        setArrangeAddDay(false);
+        toast(`已為你順路排入 ${plan.totalPlaced} 個點`, 'success');
     };
 
     const currentTodos: TripTodoItem[] = trip.todos || DEFAULT_TODOS;
@@ -563,12 +633,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setTimeout(() => setToastMsg(null), 3000);
     };
 
-    const handleInjectWish = (wish: WishItem, dayIndex: number) => {
+    const handleInjectWish = (wish: WishItem, dayIndex: number, time?: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const targetDay = newTrip.days[dayIndex];
 
-        let nextTime = '10:00';
-        if (targetDay.activities.length > 0) {
+        let nextTime = time || '10:00';
+        if (!time && targetDay.activities.length > 0) {
             nextTime = targetDay.activities[targetDay.activities.length - 1].time;
         }
 
@@ -984,6 +1054,12 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                             ) : wishTrayTab === 'place' ? (
                                 /* === 地點：待排入 + 已排入行程（明確按鈕，無滑動） === */
                                 <div className="flex flex-col gap-4">
+                                    {pendingPlaceWishes.length > 0 && (
+                                        <button onClick={openArrange} className="w-full flex flex-col items-center py-2.5 rounded-2xl bg-[#45846D] text-white shadow-lg shadow-[#45846D]/20 active:scale-[0.99] transition-transform">
+                                            <span className="flex items-center gap-2 text-sm font-bold"><Sparkles className="w-4 h-4" /> 一鍵排全部（{pendingPlaceWishes.length}）</span>
+                                            <span className="text-[10px] text-white/80 mt-0.5">依位置自動排好各天</span>
+                                        </button>
+                                    )}
                                     {(() => {
                                         const pending = displayedStagedWishes.filter(w => w.assignedDay === undefined);
                                         const assigned = displayedStagedWishes.filter(w => w.assignedDay !== undefined);
@@ -1002,10 +1078,15 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                                                         : <div className="w-11 h-11 rounded-xl bg-[#E9E5DC] flex items-center justify-center shrink-0 text-[#45846D]"><MapPin className="w-5 h-5" /></div>}
                                                                     <div className="flex-1 min-w-0">
                                                                         <h4 className="font-bold text-sm text-[#1D1D1B] truncate">{wish.title}</h4>
-                                                                        {wish.area && <p className="text-[11px] text-gray-400 mt-0.5">{wish.area}</p>}
+                                                                        <div className="flex items-center gap-1.5 mt-1">
+                                                                            {wish.area && <span className="text-[11px] text-gray-400">{wish.area}</span>}
+                                                                            <button onClick={() => setSlotPickerWish(wish)} className={`flex items-center gap-0.5 text-[10px] font-bold pl-1.5 pr-1 py-0.5 rounded-md transition-colors ${wish.preferredSlot ? 'bg-[#EDF2F0] text-[#45846D]' : 'bg-gray-100 text-gray-400'}`}>
+                                                                                <Clock className="w-2.5 h-2.5" /> {slotLabel(wish.preferredSlot)} <ChevronDown className="w-2.5 h-2.5" />
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
-                                                                    <button onClick={() => setActionStagedWish(wish)} className="flex items-center gap-1 bg-[#45846D] text-white text-xs font-bold px-3 h-8 rounded-full active:scale-95 transition-transform shrink-0">
-                                                                        <Plus className="w-3.5 h-3.5" /> 排入
+                                                                    <button onClick={() => setActionStagedWish(wish)} className="flex items-center gap-1 bg-white border border-[#45846D]/30 text-[#45846D] text-xs font-bold px-3 h-8 rounded-full active:scale-95 transition-transform shrink-0">
+                                                                        <CalendarPlus className="w-3.5 h-3.5" /> 排入某天
                                                                     </button>
                                                                     <button onClick={() => handleLocalDeleteWish(wish.id)} className="w-8 h-8 rounded-full bg-[#F3EFE7] text-gray-400 hover:text-[#C0573E] flex items-center justify-center shrink-0 transition-colors">
                                                                         <Trash2 className="w-4 h-4" />
@@ -1135,6 +1216,82 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 </div>
             )}
 
+            {/* === 🧭 C1-3 一鍵順路排入 預覽 === */}
+            {arrangeOpen && (
+                <div className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center p-4">
+                    <div className="absolute inset-0 bg-[#1D1D1B]/50 backdrop-blur-sm" onClick={() => setArrangeOpen(false)} />
+                    <div className="w-full max-w-md bg-[#F2F2F2] rounded-[32px] relative z-10 animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[85vh]">
+                        <div className="shrink-0 p-5 pb-3 bg-white rounded-t-[32px] border-b border-black/5">
+                            <div className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-[#45846D]" /><h3 className="font-serif text-lg font-bold text-[#1D1D1B]">順路排入預覽</h3></div>
+                            <p className="text-xs text-gray-500 mt-1.5">已依位置就近排入 {arrangePlan.totalPlaced} 個點{arrangePlan.overflow.length > 0 ? `，${arrangePlan.overflow.length} 個排不下` : ''}・<span className="text-[#45846D]">時間可點擊調整</span></p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3">
+                            {arrangePlan.byDay.map(pd => (
+                                <div key={pd.dayIndex} className="bg-white rounded-2xl p-3.5">
+                                    <p className="text-sm font-bold text-[#1D1D1B] mb-2">DAY {pd.dayIndex + 1}{pd.region && <span className="text-[#45846D] text-xs font-normal"> · {pd.region}一帶</span>}</p>
+                                    {pd.items.map(({ wish, time }) => {
+                                        const shownTime = timeOverrides[wish.id] || time;
+                                        const edited = !!timeOverrides[wish.id];
+                                        return (
+                                            <div key={wish.id} className="flex items-center gap-2.5 py-1">
+                                                <span className="w-5 h-5 rounded-full bg-[#45846D] text-white text-[11px] font-bold flex items-center justify-center shrink-0">＋</span>
+                                                <span className="flex-1 text-[13px] text-[#1D1D1B] truncate">{wish.title}</span>
+                                                <button onClick={() => setTimeWheel({ value: shownTime, onPick: (v) => setTimeOverrides(o => ({ ...o, [wish.id]: v })) })}
+                                                        className={`font-mono text-[12px] shrink-0 px-2 py-0.5 rounded-md active:scale-95 transition-transform ${edited ? 'text-[#45846D] font-bold bg-[#EDF2F0]' : 'text-gray-500 bg-gray-100'}`}>
+                                                    {shownTime}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                            {arrangePlan.overflow.length > 0 && (
+                                <div className="bg-[#FBF3E7] border border-[#F0D9A8] rounded-2xl p-3.5">
+                                    <p className="text-xs font-bold text-[#854F0B] mb-2">⚠️ 這 {arrangePlan.overflow.length} 個排不下（超過每天上限）</p>
+                                    {arrangePlan.overflow.map(w => (
+                                        <div key={w.id} className="flex items-center gap-2 py-0.5"><MapPin className="w-3.5 h-3.5 text-gray-400" /><span className="text-[13px] text-[#57534E]">{w.title}</span></div>
+                                    ))}
+                                    <div className="flex gap-2 mt-2.5">
+                                        <button onClick={() => setArrangeAddDay(true)} className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors ${arrangeAddDay ? 'bg-[#45846D] text-white border-[#45846D]' : 'bg-white text-[#854F0B] border-[#F0D9A8]'}`}>＋ 新增一天放它們</button>
+                                        <button onClick={() => setArrangeAddDay(false)} className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors ${!arrangeAddDay ? 'bg-white text-[#1D1D1B] border-gray-300' : 'bg-white text-gray-400 border-gray-200'}`}>留在待排入</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="shrink-0 p-4 pb-safe flex gap-3">
+                            <button onClick={() => setArrangeOpen(false)} className="w-12 flex items-center justify-center rounded-xl bg-white border border-gray-200 text-gray-500"><X className="w-5 h-5" /></button>
+                            {arrangePlan.totalPlaced > 0 ? (
+                                <button onClick={applyArrangement} className="flex-1 py-3.5 rounded-xl bg-[#45846D] text-white font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"><Check className="w-4 h-4" /> 確認排入 {arrangePlan.totalPlaced} 個點</button>
+                            ) : (
+                                <button onClick={() => setArrangeOpen(false)} className="flex-1 py-3.5 rounded-xl bg-gray-200 text-gray-600 font-bold active:scale-[0.98] transition-all">沒有可排入的天，先關閉</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* === 🧭 C1-3 希望時段 選單 === */}
+            {slotPickerWish && (
+                <div className="fixed inset-0 z-[130] flex items-end justify-center p-4">
+                    <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={() => setSlotPickerWish(null)} />
+                    <div className="w-full max-w-sm bg-white rounded-[28px] p-5 relative z-10 animate-in slide-in-from-bottom duration-300">
+                        <p className="text-sm font-bold text-[#1D1D1B] text-center mb-1">希望排在什麼時段？</p>
+                        <p className="text-[11px] text-gray-400 text-center mb-4 truncate">{slotPickerWish.title}</p>
+                        <div className="grid grid-cols-2 gap-2.5">
+                            {([['morning', '上午'], ['afternoon', '下午'], ['evening', '晚上'], [undefined, '不指定']] as const).map(([val, label]) => {
+                                const active = (slotPickerWish.preferredSlot || undefined) === val;
+                                return <button key={label} onClick={() => setStagedSlot(slotPickerWish.id, val)} className={`py-3 rounded-xl text-sm font-bold transition-colors ${active ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{label}</button>;
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* === 🧭 C1-3 統一滾輪時間選擇器 === */}
+            {timeWheel && (
+                <TimePickerWheel value={timeWheel.value} onChange={(v) => timeWheel.onPick(v)} onClose={() => setTimeWheel(null)} />
+            )}
+
             {/* === 天數指派彈窗 (Sub-Modal) === */}
             {actionStagedWish && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -1145,9 +1302,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                             {trip.days.map((day, idx) => {
                                 const dateStr = day.date ? day.date.replace(/-/g, '.') : '';
                                 return (
-                                    <button 
-                                        key={day.day} 
-                                        onClick={() => handleInjectWish(actionStagedWish, idx)} 
+                                    <button
+                                        key={day.day}
+                                        onClick={() => { const w = actionStagedWish; setTimeWheel({ value: '10:00', onPick: (v) => handleInjectWish(w, idx, v) }); }}
                                         className="w-full py-3.5 rounded-xl bg-gray-50 hover:bg-[#45846D] text-gray-700 hover:text-white font-bold text-sm transition-all border border-transparent shadow-sm flex items-center justify-center gap-2 active:scale-95"
                                     >
                                         <span>DAY {day.day}</span>
