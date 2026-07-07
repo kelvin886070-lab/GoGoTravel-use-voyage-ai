@@ -27,7 +27,7 @@ export const TimePickerWheel: React.FC<{ value: string, onChange: (val: string) 
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] flex items-end justify-center animate-in fade-in duration-200">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
             <div className="bg-white w-full max-w-sm rounded-t-[32px] p-6 relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300">
                 <div className="flex justify-between items-center mb-6">

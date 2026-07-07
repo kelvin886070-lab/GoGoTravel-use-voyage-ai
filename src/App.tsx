@@ -14,7 +14,7 @@ import { VaultView } from './views/VaultView';
 import { ExploreView } from './views/ExploreView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
-import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb } from './services/storage';
+import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath } from './services/storage';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
 import { PasteImportModal } from './views/PasteImportModal';
@@ -37,7 +37,9 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     area: r.area || undefined,
     url: r.url || undefined,
     notes: r.note || undefined,
-    customImage: r.custom_image_path || undefined,
+    // 🧱 C5 舊 base64/http 直接顯示；真正的 Storage 路徑另存 customImagePath，稍後換 signed URL
+    customImage: (r.custom_image_path && !isStoragePath(r.custom_image_path)) ? r.custom_image_path : undefined,
+    customImagePath: (r.custom_image_path && isStoragePath(r.custom_image_path)) ? r.custom_image_path : undefined,
     budget: r.budget ?? undefined,
     currency: r.currency || undefined,
     tags: r.tags || undefined,
@@ -46,6 +48,7 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     placeId: r.place_id || undefined,
     isFavorite: !!r.is_favorite,
     isPurchased: !!r.is_purchased,
+    preferredSlot: (r.preferred_slot as WishItem['preferredSlot']) || undefined,
     createdAt: r.created_at,
 });
 
@@ -63,8 +66,10 @@ const wishToRow = (w: WishItem, userId: string) => ({
     place_id: w.placeId ?? null,
     is_favorite: !!w.isFavorite,
     is_purchased: !!w.isPurchased,
+    preferred_slot: w.preferredSlot ?? null,
     url: w.url ?? null,
-    custom_image_path: w.customImage ?? null,
+    // 🧱 C5 優先存 Storage 路徑；舊 base64 保留；不存會過期的 signed URL
+    custom_image_path: w.customImagePath ?? (w.customImage?.startsWith('data:') ? w.customImage : null),
     budget: w.budget ?? null,
     currency: w.currency ?? null,
     tags: w.tags ?? [],
@@ -399,7 +404,12 @@ const App: React.FC = () => {
       const currentUserId = userId || user?.id;
       if (!currentUserId) return;
       const { data } = await supabase.from('wish_items').select('*').order('created_at', { ascending: false });
-      if (data) setWishItems((data as WishItemRow[]).map(rowToWish));
+      if (data) {
+          const wishes = (data as WishItemRow[]).map(rowToWish);
+          // 🧱 C5 把 Storage 路徑一次批次換成 signed URL 供顯示
+          const urlMap = await signPaths(wishes.map(w => w.customImagePath));
+          setWishItems(wishes.map(w => (w.customImagePath && urlMap[w.customImagePath]) ? { ...w, customImage: urlMap[w.customImagePath] } : w));
+      }
   };
 
   // 新增/編輯心願（樂觀更新 + upsert；place 類自動 geocode 補座標）
@@ -503,12 +513,13 @@ const App: React.FC = () => {
 
   if (selectedTrip) {
     return (
-      <ItineraryView 
-        trip={selectedTrip} 
-        documents={allDocuments} 
+      <ItineraryView
+        trip={selectedTrip}
+        documents={allDocuments}
         folders={vaultFolders}
         files={vaultFiles}
-        user={user} 
+        wishItems={wishItems}
+        user={user}
         onBack={() => { flushTripSave(); setSelectedTrip(null); }}
         onDelete={() => handleSoftDeleteTrip(selectedTrip.id)}
         onUpdateTrip={handleUpdateTrip}

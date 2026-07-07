@@ -6,6 +6,8 @@ import {
 import type { WishItem, WishItemType } from '../../../types';
 import { toast } from '../../../components/Toast';
 import { confirmDialog } from '../../../components/ConfirmDialog';
+import { CURRENCY_SYMBOLS } from '../shared';
+import { uploadTripImage, signPaths } from '../../../services/storage';
 
 interface WishItemEditModalProps {
     item?: WishItem | null; // 傳入 item 代表編輯，不傳代表新增
@@ -71,15 +73,18 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
         setEdited(prev => ({ ...prev, [field]: value }));
     };
 
-    // 圖片上傳 (轉 Base64)
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 🧱 C5 圖片改上傳 Storage：存 durable 路徑、顯示 signed URL（不再把 base64 塞進 DB）
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            handleChange('customImage', reader.result as string);
-        };
-        reader.readAsDataURL(file);
+        try {
+            const path = await uploadTripImage(file);
+            const urlMap = await signPaths([path]);
+            setEdited(prev => ({ ...prev, customImagePath: path, customImage: urlMap[path] || '' }));
+        } catch (err) {
+            console.error('心願圖片上傳失敗', err);
+            toast('圖片上傳失敗，請再試一次。');
+        }
     };
 
     // 標籤操作
@@ -186,6 +191,16 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                 <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><LinkIcon className="w-3 h-3" /> 網址連結</label>
                                 <input type="url" onFocus={handleFocus} value={edited.url || ''} onChange={e => handleChange('url', e.target.value)} placeholder="貼上 Google Maps / IG 連結…" className="w-full bg-transparent text-sm font-medium text-blue-500 outline-none pt-0.5" />
                             </div>
+                            {/* 希望時段（選填，一鍵順路優先尊重） */}
+                            <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
+                                <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1">希望時段（選填）</label>
+                                <div className="flex gap-1.5 mt-1.5">
+                                    {([['', '不指定'], ['morning', '上午'], ['afternoon', '下午'], ['evening', '晚上']] as const).map(([val, label]) => (
+                                        <button key={label} onClick={() => handleChange('preferredSlot', val || undefined)}
+                                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${((edited.preferredSlot || '') === val) ? 'bg-[#45846D] text-white' : 'bg-gray-100 text-gray-500'}`}>{label}</button>
+                                    ))}
+                                </div>
+                            </div>
                         </>
                     ) : (
                         /* 購物：類別/店家 + 預算 */
@@ -214,7 +229,7 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                     <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">幣別</label>
                                     <select value={edited.currency || 'TWD'} onChange={e => handleChange('currency', e.target.value)}
                                             className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 appearance-none">
-                                        <option value="TWD">TWD</option><option value="JPY">JPY</option><option value="KRW">KRW</option><option value="USD">USD</option>
+                                        {Object.keys(CURRENCY_SYMBOLS).map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                                 <div className="flex-1">

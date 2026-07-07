@@ -1,3 +1,7 @@
+// 🧱 C7：@react-pdf 在瀏覽器需要 Buffer；補全域 polyfill（修 PDF 匯出 "Buffer is not defined"）
+import { Buffer } from 'buffer';
+if (!(globalThis as { Buffer?: unknown }).Buffer) (globalThis as { Buffer?: unknown }).Buffer = Buffer;
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

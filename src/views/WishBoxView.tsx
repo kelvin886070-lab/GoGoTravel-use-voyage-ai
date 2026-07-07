@@ -10,6 +10,7 @@ import {
     Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
+import { categoryKeyOf } from '../utils/wishCategory';
 import { toast } from '../components/Toast';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string;
@@ -27,19 +28,18 @@ const COUNTRY_CODES: Record<string, string> = {
 };
 const codeOf = (c: string) => COUNTRY_CODES[c] || '';
 
-// 依名稱/標籤/備註推測分類 → 圖示與顏色（不需額外資料）
-const CATS: { icon: React.FC<{ className?: string }>; color: string; match: string[] }[] = [
-    { icon: Coffee, color: '#8A5A2B', match: ['咖啡', 'cafe', 'coffee', '珈琲', '珈啡', '甜點', '蛋糕', 'bakery', '麵包', '菓'] },
-    { icon: Wine, color: '#7A3E8A', match: ['酒', 'bar', 'pub', '居酒屋'] },
-    { icon: Utensils, color: '#C0573E', match: ['餐', '食', '拉麵', '飯', '麵', '壽司', '燒', '鍋', 'restaurant', 'eat', 'bistro', 'diner', '小吃', '早午餐', 'brunch'] },
-    { icon: ShoppingBag, color: '#B5852A', match: ['店', 'shop', '買', '市場', 'mall', '百貨', '藥妝', 'outlet'] },
-    { icon: Landmark, color: '#45846D', match: ['museum', '美術', '神社', '寺', '公園', 'park', '塔', '館', '城', '景', '古蹟'] },
-];
+// 分類 → 圖示與顏色（分類邏輯共用 utils/wishCategory，單一真相）
+const CAT_STYLE: Record<string, { Icon: React.FC<{ className?: string }>; color: string }> = {
+    cafe: { Icon: Coffee, color: '#8A5A2B' },
+    bar: { Icon: Wine, color: '#7A3E8A' },
+    food: { Icon: Utensils, color: '#C0573E' },
+    shop: { Icon: ShoppingBag, color: '#B5852A' },
+    sight: { Icon: Landmark, color: '#45846D' },
+    other: { Icon: MapPin, color: '#45846D' },
+};
 const categorize = (w: WishItem): { Icon: React.FC<{ className?: string }>; color: string } => {
     if (w.type === 'item') return { Icon: ShoppingBag, color: '#B5852A' };
-    const hay = `${w.title} ${(w.tags || []).join(' ')} ${w.notes || ''}`.toLowerCase();
-    for (const c of CATS) if (c.match.some(m => hay.includes(m.toLowerCase()))) return { Icon: c.icon, color: c.color };
-    return { Icon: MapPin, color: '#45846D' };
+    return CAT_STYLE[categoryKeyOf(w)];
 };
 
 const getTagColor = (tag: string) => {

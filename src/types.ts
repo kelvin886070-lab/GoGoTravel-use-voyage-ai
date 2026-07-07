@@ -120,6 +120,7 @@ export interface Trip {
   focusArea?: string;
   transportMode?: 'flight' | 'train' | 'time';
   localTransportMode?: 'public' | 'car' | 'taxi';
+  pace?: 'relaxed' | 'standard' | 'packed' | 'deep';   // 🧱 C1-3 步調（影響每日容量與停留時間）
   planningStatus?: 'draft' | 'booked' | 'ready';
   reminders?: Reminder[];
   startDate: string;
@@ -158,11 +159,11 @@ export interface WishItem {
   country: string;      // 國家（台灣/日本）
   city?: string;        // 🧱 C1-1 城市（台南/東京）
   title: string;
-  location?: string;
   area?: string;        // 分區（東區/澀谷區）
   url?: string;
   notes?: string;
-  customImage?: string;
+  customImage?: string;       // 顯示用：載入時填 signed URL；舊資料為 base64
+  customImagePath?: string;   // 🧱 C5 durable：Storage 路徑（DB 真正保存的來源）
   budget?: number;
   currency?: string;
   tags?: string[];
@@ -173,6 +174,7 @@ export interface WishItem {
   lng?: number;
   placeId?: string;
   isFavorite?: boolean;   // 🧱 C1-1 我的最愛（星星，置頂）
+  preferredSlot?: 'morning' | 'afternoon' | 'evening';   // 🧱 C1-3 希望時段（選填，一鍵順路優先尊重）
 
   // 🛡️ 9.3 新增：行程內購物清單的獨立狀態追蹤
   isPurchased?: boolean;   // 標記是否已純勾選購買 (觸發金流移轉與刪除線)

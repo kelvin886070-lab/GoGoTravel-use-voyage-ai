@@ -311,7 +311,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
             
             const newTrip: Trip = {
                 id: Date.now().toString(), destination: finalDestination, origin: origin, transportMode: transportMode, localTransportMode, startDate: startDate, endDate: endDate,
-                coverImage: coverImage || bgImage || `https://picsum.photos/800/600?random=${Date.now()}`, days: daysWithTime, isDeleted: false, currency: currency
+                coverImage: coverImage || bgImage || `https://picsum.photos/800/600?random=${Date.now()}`, days: daysWithTime, isDeleted: false, currency: currency, pace: pace as Trip['pace']
             };
             onAddTrip(newTrip); onClose();
         } catch (e) { toast("無法生成行程，請檢查網路或稍後再試。"); } finally { setLoading(false); }
@@ -322,8 +322,8 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         if (!tripDays || tripDays <= 0) { toast("請確認日期範圍"); return; }
         const finalDestination = destinations.length > 0 ? destinations.join(' + ') : '未命名行程';
         const emptyDays: TripDay[] = Array.from({length: tripDays}, (_, i) => ({ day: i + 1, activities: [] }));
-        const newTrip: Trip = { 
-            id: Date.now().toString(), destination: finalDestination, origin, startDate: startDate, endDate: endDate, coverImage: coverImage || bgImage, days: emptyDays, isDeleted: false, currency: currency, transportMode: transportMode
+        const newTrip: Trip = {
+            id: Date.now().toString(), destination: finalDestination, origin, startDate: startDate, endDate: endDate, coverImage: coverImage || bgImage, days: emptyDays, isDeleted: false, currency: currency, transportMode: transportMode, pace: pace as Trip['pace']
         };
         onAddTrip(newTrip); onClose();
     };

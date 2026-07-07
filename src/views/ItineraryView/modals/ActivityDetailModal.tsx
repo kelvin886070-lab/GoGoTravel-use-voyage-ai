@@ -193,7 +193,10 @@ export const ActivityDetailModal: React.FC<{
                 
                 {/* Header */}
                 <div className="flex-shrink-0 bg-white z-20 px-6 pt-6 pb-4 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯內容' : '詳情資訊'}</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯內容' : '詳情資訊'}</h3>
+                        {!isEditing && edited.wishItemId && <span className="text-[10px] font-bold text-[#45846D] bg-[#EDF2F0] px-2 py-0.5 rounded-md whitespace-nowrap">從心願盒匯入</span>}
+                    </div>
                     <div className="flex gap-2">
                         {!isEditing ? (
                             <>
