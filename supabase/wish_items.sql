@@ -13,8 +13,10 @@ create table if not exists public.wish_items (
     lat               double precision,     -- 存檔時 geocode 補上
     lng               double precision,
     place_id          text,                 -- Google Place ID（去重/快取用）
+    needs_location_confirm boolean not null default false,  -- 🧭 T1 弱信心座標待確認（既有資料庫請另跑：alter table public.wish_items add column if not exists needs_location_confirm boolean not null default false;）
     is_favorite       boolean not null default false,  -- 🧱 C1-1 我的最愛（既有資料庫請另跑：alter table public.wish_items add column if not exists is_favorite boolean not null default false;）
     is_purchased      boolean not null default false,  -- 🧱 C2-2 購物已買（既有資料庫請另跑：alter table public.wish_items add column if not exists is_purchased boolean not null default false;）
+    preferred_slot    text,                 -- 🧱 C1-3 希望時段 morning|afternoon|evening（既有資料庫請另跑：alter table public.wish_items add column if not exists preferred_slot text;）
     url               text,                 -- link 類型或參考連結
     custom_image_path text,                 -- Storage 路徑（沿用 trip-media 慣例）
     budget            numeric,

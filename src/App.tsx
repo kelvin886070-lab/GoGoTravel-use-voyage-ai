@@ -6,7 +6,8 @@ import type { Trip, User, Document, VaultFolder, VaultFile, WishItem } from './t
 import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow } from './db-types';
 import { confirmDialog } from './components/ConfirmDialog';
 import { toast } from './components/Toast';
-import { geocodeWish, geocodeItems } from './services/geo';
+import { resolvePlace, resolvePlaces, coordsFromMapsUrl } from './services/geo';
+import { looksLikeMapsUrl } from './utils/mapsUrl';
 import type { ParsedWish } from './services/gemini';
 import { TripsView } from './views/TripsView/TripsView';
 import { ToolsView } from './views/ToolsView';
@@ -46,6 +47,7 @@ const rowToWish = (r: WishItemRow): WishItem => ({
     lat: r.lat ?? undefined,
     lng: r.lng ?? undefined,
     placeId: r.place_id || undefined,
+    needsLocationConfirm: !!r.needs_location_confirm,
     isFavorite: !!r.is_favorite,
     isPurchased: !!r.is_purchased,
     preferredSlot: (r.preferred_slot as WishItem['preferredSlot']) || undefined,
@@ -64,6 +66,7 @@ const wishToRow = (w: WishItem, userId: string) => ({
     lat: w.lat ?? null,
     lng: w.lng ?? null,
     place_id: w.placeId ?? null,
+    needs_location_confirm: !!w.needsLocationConfirm,
     is_favorite: !!w.isFavorite,
     is_purchased: !!w.isPurchased,
     preferred_slot: w.preferredSlot ?? null,
@@ -160,6 +163,15 @@ const App: React.FC = () => {
   useEffect(() => {
       document.documentElement.style.setProperty('--bottom-nav-h', selectedTrip ? '0px' : '70px');
   }, [selectedTrip]);
+
+  // 🔬 DEV：座標稽核。登入後於 Console 執行 `await __geoAudit()`（量測完可移除本區塊）
+  useEffect(() => {
+      if (!import.meta.env.DEV) return;
+      (window as unknown as { __geoAudit?: () => Promise<unknown> }).__geoAudit =
+          async () => (await import('./dev/geoAudit')).runGeoAudit(wishItems);
+      (window as unknown as { __geoBench?: () => Promise<unknown> }).__geoBench =
+          async () => (await import('./dev/geoBenchmark')).runGeoBenchmark(wishItems);
+  }, [wishItems]);
 
   const fetchTrips = async (userId?: string) => {
       const currentUserId = userId || user?.id;
@@ -416,21 +428,49 @@ const App: React.FC = () => {
   const saveWishItem = async (wish: WishItem, isNew: boolean) => {
       if (!user) return;
       let toSave = wish;
-      // 🧭 C0-4：place 類且尚無座標 → geocode 補上（失敗不擋存檔）
+      // 🧭 place 類且尚無座標 → 補座標（失敗不擋存檔）
       if (wish.type === 'place' && (wish.lat === undefined || wish.lng === undefined)) {
-          const query = [wish.title, wish.area, wish.country].filter(Boolean).join(' ');
-          const geo = await geocodeWish(query, wish.country);
-          if (geo) toSave = { ...wish, lat: geo.lat, lng: geo.lng, placeId: geo.placeId };
+          // 🧭 T0：優先從 Google Maps 連結抽座標（最高信心、免費）；沒有再走 T1 cascade
+          let done = false;
+          if (wish.url && looksLikeMapsUrl(wish.url)) {
+              const c = await coordsFromMapsUrl(wish.url);
+              if (c) { toSave = { ...wish, lat: c.lat, lng: c.lng, needsLocationConfirm: false }; done = true; }
+          }
+          if (!done) {
+              const query = wish.title;
+              const context = [wish.area, wish.city, wish.country].filter(Boolean).join(' ') || undefined;
+              const res = await resolvePlace(query, context);
+              if (res) toSave = { ...wish, lat: res.lat, lng: res.lng, placeId: res.placeId, needsLocationConfirm: res.needsConfirm };
+          }
       }
       setWishItems(prev => isNew ? [toSave, ...prev] : prev.map(w => w.id === toSave.id ? toSave : w));
       const { error } = await supabase.from('wish_items').upsert(wishToRow(toSave, user.id));
       if (error) { console.error('心願儲存失敗', error); toast('心願儲存失敗，請再試一次。'); fetchWishItems(); }
   };
 
+  // 🧭 T3：使用者在地圖上確認/校正座標 → 寫回並清掉「待確認」旗標
+  const confirmWishLocation = async (id: string, lat: number, lng: number) => {
+      setWishItems(prev => prev.map(w => w.id === id ? { ...w, lat, lng, needsLocationConfirm: false } : w));
+      const { error } = await supabase.from('wish_items')
+          .update({ lat, lng, needs_location_confirm: false }).eq('id', id);
+      if (error) { console.error('位置更新失敗', error); toast('位置更新失敗，請再試一次。'); fetchWishItems(); return; }
+      toast('位置已更新', 'success');
+  };
+
   const deleteWishItem = async (id: string) => {
       setWishItems(prev => prev.filter(w => w.id !== id));
       const { error } = await supabase.from('wish_items').delete().eq('id', id);
       if (error) { console.error('心願刪除失敗', error); fetchWishItems(); }
+  };
+
+  // 🗂️ 多選：批次刪除（樂觀更新 + 單次 .in 刪除）
+  const deleteWishItems = async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setWishItems(prev => prev.filter(w => !idSet.has(w.id)));
+      const { error } = await supabase.from('wish_items').delete().in('id', ids);
+      if (error) { console.error('批次刪除失敗', error); toast('刪除失敗，請再試一次。'); fetchWishItems(); return; }
+      toast(`已刪除 ${ids.length} 個收藏`, 'success');
   };
 
   // 🧱 C1-1 切換「我的最愛」（星星，置頂）
@@ -454,13 +494,13 @@ const App: React.FC = () => {
       if (!user || rows.length === 0) return;
       const geoQuery = (r: ParsedWish) => (r.address || [r.title, r.area, r.city, r.country].filter(Boolean).join(' ')).trim();
 
-      // 只對「地點」批次地理編碼
-      let geoMap: Record<string, { lat: number; lng: number; placeId?: string } | null> = {};
+      // 🧭 T1：只對「地點」批次 cascade（Geocoding 主 → 弱信心升級 Places）
+      let geoMap: Record<string, { lat: number; lng: number; placeId?: string; needsConfirm: boolean } | null> = {};
       const placeQueries = Array.from(new Set(rows.filter(r => r.type === 'place').map(geoQuery).filter(Boolean)));
       if (placeQueries.length > 0) {
           try {
-              geoMap = await geocodeItems(placeQueries.map(q => ({ location: q })));
-          } catch (e) { console.error('批次 geocode 失敗', e); }
+              geoMap = await resolvePlaces(placeQueries.map(q => ({ location: q })));
+          } catch (e) { console.error('批次 resolve-place 失敗', e); }
       }
 
       const now = Date.now();
@@ -481,6 +521,7 @@ const App: React.FC = () => {
               lat: geo?.lat,
               lng: geo?.lng,
               placeId: geo?.placeId,
+              needsLocationConfirm: geo?.needsConfirm || undefined,
               createdAt: new Date(now - i).toISOString(),
           };
       });
@@ -572,6 +613,8 @@ const App: React.FC = () => {
                     onOpenImport={() => setShowImportModal(true)}
                     onToggleFavorite={toggleWishFavorite}
                     onTogglePurchased={toggleWishPurchased}
+                    onConfirmLocation={confirmWishLocation}
+                    onDeleteWishes={deleteWishItems}
                 />
             )}
 
@@ -585,7 +628,7 @@ const App: React.FC = () => {
 
             {/* 心願編輯抽屜 (Modal) */}
             {editingWishItem !== undefined && (
-                <WishItemEditModal 
+                <WishItemEditModal
                     item={editingWishItem}
                     allWishItems={wishItems}
                     onSave={(savedItem) => {

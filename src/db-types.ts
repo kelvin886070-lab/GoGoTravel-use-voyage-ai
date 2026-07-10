@@ -37,6 +37,7 @@ export interface WishItemRow {
     lat: number | null;
     lng: number | null;
     place_id: string | null;
+    needs_location_confirm: boolean | null;   // 🧭 T1 弱信心座標待確認
     is_favorite: boolean | null;
     is_purchased: boolean | null;
     preferred_slot: string | null;

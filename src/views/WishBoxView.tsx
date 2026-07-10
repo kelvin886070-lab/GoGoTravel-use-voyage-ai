@@ -7,11 +7,14 @@ import { MarkerClusterer, type Marker } from '@googlemaps/markerclusterer';
 import {
     MapPin, ShoppingBag, Plus, ArrowLeft, Globe, Sparkles, X,
     Map as MapIcon, List, Navigation, Edit3, Check, Store,
-    Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star
+    Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star, MapPinPlus, Briefcase, Trash2
 } from 'lucide-react';
 import type { WishItem, WishItemType, Trip } from '../types';
 import { categoryKeyOf } from '../utils/wishCategory';
+import { useNearby, haversineKm, fmtDist } from '../hooks/useNearby';
 import { toast } from '../components/Toast';
+import { confirmDialog } from '../components/ConfirmDialog';
+import { LocationPinSheet } from '../components/wish/LocationPinSheet';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string;
 const MAP_ID = import.meta.env.VITE_GOOGLE_MAP_ID as string;
@@ -56,6 +59,8 @@ interface WishBoxViewProps {
     onOpenImport: () => void;
     onToggleFavorite: (id: string) => void;
     onTogglePurchased: (id: string) => void;
+    onConfirmLocation: (id: string, lat: number, lng: number) => void;   // 🧭 T3
+    onDeleteWishes: (ids: string[]) => void;   // 🗂️ 多選批次刪除
 }
 
 // 小進度環
@@ -187,11 +192,31 @@ const WishMap: React.FC<{ items: WishItem[]; selectedId: string | null; onSelect
 
 // 收藏卡（Level 2 清單與搜尋結果共用）
 //   本體點擊 = 選取（連動地圖）；筆 = 編輯；＋ = 加入行程
-const WishCard: React.FC<{ item: WishItem; selected?: boolean; onSelect: () => void; onEdit: () => void; onAdd: () => void; onFavorite: () => void; refCb?: (el: HTMLDivElement | null) => void }> = ({ item, selected, onSelect, onEdit, onAdd, onFavorite, refCb }) => {
+const WishCard: React.FC<{ item: WishItem; selected?: boolean; onSelect: () => void; onEdit?: () => void; onAdd: () => void; onFavorite: () => void; onConfirmLoc?: () => void; refCb?: (el: HTMLDivElement | null) => void; selectMode?: boolean; checked?: boolean; onToggleSelect?: () => void; onLongPress?: () => void }> = ({ item, selected, onSelect, onAdd, onFavorite, onConfirmLoc, refCb, selectMode, checked, onToggleSelect, onLongPress }) => {
     const { Icon } = categorize(item);
+    // 長按進入多選（僅在提供 onLongPress 的清單啟用；點擊誤觸由 longFired 抑制）
+    const pressTimer = useRef<number | undefined>(undefined);
+    const longFired = useRef(false);
+    const startPress = () => {
+        if (selectMode || !onLongPress) return;
+        longFired.current = false;
+        pressTimer.current = window.setTimeout(() => { longFired.current = true; onLongPress(); }, 500);
+    };
+    const cancelPress = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = undefined; } };
+    const handleClick = () => {
+        if (longFired.current) { longFired.current = false; return; }
+        if (selectMode) { onToggleSelect?.(); return; }
+        onSelect();
+    };
     return (
-        <div ref={refCb} onClick={onSelect}
-             className={`flex gap-3 bg-white rounded-2xl p-3 shadow-sm border cursor-pointer transition-all ${selected ? 'border-[#C0573E] ring-2 ring-[#C0573E]/20' : 'border-white hover:border-[#45846D]/30'}`}>
+        <div ref={refCb} onClick={handleClick}
+             onPointerDown={startPress} onPointerUp={cancelPress} onPointerLeave={cancelPress} onPointerCancel={cancelPress}
+             className={`flex gap-3 rounded-2xl p-3 shadow-sm border cursor-pointer transition-all ${selectMode && checked ? 'bg-[#EDF2F0] border-[#45846D]' : selected ? 'bg-white border-[#C0573E] ring-2 ring-[#C0573E]/20' : 'bg-white border-white hover:border-[#45846D]/40 active:scale-[0.99]'}`}>
+            {selectMode && (
+                <span className={`self-center w-[26px] h-[26px] rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${checked ? 'bg-[#45846D] text-white' : 'border-2 border-[#D3D0C6]'}`}>
+                    {checked && <Check className="w-4 h-4" />}
+                </span>
+            )}
             <div className="w-14 h-14 rounded-xl overflow-hidden bg-[#E9E5DC] flex-shrink-0 flex items-center justify-center text-[#45846D]">
                 {item.customImage ? <img src={item.customImage} alt={item.title} className="w-full h-full object-cover" /> : <Icon className="w-6 h-6" />}
             </div>
@@ -204,27 +229,32 @@ const WishCard: React.FC<{ item: WishItem; selected?: boolean; onSelect: () => v
                     {item.area && <span className="text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded-md">{item.area}</span>}
                     {(item.tags || []).slice(0, 2).map(t => <span key={t} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${getTagColor(t)}`}>#{t}</span>)}
                 </div>
+                {item.needsLocationConfirm && (
+                    <button onClick={(e) => { e.stopPropagation(); onConfirmLoc?.(); }}
+                            className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-bold text-[#854F0B] bg-[#FAEEDA] px-2 py-0.5 rounded-full active:scale-95 transition-transform">
+                        <MapPinPlus className="w-3 h-3" /> 位置待確認・點我修正
+                    </button>
+                )}
             </div>
-            <div className="flex items-center gap-1.5 self-center flex-shrink-0">
-                <button onClick={(e) => { e.stopPropagation(); onFavorite(); }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${item.isFavorite ? 'bg-[#F5B301]/15 text-[#F5B301]' : 'bg-gray-100 text-gray-400 hover:text-gray-600'}`}>
-                    <Star className="w-4 h-4" fill={item.isFavorite ? 'currentColor' : 'none'} />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors">
-                    <Edit3 className="w-4 h-4" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); onAdd(); }}
-                        className="w-8 h-8 rounded-full bg-[#EDF2F0] hover:bg-[#45846D] text-[#45846D] hover:text-white flex items-center justify-center transition-colors">
-                    <Plus className="w-4 h-4" />
-                </button>
-            </div>
+            {/* 🎨 A 卡：拿掉冗餘的筆（點卡片即編輯）＋「＋」改成帶字的主行動「加入行程」。多選模式時整組收起。 */}
+            {!selectMode && (
+                <div className="flex items-center gap-2 self-center flex-shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); onFavorite(); }} aria-label="加入最愛"
+                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${item.isFavorite ? 'bg-[#F5B301]/15 text-[#F5B301]' : 'bg-gray-100 text-gray-400 hover:text-gray-600'}`}>
+                        <Star className="w-[18px] h-[18px]" fill={item.isFavorite ? 'currentColor' : 'none'} />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); onAdd(); }}
+                            className="inline-flex items-center gap-1.5 bg-[#45846D] hover:bg-[#3B7460] text-white text-xs font-bold pl-2.5 pr-3 py-2 rounded-full transition-colors active:scale-95">
+                        <Briefcase className="w-3.5 h-3.5" /> 加入行程
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
 
 export const WishBoxView: React.FC<WishBoxViewProps> = ({
-    wishItems, trips, onAddWishToTrip, onEditClick, onOpenImport, onToggleFavorite, onTogglePurchased
+    wishItems, trips, onAddWishToTrip, onEditClick, onOpenImport, onToggleFavorite, onTogglePurchased, onConfirmLocation, onDeleteWishes
 }) => {
     const [activeTab, setActiveTab] = useState<WishItemType>('place');
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
@@ -236,6 +266,35 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
     const [searchOpen, setSearchOpen] = useState(false);
     const [query, setQuery] = useState('');
     const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+    // 🧭 C2-1 附近雷達
+    const [nearbyMode, setNearbyMode] = useState(false);
+    // 🧭 T3 位置待確認：篩選 chip + 拖釘面板
+    const [confirmFilter, setConfirmFilter] = useState(false);
+    const [pinEditWish, setPinEditWish] = useState<WishItem | null>(null);
+    // 🗂️ 多選模式：批次加入行程
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [batchInjectOpen, setBatchInjectOpen] = useState(false);
+    const enterSelect = (seedId?: string) => { setSelectMode(true); setSelectedIds(seedId ? new Set([seedId]) : new Set()); };
+    const exitSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
+    const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    // 破壞性、須確認：批次刪除選取的收藏
+    const handleBatchDelete = async () => {
+        if (selectedIds.size === 0) return;
+        const ok = await confirmDialog({ title: '刪除收藏', message: `確定刪除選取的 ${selectedIds.size} 個收藏？此動作無法復原。`, confirmText: '刪除', tone: 'danger' });
+        if (!ok) return;
+        onDeleteWishes([...selectedIds]);
+        exitSelect();
+    };
+    const nearby = useNearby();
+    const toggleNearby = () => { setNearbyMode(m => { const next = !m; if (next) nearby.locate(); return next; }); };
+    const nearbyItems = useMemo(() => {
+        if (!nearby.pos) return [];
+        return wishItems
+            .filter(w => w.type === 'place' && w.lat != null && w.lng != null)
+            .map(w => ({ w, km: haversineKm(nearby.pos!, { lat: w.lat as number, lng: w.lng as number }) }))
+            .sort((a, b) => a.km - b.km);
+    }, [wishItems, nearby.pos]);
 
     useEffect(() => {
         if (selectedPin) cardRefs.current[selectedPin]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -284,25 +343,33 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
 
     // Level 2
     const countryItems = useMemo(() => tabItems.filter(it => (it.country || '其他') === selectedCountry), [tabItems, selectedCountry]);
+    // 🧭 T3 該國家內「位置待確認」數（篩選 chip 用；置於國家層 全部/城市 那排）
+    const countryNeedsConfirm = useMemo(() => countryItems.filter(w => w.needsLocationConfirm).length, [countryItems]);
+    // 修完歸零 → 自動收起篩選
+    useEffect(() => { if (confirmFilter && countryNeedsConfirm === 0) setConfirmFilter(false); }, [confirmFilter, countryNeedsConfirm]);
+    // 多選：被選心願（批次匯入用）；切到地圖模式自動退出多選
+    const selectedWishes = useMemo(() => wishItems.filter(w => selectedIds.has(w.id)), [wishItems, selectedIds]);
+    useEffect(() => { if (viewMode === 'map' && selectMode) exitSelect(); }, [viewMode, selectMode]);
     const cityChips = useMemo(() => {
         const m: Record<string, number> = {};
         countryItems.forEach(it => { if (it.city) m[it.city] = (m[it.city] || 0) + 1; });
         return Object.entries(m).sort((a, b) => b[1] - a[1]);
     }, [countryItems]);
     const displayItems = useMemo(() => {
-        const base = selectedCity ? countryItems.filter(it => it.city === selectedCity) : countryItems;
+        let base = selectedCity ? countryItems.filter(it => it.city === selectedCity) : countryItems;
+        if (confirmFilter) base = base.filter(it => it.needsLocationConfirm);   // 🧭 T3 只看待確認
         return sortItems(base);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [countryItems, selectedCity, sortBy]);
+    }, [countryItems, selectedCity, sortBy, confirmFilter]);
 
-    const openCountry = (c: string) => { setSelectedCountry(c); setSelectedCity(null); setSelectedPin(null); setViewMode('map'); };
-    const backToCountries = () => { setSelectedCountry(null); setSelectedCity(null); setSelectedPin(null); };
+    const openCountry = (c: string) => { setSelectedCountry(c); setSelectedCity(null); setSelectedPin(null); setViewMode('map'); setConfirmFilter(false); exitSelect(); };
+    const backToCountries = () => { setSelectedCountry(null); setSelectedCity(null); setSelectedPin(null); setConfirmFilter(false); exitSelect(); };
 
     // ---- Level 2 城市中樞 ----
     if (selectedCountry) {
         const isPlace = activeTab === 'place';
         return (
-            <div className="h-full flex flex-col w-full bg-[#E4E2DD]">
+            <div className="h-full flex flex-col w-full bg-[#E4E2DD] relative">
                 <div className="flex-shrink-0 pt-14 pb-3 px-5 bg-white/95 backdrop-blur-xl sticky top-0 z-40 border-b border-black/5">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 min-w-0">
@@ -320,15 +387,40 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                         )}
                     </div>
 
-                    <div className="flex items-center gap-2 pt-3">
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1 -mx-1 px-1">
-                            <button onClick={() => setSelectedCity(null)} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${!selectedCity ? 'bg-[#45846D] text-white' : 'bg-[#F1EFE8] text-gray-600'}`}>全部 · {countryItems.length}</button>
-                            {cityChips.map(([city, n]) => (
-                                <button key={city} onClick={() => setSelectedCity(city)} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${selectedCity === city ? 'bg-[#45846D] text-white' : 'bg-[#F1EFE8] text-gray-600'}`}>{city} · {n}</button>
-                            ))}
+                    {selectMode ? (
+                        <div className="flex items-center justify-between pt-3">
+                            <button onClick={exitSelect} className="text-sm text-gray-500 font-medium px-1">取消</button>
+                            <span className="text-sm font-bold text-[#1D1D1B]">已選 {selectedIds.size} 項</span>
+                            <button onClick={() => {
+                                        const allSel = displayItems.length > 0 && displayItems.every(w => selectedIds.has(w.id));
+                                        setSelectedIds(allSel ? new Set() : new Set(displayItems.map(w => w.id)));
+                                    }}
+                                    className="text-sm text-[#45846D] font-bold px-1">
+                                {displayItems.length > 0 && displayItems.every(w => selectedIds.has(w.id)) ? '取消全選' : '全選'}
+                            </button>
                         </div>
-                        <div className="flex-shrink-0"><SortButton /></div>
-                    </div>
+                    ) : (
+                        <div className="flex items-center gap-2 pt-3">
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1 -mx-1 px-1">
+                                <button onClick={() => { setSelectedCity(null); setConfirmFilter(false); }} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${!selectedCity && !confirmFilter ? 'bg-[#45846D] text-white' : 'bg-[#F1EFE8] text-gray-600'}`}>全部 · {countryItems.length}</button>
+                                {isPlace && countryNeedsConfirm > 0 && (
+                                    <button onClick={() => { setSelectedCity(null); setConfirmFilter(v => !v); }}
+                                            className={`flex-shrink-0 inline-flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${confirmFilter ? 'bg-[#854F0B] text-white' : 'bg-[#FAEEDA] text-[#854F0B]'}`}>
+                                        <MapPinPlus className="w-3.5 h-3.5" /> 位置待確認 · {countryNeedsConfirm}
+                                    </button>
+                                )}
+                                {cityChips.map(([city, n]) => (
+                                    <button key={city} onClick={() => { setSelectedCity(city); setConfirmFilter(false); }} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${selectedCity === city && !confirmFilter ? 'bg-[#45846D] text-white' : 'bg-[#F1EFE8] text-gray-600'}`}>{city} · {n}</button>
+                                ))}
+                            </div>
+                            <div className="flex-shrink-0 flex items-center gap-2">
+                                <SortButton />
+                                {isPlace && viewMode === 'list' && displayItems.length > 0 && (
+                                    <button onClick={() => enterSelect()} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-white px-3 py-1.5 rounded-full border border-gray-200">選取</button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {isPlace && viewMode === 'map' && (
@@ -362,7 +454,11 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                                           onSelect={() => (viewMode === 'map') ? setSelectedPin(item.id) : onEditClick(item)}
                                           onEdit={() => onEditClick(item)}
                                           onAdd={() => setActionWish(item)}
-                                          onFavorite={() => onToggleFavorite(item.id)} />
+                                          onFavorite={() => onToggleFavorite(item.id)}
+                                          onConfirmLoc={() => setPinEditWish(item)}
+                                          selectMode={selectMode} checked={selectedIds.has(item.id)}
+                                          onToggleSelect={() => toggleSelect(item.id)}
+                                          onLongPress={() => enterSelect(item.id)} />
                             ))}
                         </div>
                     ) : (
@@ -405,7 +501,25 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                     </div>
                 )}
 
-                {actionWish && <InjectSheet wish={actionWish} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
+                {actionWish && <InjectSheet wishes={[actionWish]} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
+
+                {/* 🗂️ 多選底部動作條（釘在五分頁上方）：綠色主行動＝加入行程；次要破壞性＝刪除 */}
+                {selectMode && (
+                    <div className="fixed left-0 right-0 z-[60] px-4 flex justify-center"
+                         style={{ bottom: 'calc(var(--bottom-nav-h, 70px) + env(safe-area-inset-bottom) + 10px)' }}>
+                        <div className="w-full max-w-md flex items-center gap-2.5">
+                            <button disabled={selectedIds.size === 0} onClick={handleBatchDelete} aria-label="刪除選取的收藏"
+                                    className="w-14 h-[52px] rounded-2xl bg-white border border-[#EAD9D2] text-[#C0573E] flex items-center justify-center shadow-xl disabled:opacity-40 active:scale-[0.96] transition-all flex-shrink-0">
+                                <Trash2 className="w-5 h-5" />
+                            </button>
+                            <button disabled={selectedIds.size === 0} onClick={() => setBatchInjectOpen(true)}
+                                    className="flex-1 py-3.5 rounded-2xl bg-[#45846D] text-white font-bold flex items-center justify-center gap-2 shadow-xl disabled:opacity-40 active:scale-[0.98] transition-all">
+                                <Briefcase className="w-5 h-5" /> 加入行程 · {selectedIds.size}
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {batchInjectOpen && <InjectSheet wishes={selectedWishes} trips={trips} onClose={() => setBatchInjectOpen(false)} onDone={exitSelect} onInject={onAddWishToTrip} />}
             </div>
         );
     }
@@ -420,10 +534,18 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                         <p className="text-[10px] font-black tracking-[0.2em] text-[#45846D] mb-1">WISH BOX</p>
                         <h1 className="text-3xl font-black font-serif tracking-tight text-[#1D1D1B]">心願盒</h1>
                     </div>
-                    <button onClick={() => { setSearchOpen(o => !o); if (searchOpen) setQuery(''); }}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${searchOpen ? 'bg-[#45846D] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>
-                        {searchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {activeTab === 'place' && (
+                            <button onClick={toggleNearby}
+                                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${nearbyMode ? 'bg-[#45846D] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>
+                                <Navigation className="w-5 h-5" />
+                            </button>
+                        )}
+                        <button onClick={() => { setSearchOpen(o => !o); if (searchOpen) setQuery(''); }}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${searchOpen ? 'bg-[#45846D] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>
+                            {searchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+                        </button>
+                    </div>
                 </div>
 
                 {searchOpen ? (
@@ -442,7 +564,43 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pt-4 pb-32 no-scrollbar">
-                {searching ? (
+                {nearbyMode && activeTab === 'place' ? (
+                    <div>
+                        {nearby.status === 'loading' && <div className="text-center text-gray-400 text-sm py-16">定位中…</div>}
+                        {(nearby.status === 'denied' || nearby.status === 'error') && (
+                            <div className="text-center text-gray-400 text-sm py-16 px-6 flex flex-col items-center gap-3">
+                                {nearby.status === 'denied' ? '請允許定位權限，才能顯示附近的收藏。' : '無法取得目前位置。'}
+                                <button onClick={() => nearby.locate()} className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#45846D] text-white text-xs font-bold active:scale-95 transition-transform"><Navigation className="w-3.5 h-3.5" />重新定位</button>
+                            </div>
+                        )}
+                        {nearby.status === 'ready' && (
+                            nearbyItems.length === 0 ? (
+                                <div className="text-center text-gray-400 text-sm py-16">附近沒有可定位的收藏地點。</div>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-gray-500 mb-3">依距離排序・附近 {nearbyItems.filter(x => x.km <= 5).length} 個在 5 km 內</p>
+                                    <div className="space-y-2">
+                                        {nearbyItems.map(({ w, km }) => {
+                                            const { Icon, color } = categorize(w);
+                                            const near = km <= 5;
+                                            return (
+                                                <div key={w.id} onClick={() => onEditClick(w)} className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-sm cursor-pointer active:scale-[0.99] transition-transform">
+                                                    <span className="w-11 h-11 rounded-xl bg-[#E9E5DC] flex items-center justify-center flex-shrink-0" style={{ color }}><Icon className="w-5 h-5" /></span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-[#1D1D1B] truncate">{w.title}</p>
+                                                        <p className="text-[11px] text-gray-400 mt-0.5 truncate">{[w.country, w.city, w.area].filter(Boolean).join('・') || '未分區'}</p>
+                                                    </div>
+                                                    <span className={`font-mono text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 ${near ? 'text-[#45846D] bg-[#EDF2F0]' : 'text-gray-400 bg-[#F1EFE8]'}`}>{fmtDist(km)}</span>
+                                                    <button onClick={(e) => { e.stopPropagation(); setActionWish(w); }} className="w-8 h-8 rounded-full bg-[#EDF2F0] hover:bg-[#45846D] text-[#45846D] hover:text-white flex items-center justify-center flex-shrink-0 transition-colors"><Plus className="w-4 h-4" /></button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )
+                        )}
+                    </div>
+                ) : searching ? (
                     <div>
                         <div className="flex items-center justify-between mb-3">
                             <p className="text-xs font-bold text-gray-500">找到 {searchResults.length} 個結果</p>
@@ -453,7 +611,7 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                         ) : (
                             <div className="space-y-2.5">
                                 {sortItems(searchResults).map(item => (
-                                    <WishCard key={item.id} item={item} onSelect={() => onEditClick(item)} onEdit={() => onEditClick(item)} onAdd={() => setActionWish(item)} onFavorite={() => onToggleFavorite(item.id)} />
+                                    <WishCard key={item.id} item={item} onSelect={() => onEditClick(item)} onEdit={() => onEditClick(item)} onAdd={() => setActionWish(item)} onFavorite={() => onToggleFavorite(item.id)} onConfirmLoc={() => setPinEditWish(item)} />
                                 ))}
                             </div>
                         )}
@@ -511,7 +669,18 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                 )}
             </div>
 
-            {actionWish && <InjectSheet wish={actionWish} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
+            {actionWish && <InjectSheet wishes={[actionWish]} trips={trips} onClose={() => setActionWish(null)} onInject={onAddWishToTrip} />}
+
+            {/* 🧭 T3 拖釘確認位置 */}
+            <LocationPinSheet
+                key={pinEditWish?.id}
+                open={!!pinEditWish}
+                title={pinEditWish?.title || ''}
+                area={pinEditWish?.area || pinEditWish?.city}
+                initial={{ lat: pinEditWish?.lat, lng: pinEditWish?.lng }}
+                onConfirm={(lat, lng) => { if (pinEditWish) onConfirmLocation(pinEditWish.id, lat, lng); setPinEditWish(null); }}
+                onClose={() => setPinEditWish(null)}
+            />
 
             {/* 單一新增 FAB → 開「新增收藏」面板 */}
             <div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] right-5 z-[60]">
@@ -523,8 +692,11 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
     );
 };
 
-// 加入至現有行程的底部選單
-const InjectSheet: React.FC<{ wish: WishItem; trips: Trip[]; onClose: () => void; onInject: (w: WishItem, tripId: string) => void }> = ({ wish, trips, onClose, onInject }) => (
+// 加入至現有行程的底部選單（支援單筆或批次）
+const InjectSheet: React.FC<{ wishes: WishItem[]; trips: Trip[]; onClose: () => void; onInject: (w: WishItem, tripId: string) => void; onDone?: () => void }> = ({ wishes, trips, onClose, onInject, onDone }) => {
+    const n = wishes.length;
+    const label = n === 1 ? `「${wishes[0].title}」` : `${n} 個地點`;
+    return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4">
         <div className="absolute inset-0 bg-[#1D1D1B]/40 backdrop-blur-sm" onClick={onClose} />
         <div className="w-full max-w-sm bg-[#F2F2F2] rounded-[32px] p-6 relative z-10 animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
@@ -537,7 +709,7 @@ const InjectSheet: React.FC<{ wish: WishItem; trips: Trip[]; onClose: () => void
                     <p className="text-sm font-bold text-gray-400 text-center py-6 border-2 border-dashed border-gray-200 rounded-[24px]">目前沒有正在規劃的行程</p>
                 ) : trips.map(t => (
                     <button key={t.id}
-                            onClick={() => { onInject(wish, t.id); onClose(); toast(`已將「${wish.title}」送入 ${t.destination} 暫存區`, 'success'); }}
+                            onClick={() => { wishes.forEach(w => onInject(w, t.id)); onClose(); onDone?.(); toast(`已將${label}送入 ${t.destination} 暫存區`, 'success'); }}
                             className="w-full flex items-center justify-between p-4 bg-white rounded-2xl hover:border-[#45846D] border-2 border-transparent hover:shadow-md transition-all active:scale-[0.98] group">
                         <div className="flex flex-col items-start">
                             <span className="font-bold text-[#1D1D1B] text-[15px]">{t.destination}</span>
@@ -551,4 +723,5 @@ const InjectSheet: React.FC<{ wish: WishItem; trips: Trip[]; onClose: () => void
             </div>
         </div>
     </div>
-);
+    );
+};

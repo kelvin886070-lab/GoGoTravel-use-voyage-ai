@@ -1,13 +1,16 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
     X, MapPin, ShoppingBag, Camera, Store, Trash2,
-    Link as LinkIcon, Tag as TagIcon, Save, Globe
+    Link as LinkIcon, Tag as TagIcon, Save, Globe, MapPinPlus, MapPinCheck
 } from 'lucide-react';
 import type { WishItem, WishItemType } from '../../../types';
 import { toast } from '../../../components/Toast';
 import { confirmDialog } from '../../../components/ConfirmDialog';
 import { CURRENCY_SYMBOLS } from '../shared';
 import { uploadTripImage, signPaths } from '../../../services/storage';
+import { LocationPinSheet } from '../../../components/wish/LocationPinSheet';
+import { coordsFromMapsUrl } from '../../../services/geo';
+import { looksLikeMapsUrl, parseMapsUrl, isShortMapsUrl } from '../../../utils/mapsUrl';
 
 interface WishItemEditModalProps {
     item?: WishItem | null; // 傳入 item 代表編輯，不傳代表新增
@@ -47,6 +50,25 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
     // UX 狀態
     const [showAreaDropdown, setShowAreaDropdown] = useState(false);
     const [tagInput, setTagInput] = useState('');
+    const [pinOpen, setPinOpen] = useState(false);   // 🧭 T3 拖釘校正
+    const [urlPin, setUrlPin] = useState<'idle' | 'loading' | 'fail'>('idle');   // 🧭 T0 連結定位狀態（安靜）
+
+    // 🧭 T0（B 版｜全自動＋安靜）：完整網址打字/貼上即時解析；短網址離開欄位時背景解析
+    const handleUrlChange = (v: string) => {
+        setUrlPin('idle');
+        const local = parseMapsUrl(v);
+        setEdited(prev => local
+            ? { ...prev, url: v, lat: local.lat, lng: local.lng, needsLocationConfirm: false }
+            : { ...prev, url: v });
+    };
+    const handleUrlBlur = async () => {
+        const u = edited.url || '';
+        if (!looksLikeMapsUrl(u) || parseMapsUrl(u) || !isShortMapsUrl(u)) return;  // 完整網址已即時處理
+        setUrlPin('loading');
+        const c = await coordsFromMapsUrl(u);
+        if (c) { setEdited(prev => ({ ...prev, lat: c.lat, lng: c.lng, needsLocationConfirm: false })); setUrlPin('idle'); }
+        else setUrlPin('fail');
+    };
 
     // 🛡️ 防禦 1：鍵盤防遮擋 (Keyboard Avoidance)
     const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -189,8 +211,33 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                             {/* 網址 */}
                             <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
                                 <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1"><LinkIcon className="w-3 h-3" /> 網址連結</label>
-                                <input type="url" onFocus={handleFocus} value={edited.url || ''} onChange={e => handleChange('url', e.target.value)} placeholder="貼上 Google Maps / IG 連結…" className="w-full bg-transparent text-sm font-medium text-blue-500 outline-none pt-0.5" />
+                                <input type="url" onFocus={handleFocus} onBlur={handleUrlBlur} value={edited.url || ''} onChange={e => handleUrlChange(e.target.value)} placeholder="貼上 Google Maps / IG 連結…" className="w-full bg-transparent text-sm font-medium text-blue-500 outline-none pt-0.5" />
+                                {/* 🧭 T0（B 版）：連結定位狀態——成功安靜（由下方地圖位置列反映），只在讀取/失敗給淡提示 */}
+                                {urlPin === 'loading' && <p className="mt-1.5 text-[11px] text-gray-400">讀取連結位置中…</p>}
+                                {urlPin === 'fail' && <p className="mt-1.5 text-[11px] text-gray-400">連結讀不到座標，可用下方地圖定位</p>}
                             </div>
+                            {/* 🧭 T3 地圖位置：三段式視覺階層——待確認(吵)／已定位(安靜)／未定位(中性) */}
+                            {edited.needsLocationConfirm ? (
+                                <button onClick={() => setPinOpen(true)} className="w-full bg-[#FAEEDA] rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition-transform">
+                                    <span className="w-9 h-9 rounded-xl bg-white/70 text-[#854F0B] flex items-center justify-center flex-shrink-0"><MapPinPlus className="w-4 h-4" /></span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-bold text-[#B0894B] tracking-wider">地圖位置</p>
+                                        <p className="text-sm font-bold text-[#854F0B]">位置待確認・點我在地圖上修正</p>
+                                    </div>
+                                </button>
+                            ) : edited.lat != null ? (
+                                <button onClick={() => setPinOpen(true)} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#45846D] px-1 py-0.5 transition-colors">
+                                    <MapPinCheck className="w-3.5 h-3.5 text-[#45846D]" /> 已在地圖上定位 · <span className="underline underline-offset-2">微調位置</span>
+                                </button>
+                            ) : (
+                                <button onClick={() => setPinOpen(true)} className="w-full bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 text-left active:scale-[0.99] transition-transform">
+                                    <span className="w-9 h-9 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center flex-shrink-0"><MapPinPlus className="w-4 h-4" /></span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-bold text-[#B0AA9E] tracking-wider">地圖位置</p>
+                                        <p className="text-sm font-bold text-gray-400">尚未定位・點我在地圖上指定</p>
+                                    </div>
+                                </button>
+                            )}
                             {/* 希望時段（選填，一鍵順路優先尊重） */}
                             <div className="bg-white rounded-2xl px-4 py-2.5 shadow-sm">
                                 <label className="text-[10px] font-bold text-[#B0AA9E] tracking-wider flex items-center gap-1">希望時段（選填）</label>
@@ -282,6 +329,16 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                     </button>
                 </div>
             </div>
+
+            {/* 🧭 T3 拖釘校正（更新草稿，按儲存才寫回） */}
+            <LocationPinSheet
+                open={pinOpen}
+                title={edited.title || '這個地點'}
+                area={edited.area || edited.city}
+                initial={{ lat: edited.lat, lng: edited.lng }}
+                onConfirm={(lat, lng) => { setEdited(prev => ({ ...prev, lat, lng, needsLocationConfirm: false })); setPinOpen(false); toast('位置已更新，記得按儲存', 'success'); }}
+                onClose={() => setPinOpen(false)}
+            />
         </div>
     );
 };

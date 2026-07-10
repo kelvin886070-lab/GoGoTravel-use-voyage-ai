@@ -5,7 +5,7 @@ import {
     Train, Plane, Ticket, Wallet, 
     MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
     Briefcase, PlusCircle, Share, ListChecks, X, ShoppingBag,
-    Check, Trash2, Undo, Clock, ChevronDown, CalendarPlus
+    Check, Trash2, Undo, Clock, ChevronDown, CalendarPlus, Navigation
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem, TripTodoItem } from '../../types';
@@ -13,6 +13,7 @@ import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
 import { planArrangement, activityTypeOf } from '../../services/scheduler';
 import { TimePickerWheel } from '../../components/common/TimePickerWheel';
+import { useNearby, haversineKm, fmtDist } from '../../hooks/useNearby';
 
 import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
 
@@ -151,8 +152,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
 
     // 🧱 C1-2 從我的收藏加入（多選挑選器）
     const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
-    const [pickerScope, setPickerScope] = useState<'trip' | 'all'>('trip');
+    const [pickerScope, setPickerScope] = useState<'trip' | 'all' | 'nearby'>('trip');
     const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
+    const pickerNearby = useNearby();
 
     // 🧭 C1-3 一鍵順路排入
     const [arrangeOpen, setArrangeOpen] = useState(false);
@@ -180,12 +182,21 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         });
     };
     const stagedIds = useMemo(() => new Set((trip.stagedWishes || []).map(w => w.id)), [trip.stagedWishes]);
+    // 附近範圍：依距離排序，並記下每點距離
+    const nearbyKm = useMemo(() => {
+        const m: Record<string, number> = {};
+        if (pickerScope !== 'nearby' || !pickerNearby.pos) return m;
+        wishItems.forEach(w => { if (w.type === wishTrayTab && w.lat != null && w.lng != null) m[w.id] = haversineKm(pickerNearby.pos!, { lat: w.lat as number, lng: w.lng as number }); });
+        return m;
+    }, [wishItems, wishTrayTab, pickerScope, pickerNearby.pos]);
     const pickerItems = useMemo(() => {
-        return wishItems
-            .filter(w => w.type === wishTrayTab)
-            .filter(w => pickerScope === 'all' || matchesTrip(w));
+        const base = wishItems.filter(w => w.type === wishTrayTab);
+        if (pickerScope === 'nearby') {
+            return base.filter(w => nearbyKm[w.id] != null).sort((a, b) => nearbyKm[a.id] - nearbyKm[b.id]);
+        }
+        return base.filter(w => pickerScope === 'all' || matchesTrip(w));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [wishItems, wishTrayTab, pickerScope, trip.destination]);
+    }, [wishItems, wishTrayTab, pickerScope, trip.destination, nearbyKm]);
 
     const togglePick = (id: string) => setPickerSelected(prev => {
         const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
@@ -982,11 +993,21 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                             <div className="flex gap-2">
                                 <button onClick={() => setPickerScope('trip')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${pickerScope === 'trip' ? 'bg-[#45846D] text-white' : 'bg-[#EAE6DD] text-gray-600'}`}>此行程 · {trip.destination}</button>
                                 <button onClick={() => setPickerScope('all')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${pickerScope === 'all' ? 'bg-[#45846D] text-white' : 'bg-[#EAE6DD] text-gray-600'}`}>全部收藏</button>
+                                {wishTrayTab === 'place' && (
+                                    <button onClick={() => { setPickerScope('nearby'); pickerNearby.locate(); }} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1 ${pickerScope === 'nearby' ? 'bg-[#45846D] text-white' : 'bg-[#EAE6DD] text-gray-600'}`}><Navigation className="w-3 h-3" />附近</button>
+                                )}
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto no-scrollbar px-4 space-y-2">
-                            {pickerItems.length === 0 ? (
-                                <div className="text-center text-gray-400 text-sm py-16">{pickerScope === 'trip' ? `沒有與「${trip.destination}」相關的收藏，試試「全部收藏」` : '你的收藏是空的'}</div>
+                            {pickerScope === 'nearby' && pickerNearby.status === 'loading' ? (
+                                <div className="text-center text-gray-400 text-sm py-16 flex flex-col items-center gap-2"><Navigation className="w-6 h-6 animate-pulse text-[#45846D]" />定位中…</div>
+                            ) : pickerScope === 'nearby' && (pickerNearby.status === 'denied' || pickerNearby.status === 'error') ? (
+                                <div className="text-center text-gray-400 text-sm py-16 flex flex-col items-center gap-3">
+                                    {pickerNearby.status === 'denied' ? '未取得定位權限，請在瀏覽器設定開啟' : '無法定位，請稍後再試'}
+                                    <button onClick={() => pickerNearby.locate()} className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#45846D] text-white text-xs font-bold active:scale-95 transition-transform"><Navigation className="w-3.5 h-3.5" />重新定位</button>
+                                </div>
+                            ) : pickerItems.length === 0 ? (
+                                <div className="text-center text-gray-400 text-sm py-16">{pickerScope === 'trip' ? `沒有與「${trip.destination}」相關的收藏，試試「全部收藏」` : pickerScope === 'nearby' ? '附近沒有已收藏且含座標的地點' : '你的收藏是空的'}</div>
                             ) : pickerItems.map(w => {
                                 const added = stagedIds.has(w.id);
                                 const picked = pickerSelected.has(w.id);
@@ -996,7 +1017,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                         {added ? (
                                             <span className="text-[10px] font-bold text-[#45846D] bg-[#EDF2F0] px-2 py-1 rounded-md flex-shrink-0">已加入</span>
                                         ) : (
-                                            <span className={`w-[22px] h-[22px] rounded-[7px] flex items-center justify-center flex-shrink-0 ${picked ? 'bg-[#45846D] text-white' : 'border-[1.5px] border-gray-300'}`}>{picked && <Check className="w-3.5 h-3.5" />}</span>
+                                            <span className={`w-[24px] h-[24px] rounded-full flex items-center justify-center flex-shrink-0 ${picked ? 'bg-[#45846D] text-white' : 'border-2 border-[#D3D0C6]'}`}>{picked && <Check className="w-3.5 h-3.5" />}</span>
                                         )}
                                         <span className="w-11 h-11 rounded-xl overflow-hidden bg-[#E9E5DC] flex-shrink-0 flex items-center justify-center text-[#45846D]">
                                             {w.customImage ? <img src={w.customImage} alt={w.title} className="w-full h-full object-cover" /> : (w.type === 'place' ? <MapPin className="w-5 h-5" /> : <ShoppingBag className="w-5 h-5" />)}
@@ -1004,6 +1025,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-[#1D1D1B] truncate">{w.title}</p>
                                             <div className="flex gap-1 mt-1">
+                                                {pickerScope === 'nearby' && nearbyKm[w.id] != null && <span className="text-[10px] font-bold text-white bg-[#45846D] px-2 py-0.5 rounded-md flex items-center gap-0.5"><Navigation className="w-2.5 h-2.5" />{fmtDist(nearbyKm[w.id])}</span>}
                                                 {w.city && <span className="text-[10px] font-bold text-[#57534E] bg-[#EAE6DD] px-2 py-0.5 rounded-md">{w.city}</span>}
                                                 {w.area && <span className="text-[10px] font-bold text-[#3B6D11] bg-[#EAF3DE] px-2 py-0.5 rounded-md">{w.area}</span>}
                                             </div>

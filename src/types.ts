@@ -173,6 +173,7 @@ export interface WishItem {
   lat?: number;
   lng?: number;
   placeId?: string;
+  needsLocationConfirm?: boolean;   // 🧭 T1：座標來自弱信心來源，待使用者在地圖上確認（T3 用）
   isFavorite?: boolean;   // 🧱 C1-1 我的最愛（星星，置頂）
   preferredSlot?: 'morning' | 'afternoon' | 'evening';   // 🧱 C1-3 希望時段（選填，一鍵順路優先尊重）
 
