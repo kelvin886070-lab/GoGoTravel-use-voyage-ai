@@ -2,7 +2,7 @@
 // 🛣️ Phase C：自動連接卡的辨識 / strip / 冪等重生。
 // 「編輯即自動接路」的核心：任何結構改動後 strip 掉舊的自動連接卡、依相鄰真站重生，
 //   再交給 reconcile 跑時間骨牌。連接卡＝衍生的邊，不是使用者心血。
-import type { Activity, TripDay } from '../../types';
+import type { Activity, TripDay, TransportMode } from '../../types';
 import { activitySource } from '../../types';
 import { estimateLeg, legModeLabel, legDurationStr, type Coord } from '../routing';
 
@@ -51,11 +51,11 @@ export function rebuildConnectorsInList(activities: Activity[]): Activity[] {
         if (!next) break;
         // 相鄰兩張都是「定點」才需要一段移動（與舊 ensureGapConnectors 一致）
         if (isStay(cur) && isStay(next)) {
-            let mode = 'walk';
+            let mode: TransportMode = 'walk';
             let durMin = 15;   // 缺座標的預設（沿用舊行為，不讓非地理化行程失去連接卡）
             if (hasCoord(cur) && hasCoord(next)) {
                 const leg = estimateLeg(cur as Coord, next as Coord);
-                mode = legModeLabel[leg.mode];
+                mode = legModeLabel[leg.mode] as TransportMode;   // 連接卡顯示用標籤（沿用既有 UI 行為）
                 durMin = leg.minutes;
             }
             out.push({
