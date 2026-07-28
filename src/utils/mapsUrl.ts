@@ -30,3 +30,17 @@ export const looksLikeMapsUrl = (url: string): boolean =>
 
 export const isShortMapsUrl = (url: string): boolean =>
     /(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test((url || '').trim());
+
+// 從 Google Maps 網址抽地點名稱（/maps/place/<NAME>/…）。抽不到或名稱其實是座標則回 null。
+export function extractPlaceNameFromMapsUrl(url: string): string | null {
+    if (!url) return null;
+    const m = url.match(/\/maps\/place\/([^/@?]+)/);
+    if (!m) return null;
+    try {
+        const raw = decodeURIComponent(m[1].replace(/\+/g, ' ')).trim();
+        if (!raw || /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(raw)) return null;   // 像 "35.0,135.7" 的座標不算名稱
+        return raw;
+    } catch {
+        return null;
+    }
+}

@@ -4,8 +4,8 @@
   "description": "您的智慧旅遊伴侶 - 行程規劃、離線瀏覽、旅遊工具",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F2F2F7",
-  "theme_color": "#F2F2F7",
+  "background_color": "#E4E2DD",
+  "theme_color": "#E4E2DD",
   "orientation": "portrait",
   "icons": [
     {

@@ -256,7 +256,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </div>
             
             <div className="mt-10 flex justify-center gap-2 text-[10px] font-medium text-gray-400 opacity-60">
-                <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> Powered by AI & Supabase</span>
+                <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> Crafted for every journey</span>
             </div>
             
         </div>

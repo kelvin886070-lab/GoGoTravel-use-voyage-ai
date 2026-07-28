@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#3F6B52"/>
+  <circle cx="256" cy="256" r="164" fill="none" stroke="#F1EBDD" stroke-width="6" stroke-dasharray="7 7"/>
+  <circle cx="256" cy="256" r="120" fill="none" stroke="#F1EBDD" stroke-width="3"/>
+  <circle cx="116" cy="256" r="3.5" fill="#F1EBDD"/>
+  <circle cx="396" cy="256" r="3.5" fill="#F1EBDD"/>
+<g fill="#F1EBDD">
+  <text x="130.2" y="201.8" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-64.0 130.2 201.8)">K</text>
+  <text x="143.7" y="179.5" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-53.3 143.7 179.5)">E</text>
+  <text x="161.1" y="160.2" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-42.7 161.1 160.2)">L</text>
+  <text x="181.8" y="144.4" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-32.0 181.8 144.4)">V</text>
+  <text x="205.1" y="132.7" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-21.3 205.1 132.7)">I</text>
+  <text x="230.1" y="125.6" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(-10.7 230.1 125.6)">N</text>
+  <text x="256.0" y="123.1" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(0.0 256.0 123.1)"></text>
+  <text x="281.9" y="125.6" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(10.7 281.9 125.6)">·</text>
+  <text x="306.9" y="132.7" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(21.3 306.9 132.7)"></text>
+  <text x="330.2" y="144.4" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(32.0 330.2 144.4)">T</text>
+  <text x="350.9" y="160.2" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(42.7 350.9 160.2)">R</text>
+  <text x="368.3" y="179.5" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(53.3 368.3 179.5)">I</text>
+  <text x="381.8" y="201.8" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(64.0 381.8 201.8)">P</text>
+  <text x="166.0" y="356.1" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(400.0 166.0 356.1)">E</text>
+  <text x="183.7" y="368.7" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(391.1 183.7 368.7)">S</text>
+  <text x="203.1" y="378.5" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(382.2 203.1 378.5)">T</text>
+  <text x="223.7" y="385.1" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(373.3 223.7 385.1)"></text>
+  <text x="245.2" y="388.4" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(364.4 245.2 388.4)">·</text>
+  <text x="266.8" y="388.4" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(355.6 266.8 388.4)"></text>
+  <text x="288.3" y="385.1" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(346.7 288.3 385.1)">2</text>
+  <text x="308.9" y="378.5" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(337.8 308.9 378.5)">0</text>
+  <text x="328.3" y="368.7" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(328.9 328.3 368.7)">2</text>
+  <text x="346.0" y="356.1" font-family="monospace" font-size="21" font-weight="700" text-anchor="middle" transform="rotate(320.0 346.0 356.1)">5</text>
+</g>
+  <text x="256" y="318" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="160" font-weight="700" fill="#F1EBDD">K</text>
+</svg>

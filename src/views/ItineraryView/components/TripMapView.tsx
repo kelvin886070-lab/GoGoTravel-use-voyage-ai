@@ -115,14 +115,16 @@ export const TripMapView: React.FC<Props> = ({ trip, onUpdateTrip }) => {
                                     key={i}
                                     position={{ lat: a.lat as number, lng: a.lng as number }}
                                     onClick={() => setSelected(a)}
+                                    zIndex={selected === a ? 10 : 1}
                                 >
-                                    <div className="w-7 h-7 rounded-full bg-[#45846D] text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow-md">
+                                    <div className={`rounded-full text-white text-xs font-bold flex items-center justify-center border-2 border-white shadow-md transition-all ${selected === a ? 'w-9 h-9 bg-[#2f5340] ring-2 ring-[#45846D]/40 scale-110' : 'w-7 h-7 bg-[#45846D]'}`}>
                                         {i + 1}
                                     </div>
                                 </AdvancedMarker>
                             ))}
                             <RouteLine points={points} />
                             <FitBounds points={points} />
+                            <PanToSelected activity={selected} />
                         </Map>
                     </APIProvider>
                 )}
@@ -249,6 +251,18 @@ const RouteLine: React.FC<{ points: { lat: number; lng: number }[] }> = ({ point
         line.setMap(map);
         return () => line.setMap(null);
     }, [map, mapsLib, path]);
+    return null;
+};
+
+// 🗺️ #3：點清單/圖釘 → 地圖平移到該點；只在目前拉得較遠時輕微拉近（不粗暴縮放、不讓人迷失方向）。
+const PanToSelected: React.FC<{ activity: Activity | null }> = ({ activity }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (!map || !activity || activity.lat == null || activity.lng == null) return;
+        map.panTo({ lat: activity.lat as number, lng: activity.lng as number });
+        const z = map.getZoom() ?? 12;
+        if (z < 15) map.setZoom(15);
+    }, [map, activity]);
     return null;
 };
 

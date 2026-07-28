@@ -44,7 +44,8 @@ const toMin = (t?: string): number | null => {
     return h * 60 + m;
 };
 const toHHMM = (min: number) => {
-    const m = Math.max(0, Math.min(24 * 60 - 1, Math.round(min)));
+    // 🧱 F4：不再夾在 23:59——跨午夜保留 >=24h（顯示層 wrap＋月亮），與 timeline/reconcile 一致。
+    const m = Math.max(0, Math.round(min));
     return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 };
 
@@ -69,6 +70,41 @@ const regionLabel = (wishes: WishItem[]): string | undefined => {
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
     return top?.[0];
 };
+
+// ── 🎟️ Phase 4a（point 1）：待安排放回某天時複用同一套 geo 邏輯（不另造第二份） ──
+type Coordy = { lat?: number; lng?: number; type?: string };
+
+// 建議「地理上最順」的天：有座標→質心最近的天；無座標→現有景點最少的天。回傳 dayIndex。
+export function suggestDayIndex(trip: Trip, item: Coordy): number | null {
+    if (!trip.days.length) return null;
+    const days = trip.days.map((d, i) => {
+        const coords = d.activities.filter(hasCoord).map(a => ({ lat: a.lat as number, lng: a.lng as number }));
+        return { i, anchor: centroid(coords), load: d.activities.filter(isRealStop).length };
+    });
+    if (hasCoord(item)) {
+        const anchored = days.filter(d => d.anchor);
+        if (anchored.length) return anchored.reduce((b, d) => (hav(item, d.anchor!) < hav(item, b.anchor!) ? d : b)).i;
+    }
+    return days.reduce((b, d) => (d.load < b.load ? d : b)).i;
+}
+
+// 在指定天為單一點算合理插入時間（沿用天內時間游標：最後一個既有時間 +90，否則從 DAY_START 起）。
+export function insertionTimeForDay(trip: Trip, dayIndex: number): string {
+    const day = trip.days[dayIndex];
+    if (!day) return '12:00';
+    const existMins = day.activities.map(a => toMin(a.time)).filter((m): m is number => m != null);
+    const cursor = existMins.length ? Math.max(...existMins) + 90 : DAY_START;
+    return toHHMM(cursor);
+}
+
+// 點到某天質心的距離（公里）；算不出（無座標/該天無座標活動）回 null。給「離那天有點遠」提醒用。
+export function dayDistanceKm(trip: Trip, dayIndex: number, item: Coordy): number | null {
+    const day = trip.days[dayIndex];
+    if (!day || !hasCoord(item)) return null;
+    const coords = day.activities.filter(hasCoord).map(a => ({ lat: a.lat as number, lng: a.lng as number }));
+    const c = centroid(coords);
+    return c ? hav(item, c) : null;
+}
 
 export function planArrangement(trip: Trip, wishes: WishItem[]): ArrangePlan {
     const pace = paceOf(trip);

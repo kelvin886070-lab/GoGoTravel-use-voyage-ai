@@ -1,5 +1,8 @@
 // src/services/gemini.ts
-import type { TripDay, WeatherInfo, VoltageInfo, Activity } from "../types";
+import type { TripDay, WeatherInfo, VoltageInfo, Activity, TripConstraints } from "../types";
+import type { RawExtraction } from "../types/booking";
+import { parseBookingJSON, coerceRawExtraction } from "./booking/coerceRaw";
+import { newActivityId } from "../utils/activityId";
 import { supabase } from "./supabase";
 
 // 🔐 所有外部 API 金鑰已移至 Supabase Edge Function (ai-proxy)。
@@ -95,33 +98,58 @@ export interface ParsedWish {
     budget?: number;
     currency?: string;
     tags?: string[];
+    forWhom?: string;   // 🛍️ 代購對象（幫誰買）
+    quantity?: number;  // 🛍️ 數量
 }
 
-export const parseWishesFromText = async (text: string, mode: 'place' | 'item'): Promise<ParsedWish[]> => {
+export const parseWishesFromText = async (text: string, mode: 'place' | 'item' | 'auto'): Promise<ParsedWish[]> => {
+    const isAuto = mode === 'auto';
     const modeHint = mode === 'place'
         ? 'These are PLACES to visit (cafes, shops, restaurants, attractions). Extract full address and any map URL.'
-        : 'These are SHOPPING items to buy. Extract product name, price/budget if any, and where-to-buy if mentioned.';
+        : mode === 'item'
+        ? 'These are SHOPPING items to buy. Extract product name, price/budget if any, and where-to-buy if mentioned.'
+        : 'The notes MIX places-to-visit and shopping-items-to-buy. CLASSIFY EACH line independently into "place" or "item".';
+
+    // auto 模式 type 由 AI 逐列決定；否則固定 mode
+    const typeField = isAuto ? '"type": "place" | "item"' : `"type": "${mode}"`;
+
+    const classifyRule = isAuto ? `
+- "type": decide PER LINE:
+    · "place" = somewhere you physically GO — restaurant, cafe, bar, attraction, landmark, or a shop you intend to VISIT. Usually has/implies an address, district, or map link.
+    · "item" = a PRODUCT you buy and carry away — snack, cosmetic, medicine, drink, souvenir, goods. Often has a price, quantity, a "buy / 幫…買 / 要買" cue, or a brand+product.
+    · A bare store name (Lawson, 唐吉訶德, 業務超市, 驚安殿堂) → "place". BUT if the line is really about buying a SPECIFIC product there, emit an "item" whose "area" is that store.
+    · When genuinely ambiguous, prefer "place".` : '';
+
+    const areaRule = isAuto
+        ? '- "area": for a "place" → the district/neighbourhood (東區, 安平區, 中西區, 澀谷區); for an "item" → the store or category to buy from (Lawson, 唐吉訶德, 業務超市, 生鮮, 藥妝, 服飾, 伴手禮).'
+        : `- "area": ${mode === 'place'
+            ? 'the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).'
+            : 'the store or category to buy from — where/what kind (e.g. Lawson, 唐吉訶德, 業務超市, 生鮮, 藥妝, 服飾, 伴手禮).'}`;
+
+    const skipRule = isAuto
+        ? '- Keep the original language of names and notes. Skip lines that are neither a real place nor a real item (pure chatter, dates, headers).'
+        : `- Keep the original language of names and notes. Skip lines that are not a real ${mode}.`;
 
     const prompt = `
 You extract a clean structured list from a user's pasted freeform notes (e.g. LINE memo).
 ${modeHint}
 
 Output a JSON ARRAY only, no prose. Each element:
-{ "type": "${mode}", "title": string, "address"?: string, "url"?: string, "note"?: string, "country"?: string, "city"?: string, "area"?: string, "budget"?: number, "currency"?: string, "tags"?: string[] }
+{ ${typeField}, "title": string, "address"?: string, "url"?: string, "note"?: string, "country"?: string, "city"?: string, "area"?: string, "budget"?: number, "currency"?: string, "tags"?: string[], "forWhom"?: string, "quantity"?: number }
 
 Rules:
-- "title": the place/item name; strip leading numbering like "3." and keep the rest.
-- "address": the full postal address if present (place mode).
+- "title": the place/item name; strip leading numbering like "3." and keep the rest.${classifyRule}
+- "address": the full postal address if present (place only).
 - "url": any http(s) link such as maps.app.goo.gl.
 - "note": extra remarks, e.g. parenthetical text like "(只有外帶)" or "鹹蛋黃巴斯克好吃".
 - "country": the NATION in Traditional Chinese (台灣, 日本, 韓國, 泰國, ...).
 - "city": the CITY (臺南市 → 台南; 台北 → 台北; 東京/Tokyo → 東京; 大阪/Osaka → 大阪).
-- "area": ${mode === 'place'
-        ? 'the district (區) or neighbourhood within the city (e.g. 東區, 安平區, 中西區, 澀谷區).'
-        : 'the store or category to buy from — where/what kind (e.g. Lawson, 唐吉訶德, 業務超市, 生鮮, 藥妝, 服飾, 伴手禮).'}
+${areaRule}
 - "tags": 1-2 short helpful tags in Traditional Chinese inferred from content (e.g. 咖啡, 甜點, 藥妝).
 - "budget"/"currency": only for shopping items if a price is stated.
-- Keep the original language of names and notes. Skip lines that are not a real ${mode}.
+- "forWhom" (items only): who it is bought FOR (代購對象) — e.g. 媽媽, 姊姊, 同事. Extract from phrases like "幫媽媽買", "姊姊要的", "同事託買". Leave empty/omit if it is for the buyer themselves.
+- "quantity" (items only): integer count from "×2", "兩個", "數量2", "3盒". Omit if not stated.
+${skipRule}
 
 Pasted notes:
 """
@@ -131,44 +159,150 @@ ${text}
     const raw = await callGeminiDirectly(prompt);
     const data = parseJSON<ParsedWish[]>(raw);
     if (!Array.isArray(data)) return [];
-    // 防禦：確保 type 與 title 合法
+    // 防禦：確保 type 與 title 合法。auto 保留 AI 逐列判斷（非 item 一律當 place），否則固定 mode。
     return data
         .filter(d => d && typeof d.title === 'string' && d.title.trim())
-        .map(d => ({ ...d, type: mode, title: d.title.trim() }));
+        .map(d => ({
+            ...d,
+            type: isAuto ? (d.type === 'item' ? 'item' : 'place') : mode,
+            title: d.title.trim(),
+        }));
+};
+
+// ==========================================================
+// 🎟️ 訂位匯入：把機票/訂房確認信抽成 RawExtraction（合約見 types/booking.ts）。
+//   關鍵分工：LLM 只吐「當地牆上時間 + IATA」與「卡號末四碼」；時區換算、成員對應由 App 端做。
+//   輸出必過 coerceRawExtraction（防禦塑形 + 遮罩）後才回傳。
+// ==========================================================
+const bookingPrompt = (source: string) => `
+You extract structured booking data from an airline/hotel confirmation (email text or its screenshot).
+Output ONE JSON object ONLY — no prose, no markdown fences. Missing data → null. NEVER invent values.
+
+Schema:
+{
+  "kind": "flight" | "hotel" | null,
+  "provider": string | null,            // airline or hotel brand, keep original language e.g. 台灣虎航
+  "pnr": string | null,                 // booking reference / 訂位代號
+  "segments": [                         // flights only; hotel → []
+    { "flightNo": string|null, "fromIata": string|null, "toIata": string|null,
+      "depLocal": "YYYY-MM-DD HH:mm"|null, "arrLocal": "YYYY-MM-DD HH:mm"|null }
+  ],
+  "passengers": [                       // flights only; hotel → []
+    { "fullName": string, "title": string|null,   // title = MR/MS/MISS/MSTR... as printed
+      "perSegment": [ { "segIndex": number, "checkedKg": number|null, "seat": string|null } ] }
+  ],
+  "hotels": [                           // hotels only; flights → []
+    { "property": string|null, "checkInLocal": "YYYY-MM-DD HH:mm"|null, "checkOutLocal": "YYYY-MM-DD HH:mm"|null,
+      "rooms": number|null, "guests": number|null, "address": string|null,
+      "fare": { "total": number, "currency": string } | null }   // 每間自己的金額
+  ],
+  "fare": { "total": number, "currency": string,
+            "breakdown": [ { "label": string, "amount": number } ],
+            "paidBy": { "method": string, "last4": string, "status": string } } | null,
+  "warnings": string[]
+}
+
+Hard rules:
+- TIME: emit the LOCAL wall-clock time exactly as printed on the ticket, 24-hour "YYYY-MM-DD HH:mm".
+  DO NOT convert timezones. DO NOT compute UTC. DO NOT add or shift hours. (App resolves timezone itself.)
+- AIRPORTS: use 3-letter IATA codes for fromIata/toIata (KHH, OKA, NRT...). If only a city/airport
+  name is given and you are unsure of the IATA, set it null and add a warning — do not guess.
+- ROUND TRIP: output one segment per flight leg, in travel order. segIndex in perSegment is the
+  0-based index into "segments". "無託運行李" / no checked bag → checkedKg = null.
+- CARD: put ONLY the last 4 digits in fare.paidBy.last4. NEVER output a full card number anywhere.
+- CHILDREN: keep the printed title (MISS/MSTR often indicate a child) but do not infer age yourself.
+- MULTIPLE HOTELS: if the source covers several hotel stays, output ONE element in "hotels" PER hotel —
+  do NOT merge names, dates, rooms, addresses or fares into one. Each hotel keeps its own "fare".
+- WARNINGS: write every warning in Traditional Chinese (繁體中文). Add a short note for anything ambiguous:
+  unclear date format, missing return flight, unknown airport code, unreadable fare, etc.
+- Keep names/provider in their original language and spelling.
+
+Source:
+"""
+${source}
+"""
+`;
+
+export const parseBookingFromText = async (text: string): Promise<RawExtraction> => {
+    const raw = await callGeminiDirectly(bookingPrompt(text));
+    return coerceRawExtraction(parseBookingJSON(raw));
+};
+
+export const parseBookingFromImage = async (base64Image: string): Promise<RawExtraction> => {
+    const raw = await callGeminiVision(bookingPrompt('(confirmation is in the attached image)'), base64Image);
+    return coerceRawExtraction(parseBookingJSON(raw));
 };
 
 // ==========================================================
 // 1. 行程生成 (8.0 終極升級版：注入單日靈魂標籤 vibeTag)
 // ==========================================================
+// ── Phase 1：TripConstraints → prose 的對照表（原本散在 CreateTripModal.buildPrompt，收斂到生成層）──
+const COMPANION_LABEL: Record<string, string> = { solo: '獨旅', couple: '情侶/夫妻', family: '親子家庭', friends: '一群朋友', elderly: '帶長輩', pet: '帶寵物', colleague: '同事', classmate: '同學' };
+const PACE_LABEL: Record<string, string> = { relaxed: '悠閒慢活', standard: '標準觀光', packed: '特種兵打卡', deep: '深度慢遊' };
+const VIBE_LABEL: Record<string, string> = { popular: '經典地標', balanced: '在地與熱門均衡', hidden: '大自然與秘境', cultural: '歷史人文藝術' };
+const BUDGET_LABEL: Record<string, string> = { cheap: '經濟實惠', standard: '標準預算', luxury: '豪華享受' };
+const TIME_SLOT_LABEL: Record<string, string> = { morning: '早上 (08:00 - 12:00)', afternoon: '下午 (12:00 - 18:00)', evening: '晚上 (18:00 以後)' };
+const MOBILITY_LABEL: Record<string, string> = {
+    public: '大眾運輸 (請集中景點於交通節點周邊)',
+    car: '租車自駕 (可安排跨區、彈性較高的景點)',
+    taxi: '計程車/包車 (點對點接駁，不需顧慮等車時間)',
+};
+
+// hard 錨的顯示值：confirmed 直接用真時間；hint 用時段標籤。
+const anchorLabel = (a?: { confidence: 'confirmed' | 'hint'; value: string }): string | null =>
+    !a ? null : a.confidence === 'confirmed' ? a.value : (TIME_SLOT_LABEL[a.value] ?? a.value);
+
+// TripConstraints → [旅遊條件] prose（純函式；生成/未來預覽共用）。
+const buildUserPreferences = (c: TripConstraints): string => {
+    const s = c.soft;
+    const destinationsStr = c.legs.map(l => l.city).join('、');
+    const arrival = anchorLabel(c.hard.arrival);
+    const departure = anchorLabel(c.hard.departure);
+    const interests = (s.interests ?? []).map(i => (i.detail ? `${i.tag} (想去: ${i.detail})` : i.tag)).join(', ');
+    const mobility = s.localTransportMode ? MOBILITY_LABEL[s.localTransportMode] : '未指定';
+
+    return `[旅遊條件]
+        - 類型：${c.tripType === 'domestic' ? '國內旅遊' : '國外旅遊'}
+        - 目的地：${destinationsStr}
+        - 抵達時間：第一天 ${arrival ?? '未指定'} 抵達
+        - 離開時間：最後一天 ${departure ?? '未指定'} 離開
+        - 當地移動方式：以 ${mobility} 為主
+        - 旅伴：${s.companion ? (COMPANION_LABEL[s.companion] ?? s.companion) : '未指定'}
+        - 步調：${s.pace ? (PACE_LABEL[s.pace] ?? s.pace) : '標準觀光'}
+        - 風格：${s.vibe ? (VIBE_LABEL[s.vibe] ?? s.vibe) : '在地與熱門均衡'}
+        - 預算：${s.budgetLevel ? (BUDGET_LABEL[s.budgetLevel] ?? s.budgetLevel) : '標準預算'} ${s.customBudget ? `(${s.customBudget})` : ''}
+        - 興趣細項：${interests || '無特別指定'}
+        - 特別需求：${s.specificRequests || '無'}
+
+        [系統隱藏指令 - 行程美學與出片率校準]
+        ⚠️ 最高優先級：行程安排請務必注重「視覺體驗與空間美感」。請優先挑選具備高知名度、出片率極高、設計感強烈、或在各大社群平台上備受推崇的優質景點、質感餐廳與風格選物店。即使使用者選擇「經濟實惠」或「歷史文化」，也請在該框架內尋找最具視覺張力與美學價值的地點，拒絕平庸或缺乏特色的冷門行程。`;
+};
+
+// 穩定快取鍵：把整份 constraints 納入（修掉舊版漏 userPrompt → 改選項不重生成的 bug）。v10 沖掉 v9 舊快取。
+const constraintsCacheKey = (c: TripConstraints, days: number): string =>
+    `itinerary_v10_${days}_${JSON.stringify(c)}`;
+
 export const generateItinerary = async (
-    destination: string, 
-    days: number, 
-    userPrompt: string, 
-    currency: string,
-    transportInfo?: { inbound?: string, outbound?: string },
-    focusArea?: string,
-    localTransportMode?: 'public' | 'car' | 'taxi'
+    constraints: TripConstraints,
+    days: number,
 ): Promise<TripDay[]> => {
-  
-  // 🛡️ 升級為 v9：#3 地理群聚，強迫放棄舊版「天南地北」的快取
-  const cacheKey = `itinerary_v9_${destination}_${days}_${currency}_${focusArea}_${localTransportMode}_${JSON.stringify(transportInfo)}`;
-  
+
+  const destination = constraints.legs.map(l => l.city).join(' + ') || '未指定目的地';
+  const cacheKey = constraintsCacheKey(constraints, days);
+
   return fetchWithCache(cacheKey, async () => {
       let context = "";
-      
-      if (transportInfo?.inbound) {
-          const isFlight = transportInfo.inbound.toLowerCase().includes('flight');
-          context += `\n- **ARRIVAL INFO**: ${transportInfo.inbound}. \n  **CRITICAL**: The very FIRST activity of Day 1 MUST be a '${isFlight ? 'flight' : 'transport'}' card representing arrival.`;
+
+      const arrival = anchorLabel(constraints.hard.arrival);
+      if (arrival) {
+          context += `\n- **ARRIVAL TIMING (soft)**: On Day 1 the traveller arrives around ${arrival}. Do NOT schedule anything before this. Do NOT fabricate airport arrival / immigration / baggage / airport-to-city transport cards — the flight booking owns arrival. Day 1 starts from the first real destination after arriving.`;
       }
-      if (transportInfo?.outbound) {
-          const isFlight = transportInfo.outbound.toLowerCase().includes('flight');
-          context += `\n- **DEPARTURE INFO**: ${transportInfo.outbound}. \n  **CRITICAL**: The LAST activity of Day ${days} MUST be a '${isFlight ? 'flight' : 'transport'}' card representing departure.`;
+      const departure = anchorLabel(constraints.hard.departure);
+      if (departure) {
+          context += `\n- **DEPARTURE TIMING (soft)**: On Day ${days} the traveller leaves around ${departure}. Do NOT schedule anything after this, and do NOT fabricate a departure / airport transport card — the booking owns it.`;
       }
 
-      if (focusArea) {
-          context += `\n- **STRICT LOCATION CONSTRAINT**: The user ONLY wants to visit areas within: "${focusArea}". Do NOT suggest spots far outside these areas unless absolutely necessary.`;
-      }
-
+      const localTransportMode = constraints.soft.localTransportMode;
       let transportInstruction = "";
       if (localTransportMode === 'public') {
           transportInstruction = `
@@ -190,15 +324,18 @@ export const generateItinerary = async (
           `;
       }
 
+      const currency = constraints.currency ?? 'TWD';
       const prompt = `
         Role: Professional Travel Planner & Logistics Expert.
         Task: Create a ${days}-day itinerary for ${destination}.
-        
-        User Preferences: ${userPrompt}
+
+        User Preferences: ${buildUserPreferences(constraints)}
         ${context}
         ${transportInstruction}
-        
+
         **CRITICAL REQUIREMENTS (DO NOT IGNORE):**
+
+        0. **NO REPEATED PLACES (ABSOLUTE)**: Each specific attraction, restaurant, cafe or shop may appear **AT MOST ONCE** across the ENTIRE itinerary. Never schedule the same place (or trivially-renamed variants of it) on multiple days or multiple times in one day. Every stop must be a distinct, different location.
 
         1. **Geographic Clustering (MOST IMPORTANT — no zig-zag across the map)**:
            - Divide ${destination} into distinct geographic zones/districts.
@@ -207,10 +344,14 @@ export const generateItinerary = async (
            - Leave the day's zone only when unavoidable; if so, put that spot at the day's START or END, not the middle.
            - Respect any location constraint given above, and cluster WITHIN it.
 
-        2. **Arrival Logic (Day 1)**:
-           - The first activity MUST be the arrival (Flight/Train).
-           - **IMPORTANT**: In the "description" of the arrival activity, provide **SPECIFIC EXIT INSTRUCTIONS**. (e.g., "Exit North Gate to Bus Stop 5").
-           - The NEXT activity should imply a reasonable buffer for customs/immigration (e.g. 1-1.5 hours gap).
+        1b. **Multi-city allocation (CRITICAL when the destination lists more than one city, e.g. "京都 + 大阪")**:
+           - Allocate the ${days} days across the cities in CONTIGUOUS blocks — each city's days MUST be consecutive. Minimise city changes: ideally visit each city exactly once and NEVER return to a city after leaving it (no zig-zag between cities).
+           - For EACH day output a **"city"** field naming the single city that day is based in. EVERY activity that day must be located in that city.
+           - On a day whose base city CHANGES from the previous day, the FIRST item must be an inter-city "transport" card representing the move (e.g. Shinkansen / domestic flight).
+
+        2. **Arrival / Departure — DO NOT FABRICATE (single source of truth)**:
+           - Do NOT create airport arrival, immigration, baggage-claim, or airport-to-city transport cards. The traveller's flight booking provides arrival & departure; fabricating them causes duplicate/clashing cards.
+           - Day 1 begins at the FIRST real destination, respecting the arrival timing above. The last day ends before the departure timing.
         
         3. **Gap Connectors (Transport)**:
            - You MUST explicitly calculate travel time between spots.
@@ -233,29 +374,28 @@ export const generateItinerary = async (
         [
           {
             "day": 1,
-            "vibeTag": "啟程出發與城市初探",
+            "city": "京都",
+            "vibeTag": "城市初探與質感選物",
             "activities": [
               {
                 "time": "14:00",
-                "title": "JX800 Landing",
-                "description": "Terminal 1 Arrival.",
-                "type": "flight",
-                "location": "Narita Airport",
+                "title": "上野公園散策",
+                "description": "抵達後直接展開的第一站，綠意與美術館環繞。",
+                "type": "sightseeing",
+                "location": "上野",
                 "cost": 0
               },
               {
-                "time": "15:30", 
-                "title": "Move to Ueno",
-                "description": "Skyliner Express",
+                "time": "15:30",
+                "title": "移動到谷中銀座",
+                "description": "沿路散步前往下個地點",
                 "type": "transport",
                 "location": "Transit",
-                "cost": 2500,
+                "cost": 0,
                 "transportDetail": {
-                    "mode": "train",
-                    "duration": "45 min",
-                    "fromStation": "Narita T1",
-                    "toStation": "Keisei Ueno",
-                    "instruction": "Fastest route to city"
+                    "mode": "walk",
+                    "duration": "15 min",
+                    "instruction": "步行前往"
                 }
               }
             ]
@@ -268,7 +408,31 @@ export const generateItinerary = async (
         const text = await callGeminiDirectly(prompt);
         const data = parseJSON<TripDay[]>(text);
         if (!data) throw new Error("AI 生成格式錯誤");
-        return data;
+        // 🧬 Phase 0/1：生成活動標血統 'generated' ＋ 穩定 id。
+        const withMeta = data.map(day => ({
+          ...day,
+          activities: (day.activities ?? []).map(a => ({ ...a, id: a.id ?? newActivityId(), source: 'generated' as const })),
+        }));
+        // 🧹 生成去重（安全網，補 prompt 沒擋住的重複）：同一景點整趟最多一次；連接卡不去重。
+        //   正規化：去括號內（英文/羅馬拼音）、去空白標點 → 抓近似重複（V&A ×4 那種）。
+        const SYS = new Set(['transport', 'flight', 'note', 'process']);
+        const normTitle = (t?: string) => (t ?? '').toLowerCase()
+          .replace(/[（(][^）)]*[）)]/g, '')                 // 去括號內（英文/羅馬拼音）
+          .replace(/[與和及]/g, '')                          // 去純連接詞（安全，不會誤併不同地點）
+          .replace(/[\s\-·・、,，.。!！?？'"『』「」&]/g, '')
+          .trim();
+        const seen = new Set<string>();
+        return withMeta.map(day => ({
+          ...day,
+          activities: day.activities.filter((a: any) => {
+            if (SYS.has((a.type || '').toLowerCase())) return true;
+            const k = normTitle(a.title);
+            if (!k) return true;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          }),
+        }));
       } catch (error) {
         throw error;
       }

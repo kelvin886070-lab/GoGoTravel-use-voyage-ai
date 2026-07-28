@@ -8,7 +8,7 @@
     <!-- PWA Settings -->
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#F2F2F7" />
+    <meta name="theme-color" content="#E4E2DD" />
     
     <!-- iOS Specific PWA Settings -->
     <meta name="mobile-web-app-capable" content="yes" />
@@ -80,18 +80,30 @@
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
     <script>
-      // Register Service Worker for PWA
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+      // Service Worker：只在正式部署註冊；dev（localhost）主動反註冊＋清快取。
+      // 原本 Stale-While-Revalidate 會在 dev 餵舊 bundle，害熱更新看不到最新程式（長按修正被舊快取蓋掉的元兇）。
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var h = location.hostname;
+        // dev 判定：localhost／LAN 私有網段／.local（手機連電腦 dev server 用的是 LAN IP，不是 localhost）
+        var isLocal = h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]'
+          || /\.local$/.test(h)
+          || /^10\./.test(h)
+          || /^192\.168\./.test(h)
+          || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h);
+        if (isLocal) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); });
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+          }
+          return;
+        }
+        window.addEventListener('load', function () {
           navigator.serviceWorker.register('/service-worker.js')
-            .then((registration) => {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            })
-            .catch((err) => {
-              console.log('ServiceWorker registration failed: ', err);
-            });
+            .then(function (reg) { console.log('ServiceWorker registered:', reg.scope); })
+            .catch(function (err) { console.log('ServiceWorker registration failed:', err); });
         });
-      }
+      })();
     </script>
   </body>
 </html>

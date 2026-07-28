@@ -97,12 +97,47 @@ export interface Activity {
   lat?: number;
   lng?: number;
   placeId?: string;
+
+  // 🧬 Phase 0：三層對帳與骨牌重排的最小結構（皆選填，舊資料自動合法）。
+  //    預設政策一律收斂在下方 helper（activitySource / activityPriority / activityDuration / activityMovable），
+  //    政策單點可改，不散落各處。
+  source?: ActivitySource;   // 血統：precedence 靠它（缺值＝視為 'user'，保守保護既有心血）
+  bookingId?: string;        // source==='booking' 時釘回 bookings 表那筆（單向投影來源）
+  durationMin?: number;      // 預估時長（分鐘）；未填由 type 給預設。⚠️ buffer 不存＝相鄰活動間隙算出來的
+  movable?: 'pinned' | 'floating';  // pinned=釘死(航班/check-in/訂位)不可位移；floating=可被骨牌往後推
+  priority?: 'must' | 'nice';       // must=不可犧牲(訂位/門票)；nice=溢位時可退「待安排」托盤
 }
+
+// 🧬 Phase 0：活動血統。訂位(事實) ＞ 使用者編輯 ＞ 生成(猜測)。
+export type ActivitySource = 'booking' | 'generated' | 'user';
+
+// type→預設時長（分鐘）。transport/flight/note 這類「點或間隙」給 0，時長不由活動本身表達。
+const DEFAULT_DURATION_MIN: Record<string, number> = {
+  food: 90, cafe: 45, shopping: 90, sightseeing: 120, bar: 120, culture: 120,
+  relax: 90, activity: 120, tickets: 60, snacks: 30, gift: 30, health: 30,
+  hotel: 0, flight: 0, transport: 0, commute: 0, note: 0, process: 0, expense: 0,
+};
+
+// 缺值＝'user'：舊資料一律當使用者的、不給 LLM 自動重排（保護既有心血）。
+export const activitySource = (a: Activity): ActivitySource => a.source ?? 'user';
+
+// 缺值依血統分流：user/booking→must（不可拋棄）、generated→nice（溢位可退托盤）。
+export const activityPriority = (a: Activity): 'must' | 'nice' =>
+  a.priority ?? (activitySource(a) === 'generated' ? 'nice' : 'must');
+
+// 缺值查 type 預設表，再退 90 分。
+export const activityDuration = (a: Activity): number =>
+  a.durationMin ?? DEFAULT_DURATION_MIN[a.type as string] ?? 90;
+
+// 缺值：flight/hotel 天生釘死，其餘漂浮（transport 是間隙、由對帳器重算）。
+export const activityMovable = (a: Activity): 'pinned' | 'floating' =>
+  a.movable ?? (a.type === 'flight' || a.type === 'hotel' ? 'pinned' : 'floating');
 
 export interface TripDay {
   day: number;
   date?: string;
   vibeTag?: string;
+  city?: string;          // 🧭 空間類·第一刀：這天基地在哪個城市（多城市時由生成分配，連續、少換城）。地點把關用它比對。
   activities: Activity[];
 }
 
@@ -113,6 +148,51 @@ export interface Reminder {
   isCompleted: boolean;
 }
 
+// ==========================================
+// 3b. TripConstraints — 常駐的「約束模型」（Phase 0）
+//   表單不再把輸入壓成 prose 生成一次即丟，而是填這個結構化、存 trip 上、可再讀可再編的物件。
+//   生成／把關／對帳全部改讀它；拼 prompt 的工作下沉到生成層由結構化約束現拼。
+//   硬約束（booking／確切航班）與軟偏好（步調／興趣）分槽；
+//   hard.confidence==='confirmed' 存在時 UI 完全無視 hint（hint 只是沒 booking 時的備胎）。
+// ==========================================
+
+// 硬約束：事實(booking)或使用者明確指定；決定性、LLM 不可亂動。
+export interface HardAnchors {
+  // confidence='confirmed' → value 是真時間 '2027-01-09 12:30'（來自 booking）
+  // confidence='hint'      → value 是時段 'morning' | 'afternoon' | 'evening'（使用者給的大概）
+  arrival?:   { confidence: 'confirmed' | 'hint'; value: string; bookingId?: string };
+  departure?: { confidence: 'confirmed' | 'hint'; value: string; bookingId?: string };
+  // 未來擴充：飯店每晚基地、門票釘死點……
+}
+
+// 軟偏好：LLM 可自由發揮的部分。
+export interface SoftPreferences {
+  companion?: string;
+  pace?: 'relaxed' | 'standard' | 'packed' | 'deep';
+  vibe?: string;
+  budgetLevel?: string;
+  customBudget?: string;
+  interests?: { tag: string; detail?: string }[];
+  specificRequests?: string;
+  localTransportMode?: 'public' | 'car' | 'taxi';
+}
+
+// 結構化多城市，取代 destinations.join('+')。日期用相對天數（非絕對日期），呼應「活動掛 Day N」原則。
+export interface TripLeg {
+  city: string;
+  startDay: number;
+  endDay: number;
+}
+
+export interface TripConstraints {
+  tripType?: 'international' | 'domestic';
+  origin?: string;
+  legs: TripLeg[];          // 硬門檻：至少一段（有目的地才生成）
+  hard: HardAnchors;        // 硬約束（事實層）
+  soft: SoftPreferences;    // 軟偏好（LLM 發揮）
+  currency?: string;
+}
+
 export interface Trip {
   id: string;
   destination: string;
@@ -121,7 +201,11 @@ export interface Trip {
   transportMode?: 'flight' | 'train' | 'time';
   localTransportMode?: 'public' | 'car' | 'taxi';
   pace?: 'relaxed' | 'standard' | 'packed' | 'deep';   // 🧱 C1-3 步調（影響每日容量與停留時間）
+  // 🧬 Phase 0：常駐約束模型（生成/把關/對帳共讀）。先與下方扁平欄位(pace/currency/…)並存為 legacy 鏡像，Phase 1/3 再逐步收斂。
+  constraints?: TripConstraints;
   planningStatus?: 'draft' | 'booked' | 'ready';
+  // 🎟️ 準備臉「就緒」＝使用者明確確認，不靠行程結構偵測（flight 連接活動是自動生成的，會假陽性）
+  readiness?: { flight?: boolean; hotel?: boolean; docs?: boolean; pack?: boolean };
   reminders?: Reminder[];
   startDate: string;
   endDate: string;
@@ -129,6 +213,7 @@ export interface Trip {
   coverImagePath?: string;       // 🖼️ 2.2 durable：Storage 路徑（DB 真正保存的來源）
   coverImagePositionY?: number;
   days: TripDay[];
+  parked?: Activity[];           // 🎟️ Phase 4a：待安排托盤——對帳溢位的活動（只搬不刪，規劃臉常駐膠囊撈回）
   isDeleted?: boolean;
   currency?: string; 
   members?: Member[];
@@ -180,6 +265,29 @@ export interface WishItem {
   // 🛡️ 9.3 新增：行程內購物清單的獨立狀態追蹤
   isPurchased?: boolean;   // 標記是否已純勾選購買 (觸發金流移轉與刪除線)
   assignedDay?: number;    // 標記被排入至哪一天 (觸發下沉至影子區域)
+
+  // 🛍️ 購物店家中心：對象（代購/自己）與數量
+  forWhom?: string;        // 代購對象；空＝自己
+  quantity?: number;       // 數量（預設 1）
+  actualPrice?: number;    // 🧾 買到後的實付單價（結算用；未填則退回 budget 估價）
+  isSettled?: boolean;     // 🧾 該代購項是否已結清
+  tripId?: string;         // 🧾 這筆代購屬於哪一趟（選填；結算依行程分組，未綁退回國家+建立日）
+  stopId?: string;         // 🛍️ 「在這裡要買」：釘到行程中的哪個 activity（activity.id）；空＝未綁任何站
+  usedInTrips?: string[];  // 🧭 軟已訪連結：這個心願被拉進過哪些行程（餵學習、避免重複推薦；夢想不刪、可再訪）
+  listId?: string;         // 📚 相簿：這個地點歸屬哪一本清單（空＝未分類）；一 wish 一主清單（v1 一對多）
+  rating?: number;         // 🌟 D2② Google 平均評分（0–5）；存進心願盒時查一次 Details 存下
+  ratingCount?: number;    // 🌟 D2② 評分人數（userRatingCount）
+}
+
+// 📚 相簿/清單（使用者自訂的板；最愛用 isFavorite 獨立、不佔 listId）
+export interface WishList {
+  id: string;
+  name: string;
+  coverImage?: string;       // 顯示用：signed URL（自訂封面才有；沒有時 UI 用相簿內地點照片拼貼）
+  coverImagePath?: string;   // Storage 路徑（DB 真正保存）
+  position: number;          // 手動排序（編輯模式拖曳寫入；預設 0）
+  pinned: boolean;           // 釘選置頂
+  createdAt: string;
 }
 
 // ==========================================

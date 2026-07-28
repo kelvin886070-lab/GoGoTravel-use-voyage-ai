@@ -1,5 +1,7 @@
 // src/services/timeline.ts
 import type { TripDay, Activity } from '../types';
+import { newActivityId } from '../utils/activityId';
+import { rebuildConnectorsInList } from './reconcile/autoRoute';
 
 /**
  * 將 "HH:MM" 字串轉換為分鐘數 (從 00:00 開始計算)
@@ -14,12 +16,11 @@ const timeToMinutes = (timeStr: string): number => {
  * 將分鐘數轉換回 "HH:MM" 格式
  */
 const minutesToTime = (totalMinutes: number): string => {
-    // 處理跨日 (超過 24 小時)
-    let mins = totalMinutes % (24 * 60);
-    if (mins < 0) mins += 24 * 60;
-    
+    // 🧱 F4：跨午夜不再 wrap 成 00:50——保留 >=24h（如 24:50、25:30），與 reconcile 分鐘制一致。
+    //   顯示層（ActivityItem）負責 wrap 成隔日 HH:MM ＋ 掛小月亮。這樣月亮偵測（>=24:00）才觸發得到。
+    const mins = Math.max(0, Math.round(totalMinutes));
     const h = Math.floor(mins / 60);
-    const m = Math.floor(mins % 60);
+    const m = mins % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
@@ -76,6 +77,7 @@ const ensureGapConnectors = (activities: Activity[]): Activity[] => {
                     title: '移動 (預估)',
                     description: '系統自動填補，點擊可修改',
                     type: 'transport',
+                    source: 'generated',  // 🛣️ C1：標記為系統自動連接卡（可被 stripAutoConnectors 冪等清除）
                     location: '',
                     cost: 0,
                     transportDetail: {
@@ -90,37 +92,9 @@ const ensureGapConnectors = (activities: Activity[]): Activity[] => {
     return result;
 };
 
-/**
- * 檢查並修復入境流程 (Arrival Process Injection)
- * 如果第一項是航班，且第二項不是 Process，則自動插入入境審查卡片
- */
-const ensureArrivalProcess = (activities: Activity[]): Activity[] => {
-    if (activities.length === 0) return activities;
-
-    const firstAct = activities[0];
-    if (firstAct.type === 'flight') {
-        const nextAct = activities[1];
-        if (!nextAct || nextAct.type !== 'process') {
-            const processCard: Activity = {
-                time: firstAct.time,
-                title: '入境審查 & 領取行李',
-                description: '請預留時間辦理入境手續與提領行李。',
-                type: 'process',
-                location: '機場',
-                cost: 0,
-                transportDetail: {
-                    mode: 'walk',
-                    duration: '60 min',
-                    instruction: '入境流程'
-                }
-            };
-            const newActivities = [...activities];
-            newActivities.splice(1, 0, processCard);
-            return newActivities;
-        }
-    }
-    return activities;
-};
+// 🧱 F3：已退休 `ensureArrivalProcess`（自動插「入境審查」）。
+//   它每次 recalc 都在首張 flight 後硬插一張入境卡，與真訂位的抵達錨打架（購物排在入境前、重複抵達序列）。
+//   抵達＝單一真相，只由訂位錨（或生成的抵達卡）承擔；不再自動插入境 preamble。
 
 /**
  * 核心函式：重新計算當天的所有活動時間
@@ -130,11 +104,10 @@ export const recalculateTimeline = (day: TripDay): TripDay => {
     
     if (activities.length === 0) return day;
 
-    // 1. 自動檢查並插入「入境審查」
-    activities = ensureArrivalProcess(activities);
-
-    // 2. 自動填補缺失的「移動卡片」 (新增邏輯)
-    activities = ensureGapConnectors(activities);
+    // 🧱 F3：入境自動插入已退休（見上）。
+    // 🛣️ C4：改用 rebuildConnectorsInList——冪等 strip 舊自動連接卡＋依相鄰定點重生（有座標則路由估算、否則沿用 15 分預設）。
+    //   這讓「編輯即自動接路」全站生效（所有編輯都經 recalculateTimeline）；連接卡不殘留、不重複。
+    activities = rebuildConnectorsInList(activities);
 
     // 3. 設定起始時間錨點
     let currentClock = timeToMinutes(activities[0].time);
@@ -142,11 +115,19 @@ export const recalculateTimeline = (day: TripDay): TripDay => {
     for (let i = 0; i < activities.length; i++) {
         const act = activities[i];
 
-        // 除了第一個活動保持原樣外，後續都由上一項推算
-        if (i > 0) {
-            act.time = minutesToTime(currentClock);
+        // 🧱 F1：確保每張卡（含自動插入的入境/移動卡）都有穩定 id
+        if (!act.id) act.id = newActivityId();
+
+        // 🧱 F2：改為「尊重明確時間」語義（與 reconcile 一致）——
+        //   首張錨定；後續若自身時間不早於目前時鐘就保留（使用者手動編的時間會存活），
+        //   只有會往前重疊時才推到時鐘。連接卡（時間＝前一張，必早於時鐘）自然往後流動。
+        if (i === 0) {
+            currentClock = timeToMinutes(act.time);
         } else {
-            currentClock = timeToMinutes(act.time); 
+            const explicit = timeToMinutes(act.time);
+            const t = explicit >= currentClock ? explicit : currentClock;
+            act.time = minutesToTime(t);
+            currentClock = t;
         }
 
         // 4. 計算此活動的持續時間
@@ -158,9 +139,10 @@ export const recalculateTimeline = (day: TripDay): TripDay => {
             duration = 0; // 航班本身不佔用時間軸，耗時由 process 承擔
         } else if (act.type === 'process') {
             duration = parseDurationString(act.transportDetail?.duration || '60 min');
-        } else if (act.type === 'transport' && act.transportDetail) {
-            duration = parseDurationString(act.transportDetail.duration);
-            if (duration === 0) duration = 15; // 預設移動至少 15 分鐘
+        } else if (act.type === 'transport') {
+            // 🛣️ C4：優先用 durationMin（接路估算/精算的來源）；退回解析字串；再退回預設 15
+            duration = act.durationMin ?? parseDurationString(act.transportDetail?.duration);
+            if (!duration || duration <= 0) duration = 15;
         } else {
             switch (act.type) {
                 case 'food': duration = 60; break;

@@ -8,6 +8,7 @@ import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmDialog';
+import { BrandIntroGate } from './components/brand/BrandIntro';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -22,6 +23,7 @@ root.render(
       <ToastProvider>
         <ConfirmProvider>
           <App />
+          <BrandIntroGate />
         </ConfirmProvider>
       </ToastProvider>
     </ErrorBoundary>

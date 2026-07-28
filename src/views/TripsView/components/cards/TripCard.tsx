@@ -1,180 +1,100 @@
-// src/views/TripView/components/cards/TripCard.tsx
+// src/views/TripsView/components/cards/TripCard.tsx
+// 🎟️ 首頁「即將出發」卡（定稿模型）：一張卡只做三個工作 —— 認出哪一趟、還有幾天、有事才提醒。
+//   刪掉：交通徽章、常亮「已就緒」（非行動＝雜訊）。乾淨＝就緒；名字完整不截斷；全面去玻璃。
+//   倒數＝小標記，靠近才「升溫」變色變字。狀態只在「有待辦」時冒出可行動提示，處理完消失。
+//   過去的「精彩回憶」卡是另一份工作（懷念，非期待）→ 之後單獨設計；此卡 isPast 時只顯示名字＋日期。
 import React from 'react';
-import { 
-    Plane, Train, Car, Bus, MoreHorizontal, 
-    AlertCircle, FileText, CheckCircle2, Map 
-} from 'lucide-react';
+import { MoreHorizontal, AlertTriangle } from 'lucide-react';
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import type { Trip } from '../../../../types';
 
-// ============================================================================
-// 1. 旅途中徽章 (On Trip Badge) - 帶有呼吸燈效果
-// ============================================================================
-const OnTripBadge: React.FC = () => (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/20 backdrop-blur-md border border-white/10 text-white shadow-sm">
-        <div className="relative flex items-center justify-center">
-            {/* 擴散光暈動畫 */}
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-            {/* 實心圓點 */}
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981] shadow-[0_0_8px_#10B981]"></span>
-        </div>
-        <span className="text-[10px] font-bold tracking-widest">旅途中</span>
-    </div>
-);
-
-// ============================================================================
-// 2. 倒數徽章 (Countdown Badge) - 紅色警示
-// ============================================================================
-const CountdownBadge: React.FC<{ days: number }> = ({ days }) => (
-    <div className="flex items-center gap-1.5 bg-red-500/80 backdrop-blur-md border border-red-500/20 px-2.5 py-1 rounded-full shadow-sm text-white">
-        <AlertCircle className="w-3 h-3" />
-        <span className="text-[10px] font-bold tracking-wide">
-            {days === 0 ? 'TODAY' : `T-${days}`}
-        </span>
-    </div>
-);
-
-// ============================================================================
-// 3. 規劃狀態徽章 (Planning Status Badge) - 未來行程用
-// ============================================================================
-const PlanningBadge: React.FC<{ status?: 'draft' | 'booked' | 'ready', hasDays: boolean }> = ({ status, hasDays }) => {
-    const currentStatus = status || (hasDays ? 'ready' : 'draft');
-
-    if (currentStatus === 'draft') {
-        return (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 border-dashed text-white/80">
-                <FileText className="w-3 h-3" />
-                <span className="text-[10px] font-bold tracking-wide">規劃中</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/30 backdrop-blur-md border border-white/10 text-white">
-            <CheckCircle2 className="w-3 h-3" />
-            <span className="text-[10px] font-bold tracking-wide">已就緒</span>
-        </div>
-    );
-};
-
-// ============================================================================
-// 4. 交通方式徽章 (Transport Badge)
-// ============================================================================
-const TransportBadge: React.FC<{ trip: Trip }> = ({ trip }) => {
-    const icons = [];
-    if (trip.transportMode === 'flight') icons.push(<Plane key="flight" className="w-3.5 h-3.5" />);
-    else if (trip.transportMode === 'train') icons.push(<Train key="train" className="w-3.5 h-3.5" />);
-    if (trip.localTransportMode === 'car' || trip.localTransportMode === 'taxi') icons.push(<Car key="car" className="w-3.5 h-3.5" />);
-    else if (trip.localTransportMode === 'public') icons.push(<Bus key="bus" className="w-3.5 h-3.5" />);
-
-    if (icons.length === 0) return null;
-    return (
-        <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full shadow-sm">
-            <div className="flex gap-2 text-white">
-                {icons.map((icon, index) => (
-                    <React.Fragment key={index}>
-                        {index > 0 && <span className="opacity-50 text-[10px] self-center">+</span>}
-                        {icon}
-                    </React.Fragment>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-// ============================================================================
-// 主元件：TripCard (9.1 座標同步修正)
-// ============================================================================
-interface TripCardProps { 
+interface TripCardProps {
     trip: Trip;
     onSelect: () => void;
     dragHandleProps?: DraggableProvidedDragHandleProps | null;
     isPast?: boolean;
 }
 
-export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandleProps, isPast }) => { 
-    const formattedDate = trip.startDate.replace(/-/g, '.');
+export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandleProps, isPast }) => {
+    const formattedDate = (trip.startDate || '').replace(/-/g, '.');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const nowTs = today.getTime();
-
     const getTs = (dateStr: string) => {
         const [y, m, d] = dateStr.split('-').map(Number);
         return new Date(y, m - 1, d).getTime();
     };
-
     const startTs = getTs(trip.startDate);
     const endTs = getTs(trip.endDate);
     const isOnTrip = nowTs >= startTs && nowTs <= endTs;
     const daysUntil = Math.ceil((startTs - nowTs) / (1000 * 60 * 60 * 24));
-    const isCountdown = !isOnTrip && daysUntil > 0 && daysUntil <= 3;
+
+    // 🎟️ 倒數升溫：>7 天灰（安靜）→ ≤7 天琥珀 → ≤2 天/今天紅（用字比數字戳）→ 旅途中綠。
+    const countdown = (() => {
+        if (isOnTrip) return { label: '旅途中', bg: '#3F6B52', dot: true };
+        if (daysUntil <= 0) return { label: '今天出發', bg: '#A23B2E' };
+        if (daysUntil === 1) return { label: '明天出發', bg: '#A23B2E' };
+        if (daysUntil === 2) return { label: '後天出發', bg: '#A23B2E' };
+        if (daysUntil <= 7) return { label: `剩 ${daysUntil} 天`, bg: '#BA7517' };
+        return { label: `還有 ${daysUntil} 天`, bg: 'rgba(35,35,32,0.45)' };
+    })();
+
+    // 🎟️ 可行動提示：未排入行程的「待安排」項目數；沒有就完全不顯示（沉默＝就緒）。
+    const todoCount = isPast ? 0 : (trip.stagedWishes || []).filter(w => w.assignedDay === undefined).length;
 
     return (
-        <div 
-            className={`
-                relative w-full h-56 rounded-[32px] overflow-hidden group select-none transition-all duration-500 hover:shadow-2xl bg-[#1D1D1B]
-                ${isPast ? 'scale-[0.98]' : 'hover:scale-[1.01]'}
-            `} 
+        <div
+            className={`relative w-full h-56 rounded-[24px] overflow-hidden group select-none transition-all duration-500 bg-[#1D1D1B] ${isPast ? 'scale-[0.98]' : 'hover:scale-[1.01] hover:shadow-2xl'}`}
             onClick={onSelect}
         >
-            {/* 背景圖層 */}
-            <div className="absolute inset-0">
-                <img 
-                    src={trip.coverImage} 
-                    alt={trip.destination} 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                    // 🛡️ 9.1 修正：動態套用 Y 軸裁剪偏移量，確保與行程頁、PDF 完美同步
+            {/* 背景：封面圖，或深色 fallback（與封面 A 一致，不再破圖/套巴黎） */}
+            {trip.coverImage ? (
+                <img
+                    src={trip.coverImage}
+                    alt={trip.destination}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }}
                 />
-                <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent opacity-60" />
-            </div>
+            ) : (
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#3a4a44,#232320)' }} />
+            )}
+            {/* 上下漸層（去玻璃；保證圖示/標題對比） */}
+            <div className="absolute inset-x-0 top-0 h-14 pointer-events-none" style={{ background: 'linear-gradient(rgba(0,0,0,0.28), transparent)' }} />
+            <div className="absolute inset-x-0 bottom-0 h-32 pointer-events-none" style={{ background: 'linear-gradient(transparent, rgba(35,35,32,0.9))' }} />
 
-            {/* 內容圖層 */}
-            <div className="absolute inset-0 p-6 flex flex-col justify-between z-10">
-                {/* Header: 智慧整併區 (Smart Merge Layout) */}
+            <div className="absolute inset-0 p-4 flex flex-col justify-between z-10">
+                {/* 頂部：左＝倒數小標記（＋有待辦才出現的提示）；右＝拖曳/選單（裸圖示、無玻璃） */}
                 <div className="flex justify-between items-start">
-                    <div className="flex flex-col gap-2 items-start">
+                    <div className="flex flex-col gap-1.5 items-start">
                         {!isPast && (
-                            <>
-                                {isOnTrip ? (
-                                    <OnTripBadge />
-                                ) : (
-                                    <>
-                                        <CountdownBadge days={daysUntil} />
-                                        <PlanningBadge status={trip.planningStatus} hasDays={trip.days.length > 0} />
-                                        <TransportBadge trip={trip} />
-                                    </>
-                                )}
-                            </>
+                            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-white px-2.5 py-1 rounded-[7px]" style={{ background: countdown.bg }}>
+                                {countdown.dot && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#8FE0AD' }} />}
+                                {countdown.label}
+                            </span>
+                        )}
+                        {todoCount > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white px-2.5 py-1 rounded-[7px]" style={{ background: '#BA7517' }}>
+                                <AlertTriangle className="w-3 h-3" /> {todoCount} 個待安排
+                            </span>
                         )}
                     </div>
-
-                    {/* 拖曳手把 */}
-                    <div 
-                        {...dragHandleProps} 
-                        style={{ touchAction: 'none' }} 
-                        className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 backdrop-blur-md text-white/70 hover:bg-white/30 hover:text-white transition-colors cursor-grab active:cursor-grabbing"
+                    <div
+                        {...dragHandleProps}
+                        style={{ touchAction: 'none', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
+                        className="w-8 h-8 flex items-center justify-center text-white/90 cursor-grab active:cursor-grabbing"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <MoreHorizontal className="w-5 h-5" />
                     </div>
                 </div>
 
-                {/* Footer: 標題與日期 */}
-                <div className="transform transition-transform duration-500 group-hover:translate-x-1">
-                    <div className="flex items-end justify-between">
-                        <div>
-                            <h2 className="text-5xl font-black text-white tracking-wide leading-none mb-2 font-serif drop-shadow-lg uppercase truncate max-w-[280px]">
-                                {trip.destination}
-                            </h2>
-                            <div className="flex items-center gap-3 text-white/80 font-mono text-xs font-medium tracking-widest">
-                                <span>{formattedDate}</span>
-                                <span className="w-8 h-[1px] bg-white/30" />
-                                <span>{trip.days.length} DAYS</span>
-                            </div>
-                        </div>
+                {/* 底部：完整名字（serif 主角、不截斷）＋ mono 日期·天數 */}
+                <div>
+                    <h2 className="font-serif text-[30px] font-bold text-white leading-[1.12]" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.35)' }}>
+                        {trip.destination}
+                    </h2>
+                    <div className="font-mono text-[12px] mt-2 tracking-wide" style={{ color: 'rgba(255,255,255,0.74)' }}>
+                        {formattedDate} · {trip.days.length} 天
                     </div>
                 </div>
             </div>

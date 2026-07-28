@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Bell, ChevronRight, LayoutGrid } from 'lucide-react';
+import { Plus, Download, Bell, ChevronRight, LayoutGrid, Navigation } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 
 import type { Trip, User } from '../../types';
@@ -19,6 +19,8 @@ import { EditTripModal } from './modals/EditTripModal';
 interface TripsViewProps {
   trips: Trip[];
   user: User;
+  activeTrip?: Trip | null;              // 🧭 旅途中的行程（顯示捷徑卡）
+  onOpenActiveTrip?: () => void;         // 跳進該行程（自動落走模式）
   onLogout: () => void;
   onAddTrip: (trip: Trip) => void;
   onImportTrip: (trip: Trip) => void;
@@ -28,9 +30,9 @@ interface TripsViewProps {
   onUpdateTrip?: (trip: Trip) => void;
 }
 
-export const TripsView: React.FC<TripsViewProps> = ({ 
-    trips, user, onLogout, onAddTrip, onImportTrip, onSelectTrip, 
-    onDeleteTrip, onReorderTrips, onUpdateTrip 
+export const TripsView: React.FC<TripsViewProps> = ({
+    trips, user, activeTrip, onOpenActiveTrip, onLogout, onAddTrip, onImportTrip, onSelectTrip,
+    onDeleteTrip, onReorderTrips, onUpdateTrip
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -73,6 +75,15 @@ export const TripsView: React.FC<TripsViewProps> = ({
     return { upcomingTrips: upcoming, pastTrips: past };
   }, [trips]);
 
+  // 🧭 旅途中捷徑卡：今天是該行程第幾天
+  const activeDayN = useMemo(() => {
+    if (!activeTrip?.startDate) return 1;
+    const [y, m, d] = activeTrip.startDate.split('-').map(Number);
+    const s = new Date(y, m - 1, d); s.setHours(0, 0, 0, 0);
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    return Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
+  }, [activeTrip]);
+
 
   // --- 2. 拖曳邏輯 (Drag Logic) ---
   const onDragEnd = (result: DropResult) => {
@@ -108,6 +119,23 @@ export const TripsView: React.FC<TripsViewProps> = ({
 
       <div className="flex-1 min-h-0 overflow-y-auto w-full scroll-smooth no-scrollbar pb-24">
         
+        {/* 🧭 旅途中捷徑卡：一鍵跳進走模式 */}
+        {activeTrip && (
+            <div className="px-5 pt-2">
+                <button onClick={onOpenActiveTrip} className="w-full bg-[#2C2C2A] rounded-[24px] p-4 flex items-center gap-3 active:scale-[0.99] transition-transform text-left">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" /></span>
+                            <span className="text-[10px] font-bold tracking-widest text-white/70">旅途中</span>
+                        </div>
+                        <p className="text-lg font-black font-serif text-white mt-1 truncate uppercase">{activeTrip.destination}</p>
+                        <p className="text-[11px] font-mono text-white/60 tracking-widest mt-0.5">DAY {activeDayN} · 開啟今天</p>
+                    </div>
+                    <div className="w-11 h-11 rounded-full bg-[#45846D] text-white flex items-center justify-center shrink-0"><Navigation className="w-5 h-5" /></div>
+                </button>
+            </div>
+        )}
+
         {/* Dashboard & Discovery */}
         <div className="px-5 pt-2 space-y-4">
             <DashboardWidgets />

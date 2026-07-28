@@ -3,7 +3,8 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
     X, Camera, Calendar, MapPin, 
     Bell, Trash2, Plus, Minus, 
-    Check, Users, Crop, MoveVertical, Save
+    Check, Users, Crop, MoveVertical, Save,
+    Sparkles, Wallet, ListChecks
 } from 'lucide-react';
 import type { Trip, Member, User } from '../../../types';
 // 🖼️ 2.2 改走 Storage：上傳→存路徑，不再存 base64
@@ -16,9 +17,13 @@ interface TripSettingsModalProps {
     onClose: () => void;
     onUpdate: (updatedTrip: Trip) => void;
     onDelete: () => void;
+    // 🎟️ interim：封面清乾淨後，這三個入口暫收進設定「此趟」區（各自新家建好再遷正）
+    onOpenWishTray?: () => void;
+    onOpenExpenses?: () => void;
+    onOpenReminders?: () => void;
 }
 
-export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user, onClose, onUpdate, onDelete }) => {
+export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user, onClose, onUpdate, onDelete, onOpenWishTray, onOpenExpenses, onOpenReminders }) => {
     // --- Data States ---
     const [destination, setDestination] = useState(trip.destination);
     const [startDate, setStartDate] = useState(trip.startDate);
@@ -302,6 +307,34 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
                         )}
                     </div>
                     
+                    {/* === BLOCK C2: 此趟（interim 入口，封面清乾淨後暫收於此） === */}
+                    {(onOpenWishTray || onOpenExpenses || onOpenReminders) && (
+                        <div className="bg-white rounded-[24px] p-3 shadow-sm border border-white">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5 mb-1 px-2">
+                                <MapPin className="w-3 h-3" /> 此趟
+                            </label>
+                            {onOpenWishTray && (
+                                <button onClick={() => { onClose(); onOpenWishTray(); }} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-2xl hover:bg-gray-50 active:scale-[0.99] transition-all">
+                                    <span className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-[#45846D]"><Sparkles className="w-4 h-4" /></span>
+                                    <span className="text-sm font-bold text-[#1D1D1B] flex-1 text-left">心願盒</span>
+                                    <span className="text-xs font-bold text-gray-400">{trip.stagedWishes?.length || 0}</span>
+                                </button>
+                            )}
+                            {onOpenExpenses && (
+                                <button onClick={() => { onClose(); onOpenExpenses(); }} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-2xl hover:bg-gray-50 active:scale-[0.99] transition-all">
+                                    <span className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-[#45846D]"><Wallet className="w-4 h-4" /></span>
+                                    <span className="text-sm font-bold text-[#1D1D1B] flex-1 text-left">錢包</span>
+                                </button>
+                            )}
+                            {onOpenReminders && (
+                                <button onClick={() => { onClose(); onOpenReminders(); }} className="w-full flex items-center gap-3 px-2 py-2.5 rounded-2xl hover:bg-gray-50 active:scale-[0.99] transition-all">
+                                    <span className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-[#45846D]"><ListChecks className="w-4 h-4" /></span>
+                                    <span className="text-sm font-bold text-[#1D1D1B] flex-1 text-left">行前提醒</span>
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     <div className="h-2" />
 
                    {/* === BLOCK D: Reminder === */}

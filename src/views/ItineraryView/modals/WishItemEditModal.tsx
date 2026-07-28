@@ -3,18 +3,19 @@ import {
     X, MapPin, ShoppingBag, Camera, Store, Trash2,
     Link as LinkIcon, Tag as TagIcon, Save, Globe, MapPinPlus, MapPinCheck
 } from 'lucide-react';
-import type { WishItem, WishItemType } from '../../../types';
+import type { WishItem, WishItemType, Trip } from '../../../types';
 import { toast } from '../../../components/Toast';
 import { confirmDialog } from '../../../components/ConfirmDialog';
 import { CURRENCY_SYMBOLS } from '../shared';
 import { uploadTripImage, signPaths } from '../../../services/storage';
 import { LocationPinSheet } from '../../../components/wish/LocationPinSheet';
-import { coordsFromMapsUrl } from '../../../services/geo';
+import { coordsFromMapsUrl, resolvePlace } from '../../../services/geo';
 import { looksLikeMapsUrl, parseMapsUrl, isShortMapsUrl } from '../../../utils/mapsUrl';
 
 interface WishItemEditModalProps {
     item?: WishItem | null; // 傳入 item 代表編輯，不傳代表新增
     allWishItems: WishItem[]; // 傳入所有心願，用於萃取歷史分區與標籤
+    trips?: Trip[];          // 🧾 購物「屬於哪一趟」選擇（結算分組用）
     onSave: (item: WishItem) => void;
     onClose: () => void;
     onDelete?: (id: string) => void;
@@ -33,8 +34,8 @@ const getTagColor = (tag: string) => {
     return colors[hash % colors.length];
 };
 
-export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({ 
-    item, allWishItems, onSave, onClose, onDelete 
+export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
+    item, allWishItems, trips = [], onSave, onClose, onDelete
 }) => {
     const isEditing = !!item;
     
@@ -51,6 +52,18 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
     const [showAreaDropdown, setShowAreaDropdown] = useState(false);
     const [tagInput, setTagInput] = useState('');
     const [pinOpen, setPinOpen] = useState(false);   // 🧭 T3 拖釘校正
+    const [locatingStore, setLocatingStore] = useState(false);   // 🛍️ 店家定位中
+
+    // 🛍️ 用店家名定位（走 resolve cascade）→ 給店家座標，才能吃「附近」在地提醒
+    const locateStore = async () => {
+        if (!edited.area) { toast('先填「店家 / 類別」才能定位'); return; }
+        setLocatingStore(true);
+        const ctx = [edited.city, edited.country].filter(Boolean).join(' ') || undefined;
+        const res = await resolvePlace(edited.area, ctx);
+        setLocatingStore(false);
+        if (res) { setEdited(prev => ({ ...prev, lat: res.lat, lng: res.lng, needsLocationConfirm: res.needsConfirm })); toast('店家已定位，記得按儲存', 'success'); }
+        else toast('找不到這家店，可點下方微調手動拖釘');
+    };
     const [urlPin, setUrlPin] = useState<'idle' | 'loading' | 'fail'>('idle');   // 🧭 T0 連結定位狀態（安靜）
 
     // 🧭 T0（B 版｜全自動＋安靜）：完整網址打字/貼上即時解析；短網址離開欄位時背景解析
@@ -253,13 +266,13 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                         /* 購物：類別/店家 + 預算 */
                         <div className="bg-[#EDF2F0] border border-[#45846D]/15 rounded-2xl p-4 space-y-3">
                             <div className="relative">
-                                <label className="text-[10px] font-bold text-[#45846D] tracking-wider flex items-center gap-1"><Store className="w-3 h-3" /> 類別 / 店家</label>
+                                <label className="text-[10px] font-bold text-[#45846D] tracking-wider flex items-center gap-1"><Store className="w-3 h-3" /> 店家 / 類別</label>
                                 <input
                                     value={edited.area || ''}
                                     onFocus={(e) => { handleFocus(e); setShowAreaDropdown(true); }}
                                     onBlur={() => setTimeout(() => setShowAreaDropdown(false), 200)}
                                     onChange={e => handleChange('area', e.target.value)}
-                                    placeholder="例: Lawson、生鮮、Uniqlo"
+                                    placeholder="例: 唐吉訶德、藥妝店、Uniqlo"
                                     className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40"
                                 />
                                 {showAreaDropdown && availableAreas.length > 0 && (
@@ -270,6 +283,19 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                            {/* 🛍️ 對象（代購/自己）＋ 數量 */}
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">幫誰買（選填）</label>
+                                    <input value={edited.forWhom || ''} onFocus={handleFocus} onChange={e => handleChange('forWhom', e.target.value || undefined)} placeholder="留空＝自己，或打 媽媽/同事"
+                                           className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40" />
+                                </div>
+                                <div className="w-1/4">
+                                    <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">數量</label>
+                                    <input type="number" min={1} onFocus={handleFocus} value={edited.quantity ?? ''} onChange={e => handleChange('quantity', e.target.value ? Number(e.target.value) : undefined)} placeholder="1"
+                                           className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40" />
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 <div className="w-1/3">
@@ -284,6 +310,33 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
                                     <input type="number" onFocus={handleFocus} value={edited.budget || ''} onChange={e => handleChange('budget', Number(e.target.value))} placeholder="例: 1500"
                                            className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40" />
                                 </div>
+                            </div>
+                            {/* 🧾 實際單價（買到後填，結算用；未填則用預算估價） */}
+                            <div>
+                                <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">實際單價（買到後填・結算用）</label>
+                                <input type="number" onFocus={handleFocus} value={edited.actualPrice ?? ''} onChange={e => handleChange('actualPrice', e.target.value ? Number(e.target.value) : undefined)}
+                                       placeholder={edited.budget != null ? `未填就用預算 ${edited.budget}` : '買到後填實際付了多少'}
+                                       className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-4 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40" />
+                            </div>
+                            {/* 🛍️ 店家定位（選填）→ 有座標才吃「附近」在地提醒；沒定位＝純清單（優雅降級） */}
+                            {edited.lat != null ? (
+                                <button onClick={() => setPinOpen(true)} className="flex items-center gap-1.5 text-xs text-[#45846D] font-bold px-1 py-0.5">
+                                    <MapPinCheck className="w-3.5 h-3.5" /> 店家已定位 · <span className="underline underline-offset-2">微調</span>
+                                </button>
+                            ) : (
+                                <button onClick={locateStore} disabled={locatingStore}
+                                        className="flex items-center gap-1.5 text-xs font-bold text-[#45846D] bg-white/70 px-3 py-2 rounded-xl disabled:opacity-50">
+                                    <MapPinPlus className="w-3.5 h-3.5" /> {locatingStore ? '定位中…' : '定位店家（選填，才有附近提醒）'}
+                                </button>
+                            )}
+                            {/* 🧾 屬於哪一趟（選填）→ 結算依行程分組，代購對帳不亂 */}
+                            <div>
+                                <label className="text-[10px] font-bold text-[#45846D] tracking-wider pl-1">屬於哪一趟（選填・結算分組）</label>
+                                <select value={edited.tripId || ''} onChange={e => handleChange('tripId', e.target.value || undefined)}
+                                        className="w-full bg-white text-sm font-bold text-[#1D1D1B] px-3 py-2.5 mt-1 rounded-xl outline-none border border-[#45846D]/20 focus:border-[#45846D]/40 appearance-none">
+                                    <option value="">不綁行程（用國家＋日期）</option>
+                                    {trips.map(t => <option key={t.id} value={t.id}>{t.destination} · {(t.startDate || '').replace(/-/g, '/')}</option>)}
+                                </select>
                             </div>
                         </div>
                     )}

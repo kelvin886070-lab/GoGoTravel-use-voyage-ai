@@ -16,12 +16,19 @@ create table if not exists public.wish_items (
     needs_location_confirm boolean not null default false,  -- 🧭 T1 弱信心座標待確認（既有資料庫請另跑：alter table public.wish_items add column if not exists needs_location_confirm boolean not null default false;）
     is_favorite       boolean not null default false,  -- 🧱 C1-1 我的最愛（既有資料庫請另跑：alter table public.wish_items add column if not exists is_favorite boolean not null default false;）
     is_purchased      boolean not null default false,  -- 🧱 C2-2 購物已買（既有資料庫請另跑：alter table public.wish_items add column if not exists is_purchased boolean not null default false;）
+    for_whom          text,                 -- 🛍️ 代購對象（空＝自己）（既有資料庫請另跑：alter table public.wish_items add column if not exists for_whom text;）
+    quantity          integer,              -- 🛍️ 數量（既有資料庫請另跑：alter table public.wish_items add column if not exists quantity integer;）
+    actual_price      numeric,              -- 🧾 實付單價（結算用）（既有資料庫請另跑：alter table public.wish_items add column if not exists actual_price numeric;）
+    is_settled        boolean not null default false,  -- 🧾 已結清（既有資料庫請另跑：alter table public.wish_items add column if not exists is_settled boolean not null default false;）
+    trip_id           text,                 -- 🧾 代購所屬行程（結算分組）（既有資料庫請另跑：alter table public.wish_items add column if not exists trip_id text;）
+    stop_id           text,                 -- 🛍️「在這裡要買」綁定的 activity.id（既有資料庫請另跑：alter table public.wish_items add column if not exists stop_id text;）
     preferred_slot    text,                 -- 🧱 C1-3 希望時段 morning|afternoon|evening（既有資料庫請另跑：alter table public.wish_items add column if not exists preferred_slot text;）
     url               text,                 -- link 類型或參考連結
     custom_image_path text,                 -- Storage 路徑（沿用 trip-media 慣例）
     budget            numeric,
     currency          text,
     tags              text[] not null default '{}',
+    used_in_trips     text[] not null default '{}',  -- 🧭 軟已訪連結（既有資料庫請另跑：alter table public.wish_items add column if not exists used_in_trips text[] not null default '{}';）
     created_at        timestamptz not null default now()
 );
 

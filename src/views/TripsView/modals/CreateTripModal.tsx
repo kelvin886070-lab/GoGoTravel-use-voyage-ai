@@ -10,7 +10,8 @@ import {
 import { IOSButton, IOSInput } from '../../../components/UI';
 import { generateItinerary, lookupFlightInfo } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
-import type { Trip, TripDay } from '../../../types';
+import { ensureTripGeocoded } from '../../../services/geo';
+import type { Trip, TripDay, TripConstraints } from '../../../types';
 import { INTEREST_DATA, CURRENCIES, DESTINATION_DICTIONARY } from '../shared';
 import type { DestinationNode } from '../shared';
 import { toast } from '../../../components/Toast';
@@ -247,62 +248,48 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         setInterestDetails(prev => ({ ...prev, [tag]: value }));
     };
 
-    const buildPrompt = () => {
-        const companionMap: any = { solo: '獨旅', couple: '情侶/夫妻', family: '親子家庭', friends: '一群朋友', elderly: '帶長輩', pet: '帶寵物', colleague: '同事', classmate: '同學' };
-        const paceMap: any = { relaxed: '悠閒慢活', standard: '標準觀光', packed: '特種兵打卡', deep: '深度慢遊' };
-        const vibeMap: any = { popular: '經典地標', balanced: '在地與熱門均衡', hidden: '大自然與秘境', cultural: '歷史人文藝術' };
-        const budgetMap: any = { cheap: '經濟實惠', standard: '標準預算', luxury: '豪華享受' };
-        
-        const timeLabel: Record<string, string> = { morning: '早上 (08:00 - 12:00)', afternoon: '下午 (12:00 - 18:00)', evening: '晚上 (18:00 以後)' };
-        const mobilityLabel: Record<string, string> = { 
-            public: '大眾運輸 (請集中景點於交通節點周邊)', 
-            car: '租車自駕 (可安排跨區、彈性較高的景點)', 
-            taxi: '計程車/包車 (點對點接駁，不需顧慮等車時間)' 
+    // 🧬 Phase 1：表單狀態 → 結構化 TripConstraints（不再壓 prose；prose 由生成層現拼）。
+    //    最小版 legs：每個目的地暫掛整趟（startDay=1..durationDays），Phase 3 表單重設計再做 per-leg 日期歸屬。
+    //    抵達/離開為 hint（時段）；手打航班/車次無真實時間，折進 specificRequests 供 LLM 參考，不當 confirmed。
+    const buildConstraints = (): TripConstraints => {
+        const transportNote = [
+            flightIn ? `去程${tripType === 'international' ? '航班' : '車次'} ${flightIn}` : '',
+            flightOut ? `回程${tripType === 'international' ? '航班' : '車次'} ${flightOut}` : '',
+        ].filter(Boolean).join('、');
+        const mergedRequests = [specificRequests.trim(), transportNote].filter(Boolean).join('；');
+
+        return {
+            tripType,
+            origin,
+            currency,
+            legs: destinations.map(city => ({ city, startDay: 1, endDay: durationDays })),
+            hard: {
+                arrival: { confidence: 'hint', value: arrivalTime },
+                departure: { confidence: 'hint', value: departureTime },
+            },
+            soft: {
+                companion,
+                pace: pace as TripConstraints['soft']['pace'],
+                vibe,
+                budgetLevel,
+                customBudget: customBudget || undefined,
+                interests: selectedInterests.map(tag => ({ tag, detail: interestDetails[tag] || undefined })),
+                specificRequests: mergedRequests || undefined,
+                localTransportMode,
+            },
         };
-
-        const interestsWithDetails = selectedInterests.map(tag => {
-            const detail = interestDetails[tag];
-            return detail ? `${tag} (想去: ${detail})` : tag;
-        }).join(', ');
-        const destinationsStr = destinations.join('、');
-
-        return `[旅遊條件] 
-        - 類型：${tripType === 'domestic' ? '國內旅遊' : '國外旅遊'}
-        - 目的地：${destinationsStr}
-        - 抵達時間：第一天 ${timeLabel[arrivalTime]} 抵達
-        - 離開時間：最後一天 ${timeLabel[departureTime]} 離開
-        - 當地移動方式：以 ${mobilityLabel[localTransportMode]} 為主
-        - 旅伴：${companionMap[companion]}
-        - 步調：${paceMap[pace]}
-        - 風格：${vibeMap[vibe]}
-        - 預算：${budgetMap[budgetLevel]} ${customBudget ? `(${customBudget})` : ''}
-        - 興趣細項：${interestsWithDetails || '無特別指定'}
-        - 特別需求：${specificRequests || '無'}
-
-        [系統隱藏指令 - 行程美學與出片率校準]
-        ⚠️ 最高優先級：行程安排請務必注重「視覺體驗與空間美感」。請優先挑選具備高知名度、出片率極高、設計感強烈、或在各大社群平台上備受推崇的優質景點、質感餐廳與風格選物店。即使使用者選擇「經濟實惠」或「歷史文化」，也請在該框架內尋找最具視覺張力與美學價值的地點，拒絕平庸或缺乏特色的冷門行程。
-        `;
     };
 
     const handleCreate = async () => {
         const tripDays = durationDays;
         if (!tripDays || tripDays <= 0) { toast("請確認日期範圍"); return; }
         if (destinations.length === 0) { toast("請至少輸入一個目的地"); return; }
-        
+
         setLoading(true);
         try {
-            const fullPrompt = buildPrompt();
-            let transportInfo = undefined;
-            if (tripType === 'international') {
-                if (transportMode === 'flight') {
-                    transportInfo = { inbound: flightIn ? `Flight ${flightIn}` : undefined, outbound: flightOut ? `Flight ${flightOut}` : undefined };
-                }
-            } else {
-                if (transportMode === 'train') { transportInfo = { inbound: `Train/HSR`, outbound: `Train/HSR` }; }
-            }
-
+            const constraints = buildConstraints();
             const finalDestination = destinations.join(' + ');
-            const generatedDays = await generateItinerary(finalDestination, tripDays, fullPrompt, currency, transportInfo, '', localTransportMode);
+            const generatedDays = await generateItinerary(constraints, tripDays);
             if (generatedDays.length > 0 && generatedDays[0].activities.length > 0) {
                 generatedDays[0] = recalculateTimeline(generatedDays[0]);
             }
@@ -311,9 +298,13 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
             
             const newTrip: Trip = {
                 id: Date.now().toString(), destination: finalDestination, origin: origin, transportMode: transportMode, localTransportMode, startDate: startDate, endDate: endDate,
-                coverImage: coverImage || bgImage || `https://picsum.photos/800/600?random=${Date.now()}`, days: daysWithTime, isDeleted: false, currency: currency, pace: pace as Trip['pace']
+                coverImage: coverImage || '', days: daysWithTime, isDeleted: false, currency: currency, pace: pace as Trip['pace'],
+                constraints: constraints,   // 🧬 Phase 1：常駐約束存進 trip，Phase 3 規劃臉可重開重編、Phase 4 重生成共讀
             };
-            onAddTrip(newTrip); onClose();
+            // 🗺️ G4（策略 a）：生成後批次 geocode，讓順路/地圖對生成行程立刻生效。best-effort，失敗不擋建立。
+            let finalTrip = newTrip;
+            try { finalTrip = (await ensureTripGeocoded(newTrip)).trip; } catch { /* 失敗不擋；開地圖/行程時會補 */ }
+            onAddTrip(finalTrip); onClose();
         } catch (e) { toast("無法生成行程，請檢查網路或稍後再試。"); } finally { setLoading(false); }
     };
 
@@ -323,7 +314,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         const finalDestination = destinations.length > 0 ? destinations.join(' + ') : '未命名行程';
         const emptyDays: TripDay[] = Array.from({length: tripDays}, (_, i) => ({ day: i + 1, activities: [] }));
         const newTrip: Trip = {
-            id: Date.now().toString(), destination: finalDestination, origin, startDate: startDate, endDate: endDate, coverImage: coverImage || bgImage, days: emptyDays, isDeleted: false, currency: currency, transportMode: transportMode, pace: pace as Trip['pace']
+            id: Date.now().toString(), destination: finalDestination, origin, startDate: startDate, endDate: endDate, coverImage: coverImage || '', days: emptyDays, isDeleted: false, currency: currency, transportMode: transportMode, pace: pace as Trip['pace']
         };
         onAddTrip(newTrip); onClose();
     };
@@ -882,7 +873,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                 >
                                     下一步
                                 </IOSButton>
-                                {step === 2 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過 AI，手動建立空白行程</button>}
+                                {step === 2 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過，自己手動建立空白行程</button>}
                             </div>
                         ) : (
                             <div className="flex gap-3">

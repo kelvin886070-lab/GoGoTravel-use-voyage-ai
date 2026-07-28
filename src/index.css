@@ -23,10 +23,24 @@ body {
   color: #1D1D1B;
   
   -webkit-tap-highlight-color: transparent;
-  
+
   /* Handle Safe Areas for iOS */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+
+  /* App-like：全站禁止長按選字／iOS 選字 callout（原生 App 本來就不能全螢幕選字）。
+     解決行動裝置長按卡片誤觸「全選螢幕」。輸入框於下方重新開放。 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 需要選字的地方重新開放：輸入框、多行輸入、可編輯內容 */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* 強制 iOS 原生慣性捲動 */

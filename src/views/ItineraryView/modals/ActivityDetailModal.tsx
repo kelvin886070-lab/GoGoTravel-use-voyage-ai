@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-    Trash2, Edit3, X, ZoomIn, Clock, ChevronDown, Camera, Save, 
-    MoveVertical, FileText, MapPin as MapPinIcon, Check
+import {
+    Trash2, Edit3, X, ZoomIn, Clock, ChevronDown, Camera, Save,
+    MoveVertical, FileText, MapPin as MapPinIcon, Check, Star
 } from 'lucide-react';
+import { fetchPlaceDetails, getCachedPlaceDetails } from '../../../services/geo';
 import { IOSInput } from '../../../components/UI';
 import { TimePickerWheel } from '../../../components/common/TimePickerWheel';
 // [Fix] 移除舊的 LocationLink，改用直接渲染正確的 URL
@@ -28,7 +29,27 @@ export const ActivityDetailModal: React.FC<{
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [isPayerDropdownOpen, setIsPayerDropdownOpen] = useState(false);
-    const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false); 
+    const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false);
+    // 🌟 D2②-B：地點評分（開窗時查一次，後端快取＋每日限額；無 placeId 就不查、不顯示）
+    //   膠囊「一開始就在」：有 placeId 未查過→先顯示 loading skeleton；查過(記憶體快取命中)→立即顯示、不閃。
+    const _cachedRating = act.placeId ? getCachedPlaceDetails(act.placeId) : undefined;
+    const [placeRating, setPlaceRating] = useState<{ rating?: number; ratingCount?: number } | null>(
+        _cachedRating !== undefined ? (_cachedRating ? { rating: _cachedRating.rating, ratingCount: _cachedRating.ratingCount } : null) : null,
+    );
+    const [ratingLoading, setRatingLoading] = useState<boolean>(!!act.placeId && _cachedRating === undefined);
+    useEffect(() => {
+        let alive = true;
+        if (act.placeId && getCachedPlaceDetails(act.placeId) === undefined) {
+            setRatingLoading(true);
+            fetchPlaceDetails(act.placeId).then(d => {
+                if (!alive) return;
+                setPlaceRating(d ? { rating: d.rating, ratingCount: d.ratingCount } : null);
+                setRatingLoading(false);
+            });
+        }
+        return () => { alive = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [act.placeId]);
     
     // 圖片拖曳位置狀態
     const [imagePositionY, setImagePositionY] = useState(act.imagePositionY ?? 50);
@@ -196,6 +217,17 @@ export const ActivityDetailModal: React.FC<{
                     <div className="flex items-center gap-2">
                         <h3 className="text-xl font-bold text-[#1D1D1B]">{isEditing ? '編輯內容' : '詳情資訊'}</h3>
                         {!isEditing && edited.wishItemId && <span className="text-[10px] font-bold text-[#45846D] bg-[#EDF2F0] px-2 py-0.5 rounded-md whitespace-nowrap">從心願盒匯入</span>}
+                        {!isEditing && act.placeId && (ratingLoading ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md whitespace-nowrap animate-pulse" style={{ background: '#F0EBDD' }} aria-label="評分載入中">
+                                <Star className="w-2.5 h-2.5" style={{ color: '#D8CFBB' }} />
+                                <span className="inline-block rounded-sm" style={{ width: 20, height: 8, background: '#D8CFBB' }} />
+                            </span>
+                        ) : placeRating?.rating != null ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap" style={{ color: '#8A6D1B', background: '#FBF1D9' }}>
+                                <Star className="w-2.5 h-2.5" fill="#E7B23A" style={{ color: '#E7B23A' }} />
+                                {placeRating.rating.toFixed(1)}{placeRating.ratingCount != null ? ` (${placeRating.ratingCount})` : ''}
+                            </span>
+                        ) : null)}
                     </div>
                     <div className="flex gap-2">
                         {!isEditing ? (

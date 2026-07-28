@@ -75,6 +75,12 @@ Deno.serve(async (req) => {
         return json(await resolveMapsUrl(payload));
       case "directions":
         return json(await directions(payload, user.id));
+      case "place-search":
+        return json(await placeSearch(payload, user.id));
+      case "place-details":
+        return json(await placeDetails(payload, user.id));
+      case "place-lookup":
+        return json(await placeLookup(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -284,9 +290,12 @@ interface PlaceHit {
   lowConfidence: boolean; candidates: number;
 }
 
-async function findPlaceOne(query: string, context?: string): Promise<PlaceHit | null> {
+async function findPlaceOne(query: string, context?: string, bias?: Bias): Promise<PlaceHit | null> {
   if (!GOOGLE_GEOCODING_KEY) return null;
   const textQuery = context ? `${query} ${context}` : query;
+  const body: Record<string, unknown> = { textQuery, languageCode: "zh-TW", maxResultCount: 3 };
+  // 🧭 座標偏置：以 bias 為中心 50km 圓當 locationBias（軟偏置）
+  if (bias) body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: 50000 } };
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: {
@@ -295,7 +304,7 @@ async function findPlaceOne(query: string, context?: string): Promise<PlaceHit |
       "X-Goog-FieldMask":
         "places.id,places.location,places.displayName,places.formattedAddress",
     },
-    body: JSON.stringify({ textQuery, languageCode: "zh-TW", maxResultCount: 3 }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) return null;
   const data = await res.json();
@@ -392,6 +401,194 @@ async function findplace(
   return { results };
 }
 
+// ---------- Place Search（Text Search 回清單，供 D2 typeahead）----------
+// 快取：cached_searches(jsonb) TTL 7 天，命中免費；限額：計入 geocode_usage（共享 spend budget，防濫用）。
+const SEARCH_CACHE_TTL_DAYS = 7;
+const SEARCH_MAX_RESULTS = 8;
+
+interface PlaceSearchResult {
+  placeId?: string; name: string; address: string; lat: number; lng: number;
+}
+
+async function placeSearchGoogle(query: string, bias?: { lat: number; lng: number }, pageToken?: string): Promise<{ results: PlaceSearchResult[]; nextPageToken?: string }> {
+  if (!GOOGLE_GEOCODING_KEY) return { results: [] };
+  // ⚠️ Places API (New)：要拿 nextPageToken 必須用 pageSize（不是 maxResultCount，後者不給分頁 token）
+  const body: Record<string, unknown> = { textQuery: query, languageCode: "zh-TW", pageSize: SEARCH_MAX_RESULTS };
+  // 城市座標軟偏置（30km 圓）；那天的城市中心傳進來
+  if (bias) body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: 30000 } };
+  if (pageToken) body.pageToken = pageToken;   // 「更多結果」分頁
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_GEOCODING_KEY,
+      // 與 findplace 同一組地點欄位（同 SKU，控成本）；加 nextPageToken（回應層欄位，供分頁）
+      "X-Goog-FieldMask": "places.id,places.location,places.displayName,places.formattedAddress,nextPageToken",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return { results: [] };
+  const data = await res.json();
+  const places = data.places || [];
+  const results = places
+    .filter((p: any) => p.location?.latitude != null && p.location?.longitude != null)
+    .map((p: any) => ({
+      placeId: p.id,
+      name: p.displayName?.text ?? "",
+      address: p.formattedAddress ?? "",
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+    }));
+  return { results, nextPageToken: data.nextPageToken };
+}
+
+// 每日限額檢查＋計數（與 geocode 共享 spend budget）
+async function bumpDailyOrLimit(userId: string): Promise<{ limited: boolean }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: usage } = await admin
+    .from("geocode_usage").select("count").eq("user_id", userId).eq("day", today).maybeSingle();
+  const used = usage?.count ?? 0;
+  if (used >= GEOCODE_DAILY_LIMIT) return { limited: true };
+  await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + 1 });
+  return { limited: false };
+}
+
+// payload: { query, bias? } → { results: PlaceSearchResult[] }
+async function placeSearch(
+  payload: { query?: string; bias?: { lat: number; lng: number }; pageToken?: string },
+  userId: string,
+) {
+  const query = (payload.query || "").trim();
+  if (query.length < 2) return { results: [] };
+  const bias = payload.bias;
+  const pageToken = payload.pageToken;
+
+  // 「更多結果」分頁：token 會過期→不走快取；仍計入限額
+  if (pageToken) {
+    if ((await bumpDailyOrLimit(userId)).limited) return { results: [], limited: true };
+    return await placeSearchGoogle(query, bias, pageToken);
+  }
+
+  // 第一頁：走快取（存 { items, nextPageToken }；相容舊陣列格式）
+  const biasKey = bias ? `@${bias.lat.toFixed(1)},${bias.lng.toFixed(1)}` : "";
+  const cacheKey = `search:${query.toLowerCase()}${biasKey}`;
+  const { data: cached } = await admin
+    .from("cached_searches").select("results, created_at").eq("query", cacheKey).maybeSingle();
+  if (cached) {
+    const ageDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+    if (ageDays < SEARCH_CACHE_TTL_DAYS) {
+      const c = cached.results;
+      if (Array.isArray(c)) return { results: c, cached: true };
+      return { results: c.items ?? [], nextPageToken: c.nextPageToken, cached: true };
+    }
+  }
+
+  if ((await bumpDailyOrLimit(userId)).limited) return { results: [], limited: true };
+  const { results, nextPageToken } = await placeSearchGoogle(query, bias);
+  await admin.from("cached_searches").upsert({ query: cacheKey, results: { items: results, nextPageToken }, created_at: new Date().toISOString() });
+  return { results, nextPageToken };
+}
+
+// ---------- Place Details（D2② 評分，方案A）----------
+// 只在「存進心願盒/開地點細節」時查一次。FieldMask 僅取 id/rating/userRatingCount/displayName，
+// 避開最貴的 openingHours（Atmosphere SKU）。快取 cached_place_details（TTL 30 天，評分變動慢）；
+// 命中免費不計數，未命中才 bumpDailyOrLimit（共用 200/日硬限額）。placeId 快取＝同地點不重打。
+const DETAILS_CACHE_TTL_DAYS = 30;
+interface PlaceDetailsResult { placeId: string; rating?: number; ratingCount?: number; name?: string; }
+
+async function placeDetailsGoogle(placeId: string): Promise<PlaceDetailsResult | null> {
+  if (!GOOGLE_GEOCODING_KEY) return null;
+  const res = await fetch(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=zh-TW`,
+    {
+      headers: {
+        "X-Goog-Api-Key": GOOGLE_GEOCODING_KEY,
+        "X-Goog-FieldMask": "id,rating,userRatingCount,displayName",
+      },
+    },
+  );
+  if (!res.ok) return null;
+  const p = await res.json();
+  return {
+    placeId: p.id ?? placeId,
+    rating: typeof p.rating === "number" ? p.rating : undefined,
+    ratingCount: typeof p.userRatingCount === "number" ? p.userRatingCount : undefined,
+    name: p.displayName?.text,
+  };
+}
+
+// payload: { placeId } → { details: PlaceDetailsResult | null }
+async function placeDetails(payload: { placeId?: string }, userId: string) {
+  const placeId = (payload.placeId || "").trim();
+  if (!placeId) return { details: null };
+
+  // 1) 快取（TTL 30 天）
+  const { data: cached } = await admin
+    .from("cached_place_details").select("data, created_at").eq("place_id", placeId).maybeSingle();
+  if (cached) {
+    const ageDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+    if (ageDays < DETAILS_CACHE_TTL_DAYS) return { details: cached.data, cached: true };
+  }
+
+  // 2) 未命中 → 計入每日限額
+  if ((await bumpDailyOrLimit(userId)).limited) return { details: null, limited: true };
+  const details = await placeDetailsGoogle(placeId);
+  if (details) {
+    await admin.from("cached_place_details").upsert({
+      place_id: placeId, data: details, created_at: new Date().toISOString(),
+    });
+  }
+  return { details };
+}
+
+// ---------- Place Lookup（D2②-A：匯入/存檔時，用名稱＋座標偏置一次拿回 placeId＋評分）----------
+// 針對「有座標但沒 placeId」的地點（貼連結匯入常見）。Text Search top-1，FieldMask 帶 rating。
+// 命中就順手寫進 cached_place_details → 之後 fetchPlaceDetails 免費命中。計入每日限額。
+interface PlaceLookupHit extends PlaceDetailsResult { lat?: number; lng?: number; }
+
+async function placeLookupGoogle(query: string, bias?: { lat: number; lng: number }): Promise<PlaceLookupHit | null> {
+  if (!GOOGLE_GEOCODING_KEY) return null;
+  const body: Record<string, unknown> = { textQuery: query, languageCode: "zh-TW", pageSize: 1 };
+  if (bias) body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: 20000 } };
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_GEOCODING_KEY,
+      "X-Goog-FieldMask": "places.id,places.location,places.displayName,places.rating,places.userRatingCount",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const p = (data.places || [])[0];
+  if (!p?.id) return null;
+  return {
+    placeId: p.id,
+    name: p.displayName?.text,
+    rating: typeof p.rating === "number" ? p.rating : undefined,
+    ratingCount: typeof p.userRatingCount === "number" ? p.userRatingCount : undefined,
+    lat: p.location?.latitude,
+    lng: p.location?.longitude,
+  };
+}
+
+// payload: { query, bias? } → { match: PlaceLookupHit | null }
+async function placeLookup(payload: { query?: string; bias?: { lat: number; lng: number } }, userId: string) {
+  const query = (payload.query || "").trim();
+  if (query.length < 2) return { match: null };
+  if ((await bumpDailyOrLimit(userId)).limited) return { match: null, limited: true };
+  const m = await placeLookupGoogle(query, payload.bias);
+  if (m?.placeId) {
+    await admin.from("cached_place_details").upsert({
+      place_id: m.placeId,
+      data: { placeId: m.placeId, rating: m.rating, ratingCount: m.ratingCount, name: m.name },
+      created_at: new Date().toISOString(),
+    });
+  }
+  return { match: m };
+}
+
 // ---------- Geo Benchmark（對抗式稽核專用；不寫快取、不佔額度）----------
 // 對同一批「弄髒」的查詢，同時跑 Geocoding（含信心欄位）與 Places，方便並排比較。
 // ⚠️ 診斷用途，會直接花 Google 費用；僅限已登入者、每次最多 120 筆。
@@ -400,12 +597,18 @@ interface GeoAuditHit {
   locationType?: string; partialMatch?: boolean; formattedAddress?: string;
 }
 
-async function geocodeAuditOne(query: string, context?: string): Promise<GeoAuditHit | null> {
+type Bias = { lat: number; lng: number };
+
+async function geocodeAuditOne(query: string, context?: string, bias?: Bias): Promise<GeoAuditHit | null> {
   if (!GOOGLE_GEOCODING_KEY) return null;
   const address = context ? `${query} ${context}` : query;
+  // 🧭 座標偏置：以 bias 為中心畫 ±0.45° 視窗當 bounds（軟偏置，非硬過濾）
+  const boundsParam = bias
+    ? `&bounds=${(bias.lat - 0.45).toFixed(4)},${(bias.lng - 0.45).toFixed(4)}|${(bias.lat + 0.45).toFixed(4)},${(bias.lng + 0.45).toFixed(4)}`
+    : "";
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${
     encodeURIComponent(address)
-  }&language=zh-TW&key=${GOOGLE_GEOCODING_KEY}`;
+  }&language=zh-TW${boundsParam}&key=${GOOGLE_GEOCODING_KEY}`;
   const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
@@ -449,13 +652,13 @@ interface ResolveResult {
 
 const STRONG_GEOCODE = new Set(["ROOFTOP", "RANGE_INTERPOLATED"]);
 
-async function resolvePlaceOne(query: string, context?: string): Promise<ResolveResult | null> {
-  const g = await geocodeAuditOne(query, context);
+async function resolvePlaceOne(query: string, context?: string, bias?: Bias): Promise<ResolveResult | null> {
+  const g = await geocodeAuditOne(query, context, bias);
   if (g && g.locationType && STRONG_GEOCODE.has(g.locationType)) {
     return { lat: g.lat, lng: g.lng, placeId: g.placeId, source: "geocode", needsConfirm: false };
   }
   // 弱信心 → 升級 Places
-  const p = await findPlaceOne(query, context);
+  const p = await findPlaceOne(query, context, bias);
   if (p) {
     return { lat: p.lat, lng: p.lng, placeId: p.placeId, source: "places", needsConfirm: p.lowConfidence };
   }
@@ -469,14 +672,17 @@ async function resolvePlaceOne(query: string, context?: string): Promise<Resolve
 // payload: { items: [{ location, context? }] } → { results: { [location]: ResolveResult | null } }
 // 快取用 "resolve:" 前綴（存已接受的最終座標）；沿用每日限額（每筆新查詢 +1）。
 async function resolvePlace(
-  payload: { items?: { location: string; context?: string }[] },
+  payload: { items?: { location: string; context?: string; bias?: Bias }[] },
   userId: string,
 ) {
   const items = (payload.items || []).slice(0, 100).filter((it) => it?.location);
+  const biasTag = (b?: Bias) => (b ? `@${b.lat.toFixed(2)},${b.lng.toFixed(2)}` : "");
   const keyed = items.map((it) => ({
     raw: it.location,
     context: it.context,
-    key: "resolve:" + normalizeQuery(it.location, it.context),
+    bias: it.bias,
+    // 偏置會改變結果 → 併入快取 key，避免拿到未偏置的舊錯座標
+    key: "resolve:" + normalizeQuery(it.location, it.context) + biasTag(it.bias),
   }));
   const results: Record<string, ResolveResult | null> = {};
 
@@ -487,7 +693,7 @@ async function resolvePlace(
     .in("query", keys);
   const cacheMap = new Map((cachedRows || []).map((r: any) => [r.query, r]));
 
-  const missKeyed: { raw: string; context?: string; key: string }[] = [];
+  const missKeyed: { raw: string; context?: string; bias?: Bias; key: string }[] = [];
   for (const k of keyed) {
     const c = cacheMap.get(k.key);
     // 快取命中＝先前已接受的座標，needsConfirm=false
@@ -506,7 +712,7 @@ async function resolvePlace(
     const toDo = uniqueMiss.slice(0, remaining);
     const skipped = uniqueMiss.slice(remaining);
 
-    const resolved = await Promise.all(toDo.map((m) => resolvePlaceOne(m.raw, m.context)));
+    const resolved = await Promise.all(toDo.map((m) => resolvePlaceOne(m.raw, m.context, m.bias)));
     const upserts: any[] = [];
     let newCount = 0;
     toDo.forEach((m, i) => {
