@@ -65,6 +65,8 @@ export const TripHeroCard: React.FC<{ trip: Trip; onSelect: () => void; variant?
                     <div className="absolute inset-x-0 top-0 h-12 pointer-events-none" style={{ background: 'linear-gradient(rgba(0,0,0,0.28), transparent)' }} />
                     <div className={`absolute inset-x-0 bottom-0 h-24 pointer-events-none transition-opacity duration-200 ${expanded ? 'opacity-0' : 'opacity-100'}`} style={{ background: 'linear-gradient(transparent, rgba(24,28,32,0.72))' }} />
 
+                    {/* PASS 章不放這裡：PASS＝通關完成，屬於「玩過的行程」（回憶卡印記，蓋回國日）。
+                        未出發的就緒用全綠分段條＋狀態句表達即可（Kelvin 定案，見 docs）。 */}
                     <div className={`absolute inset-x-0 bottom-0 p-4 transition-opacity duration-200 ${expanded ? 'opacity-0' : 'opacity-100'}`}>
                         <h2 className={`font-serif ${sec ? 'text-[21px]' : 'text-[30px]'} font-bold text-white leading-[1.12]`} style={{ textShadow: '0 1px 8px rgba(0,0,0,0.35)' }}>
                             {trip.destination}

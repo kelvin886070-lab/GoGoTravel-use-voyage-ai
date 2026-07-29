@@ -6,7 +6,8 @@ import type { Trip, Activity } from '../../types';
 import type { FlightBooking, HotelBooking, StoredBooking } from '../../types/booking';
 import { haversineKm } from '../../hooks/useNearby';
 import { nightsCoverage, shortNight, hotelNights, hotelDateWarnings } from '../../services/booking/nights';
-import { isFlightRoundTrip } from '../../services/readiness';
+import { isFlightRoundTrip, readinessSummary } from '../../services/readiness';
+import { ReadyStamp } from '../../components/brand/ReadyStamp';
 import { isSystemType } from './shared';
 
 const INK = '#232320', PAPER = '#F6F1E7', BORDER = '#E0D8C6', GREEN = '#3F6B52', STAMP = '#A23B2E', MUTE = '#8A8266', DASH = '#D6CDB8';
@@ -47,8 +48,8 @@ export const PrepareFace: React.FC<{
     const packReady = (docsDone ? 1 : 0) + (packDone ? 1 : 0);         // 次要 /2
     const ringPct = (bookingReady / 2) * 100;
     const mood = bookingReady === 2 ? '訂購都到齊了！'
-        : flightDone && !hotelDone ? '機票到手，就差住宿'
-        : hotelDone && !flightDone ? '住宿有了，補張機票'
+        : flightDone && !hotelDone ? '機票已匯入，還剩住宿'
+        : hotelDone && !flightDone ? '住宿已匯入，還剩機票'
         : '開始準備了';
 
     // 機票摘要 / 兒童 / 行李彙總（取第一筆 flight）
@@ -65,20 +66,32 @@ export const PrepareFace: React.FC<{
             : fullyCovered ? `${cov.neededCount} 晚住宿已確認 · 搞定！`
                 : `住 ${shortNight(hb!.checkInLocal)}–${shortNight(hb!.checkOutLocal)}（已排 ${cov.coveredCount} 晚 ／ 總共 ${cov.neededCount} 晚）`;
 
+    // 🎟️ 批 C：五段里程碑（規劃/機票/住宿/文件/打包）全亮 → 騎縫大章接替進度環
+    const allReady = readinessSummary(trip).allReady;
+
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ background: PAPER, border: `0.5px solid ${BORDER}` }}>
-            {/* 就緒環：訂購為主、打包為次 */}
-            <div className="flex items-center gap-4 p-4" style={{ borderBottom: `0.5px solid ${BORDER}` }}>
-                <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0" style={{ background: `conic-gradient(${GREEN} 0 ${ringPct}%, ${DASH} ${ringPct}% 100%)` }}>
-                    <div className="w-11 h-11 rounded-full flex flex-col items-center justify-center" style={{ background: PAPER }}>
-                        <span className="font-mono text-[14px] font-bold" style={{ color: GREEN, lineHeight: 1 }}>{bookingReady}/2</span>
-                        <span className="text-[8px]" style={{ color: MUTE }}>訂購</span>
-                    </div>
+        <div className="rounded-2xl overflow-hidden relative" style={{ background: PAPER, border: `0.5px solid ${BORDER}` }}>
+            {/* 🎟️ 騎縫大章（方案 A）：像真護照一樣斜壓在頁面右上、微出血；鏤空線框不擋閱讀。
+                演一次→停在蓋好姿態；點章重播（ReadyStamp 煙火模型）。圓形 hit area 不擋下方按鈕。 */}
+            {allReady && (
+                <div style={{ position: 'absolute', top: 2, right: -12, zIndex: 5 }}>
+                    <ReadyStamp startDate={trip.startDate} size={122} animated />
                 </div>
-                <div className="flex-1">
+            )}
+            {/* 就緒環：訂購為主、打包為次；全就緒時環的任務完成 → 讓位給章、文字轉綠 */}
+            <div className="flex items-center gap-4 p-4" style={{ borderBottom: `0.5px solid ${BORDER}` }}>
+                {!allReady && (
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0" style={{ background: `conic-gradient(${GREEN} 0 ${ringPct}%, ${DASH} ${ringPct}% 100%)` }}>
+                        <div className="w-11 h-11 rounded-full flex flex-col items-center justify-center" style={{ background: PAPER }}>
+                            <span className="font-mono text-[14px] font-bold" style={{ color: GREEN, lineHeight: 1 }}>{bookingReady}/2</span>
+                            <span className="text-[8px]" style={{ color: MUTE }}>訂購</span>
+                        </div>
+                    </div>
+                )}
+                <div className="flex-1" style={allReady ? { paddingRight: 100 } : undefined}>
                     <div className="font-mono text-[10px] tracking-wide" style={{ color: MUTE }}>出發前 {Math.max(daysToDep, 0)} 天</div>
-                    <div className="font-serif text-[16px] font-medium" style={{ color: INK }}>{mood}</div>
-                    <div className="font-mono text-[9px] tracking-wide mt-0.5" style={{ color: MUTE }}>打包 {packReady}/2 · 之後再說</div>
+                    <div className="font-serif text-[16px]" style={{ color: allReady ? GREEN : INK, fontWeight: allReady ? 700 : 500 }}>{allReady ? '全部就緒 · 可以出發了' : mood}</div>
+                    <div className="font-mono text-[9px] tracking-wide mt-0.5" style={{ color: MUTE }}>打包 {packReady}/2 · {allReady ? '都收好了' : '之後再說'}</div>
                 </div>
             </div>
 
@@ -177,7 +190,7 @@ export const PrepareFace: React.FC<{
                 <div className="font-mono text-[9px] tracking-[1.5px] mt-4 mb-1" style={{ color: MUTE }}>打包 · PACK</div>
                 <div className="flex items-center gap-3 py-2.5" style={{ borderBottom: `0.5px dashed ${DASH}` }}>
                     <FileText className="w-[18px] h-[18px] shrink-0" style={{ color: docsDone ? MUTE : STAMP }} />
-                    <div className="flex-1"><div className="font-serif text-[14px]" style={{ color: INK }}>文件</div><div className="font-mono text-[9px]" style={{ color: docsDone ? MUTE : STAMP }}>{docsDone ? '已備' : '從保管箱挑'}</div></div>
+                    <div className="flex-1"><div className="font-serif text-[14px]" style={{ color: INK }}>文件</div><div className="font-mono text-[9px]" style={{ color: docsDone ? MUTE : STAMP }}>{docsDone ? ((trip.linkedDocumentIds?.length ?? 0) > 0 ? `${trip.linkedDocumentIds!.length} 份已備` : '已備') : '從保管箱挑'}</div></div>
                     {docsDone
                         ? <button onClick={() => onMarkReady('docs', false)} title="撤章" className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold" style={{ border: `1.5px solid ${GREEN}`, color: GREEN, transform: 'rotate(-3deg)' }}><Stamp className="w-3 h-3" />OK</button>
                         : <div className="flex items-center gap-1.5"><button onClick={() => onMarkReady('docs', true)} className="text-[11px] rounded-lg px-2 py-1" style={{ color: MUTE }}>已備</button><button onClick={() => onFix('docs')} className="text-[11px] rounded-lg px-2.5 py-1" style={{ border: `1px dashed ${STAMP}`, color: STAMP }}>補齊</button></div>}

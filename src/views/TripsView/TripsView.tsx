@@ -5,7 +5,7 @@
 //   排序：按出發日（最近的當主角），取代手動拖曳。旅途中的行程只出現在捷徑、不重複進清單。
 //   「從分享連結匯入」已移入 CreateTripModal（暫存），保持首頁乾淨。精彩回憶移出（改個人頁）。
 import React, { useState, useMemo } from 'react';
-import { Navigation, ArrowRight } from 'lucide-react';
+import { Navigation, ArrowRight, ChevronRight } from 'lucide-react';
 
 import type { Trip, User, WishItem } from '../../types';
 import { MadeByFooter } from '../../components/UI';
@@ -60,9 +60,19 @@ export const TripsView: React.FC<TripsViewProps> = ({
       .sort((a, b) => dayTs(a.startDate) - dayTs(b.startDate));
   }, [trips, activeTrip]);
 
-  // 主 hero＝最近出發那趟；其餘進「其他計畫」次 hero 清單。
+  // 主 hero＝最近出發那趟；其餘進「接下來」次 hero 清單。
   const heroTrip = upcomingTrips[0] ?? null;
   const restTrips = useMemo(() => upcomingTrips.slice(1), [upcomingTrips]);
+
+  // 🕰️ 回憶（過渡版）：完全結束的行程，按出發日新→舊。正式回憶卡/個人頁做好後整區替換。
+  const pastTrips = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const todayTs = now.getTime();
+    return trips
+      .filter(t => !!t.endDate && dayTs(t.endDate) < todayTs)
+      .sort((a, b) => dayTs(b.startDate) - dayTs(a.startDate));
+  }, [trips]);
 
   // 🧭 旅途中捷徑卡：今天是該行程第幾天
   const activeDayN = useMemo(() => {
@@ -156,6 +166,36 @@ export const TripsView: React.FC<TripsViewProps> = ({
                 <TripHeroCard key={trip.id} trip={trip} onSelect={() => onSelectTrip(trip)} variant="secondary" />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* 🕰️ 回憶（過渡版）：刻意樸素的純文字列——灰字降飽和＝過去的，不與現役行程搶戲。
+            無過去行程時整區不顯示。正式「精彩回憶卡／個人頁回憶區」完成後整區替換。 */}
+        {pastTrips.length > 0 && (
+          <div className="mt-10 px-6">
+            <div className="flex items-baseline justify-between mb-2">
+              <div>
+                <span className="block font-mono text-[10px] tracking-[0.18em] text-[#8A8266] mb-0.5">MEMORIES</span>
+                <h3 className="text-base font-bold font-serif tracking-wide text-[#8A8266]">回憶</h3>
+              </div>
+              <span className="font-mono text-[11px] text-[#8A8266]">{pastTrips.length} 趟</span>
+            </div>
+            <div className="border-t border-[#232320]/10">
+              {pastTrips.map((trip, i) => (
+                <button
+                  key={trip.id}
+                  onClick={() => onSelectTrip(trip)}
+                  className={`w-full flex items-center justify-between py-3 px-0.5 text-left active:opacity-60 transition-opacity ${i < pastTrips.length - 1 ? 'border-b border-[#232320]/5' : ''}`}
+                >
+                  <div className="min-w-0">
+                    <div className="font-serif text-[14px] font-bold text-[#5F5E5A] truncate">{trip.destination}</div>
+                    <div className="font-mono text-[10px] text-[#8A8266] mt-0.5">{(trip.startDate || '').replace(/-/g, '.')} · {trip.days.length} 天</div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#B4B2A9] shrink-0" />
+                </button>
+              ))}
+            </div>
+            <div className="font-mono text-[10px] text-[#B4B2A9] text-center mt-2">過渡版 · 正式回憶卡設計後將取代</div>
           </div>
         )}
 

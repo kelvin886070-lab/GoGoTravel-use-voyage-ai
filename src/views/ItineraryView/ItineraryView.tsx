@@ -691,15 +691,18 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         setIsDaysEditOpen(false);
     };
 
+    // 🎟️ 文件與就緒同步：從保管箱連結文件＝文件「已備」蓋章（修「匯入了卻一直顯示補齊」——
+    //    linkedDocumentIds 與 readiness.docs 原本是兩套沒接起來的資料源）。
+    //    全部移除連結＝撤章；首頁快照同步跟著變。
     const handleLinkDocuments = (selectedIds: string[]) => {
-        onUpdateTrip({ ...trip, linkedDocumentIds: selectedIds });
+        onUpdateTrip({ ...trip, linkedDocumentIds: selectedIds, readiness: { ...(trip.readiness || {}), docs: selectedIds.length > 0 } });
         setIsDocPickerOpen(false);
     };
 
     const handleUnlinkDocument = async (docId: string) => {
         if(await confirmDialog({ title: '移除這份文件連結？', message: '檔案仍會保留在保管箱中，只是取消與此行程的連結。', confirmText: '移除連結' })) {
             const newIds = (trip.linkedDocumentIds || []).filter(id => id !== docId);
-            onUpdateTrip({ ...trip, linkedDocumentIds: newIds });
+            onUpdateTrip({ ...trip, linkedDocumentIds: newIds, readiness: { ...(trip.readiness || {}), docs: newIds.length > 0 } });
         }
     };
 
