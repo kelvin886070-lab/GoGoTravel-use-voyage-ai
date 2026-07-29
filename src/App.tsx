@@ -930,6 +930,7 @@ const App: React.FC = () => {
                 <TripsView
                   trips={trips.filter(t => !t.isDeleted)}
                   user={user}
+                  wishItems={wishItems}
                   activeTrip={activeTrip}
                   onOpenActiveTrip={() => activeTrip && handleTripSelect(activeTrip)}
                   onLogout={handleLogout}

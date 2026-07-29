@@ -5,7 +5,7 @@ import {
     Coffee, Footprints, Zap, Book, MapPin, Scale, Landmark, Mountain, 
     Coins, ChevronDown, Sparkles, PlaneTakeoff, PlaneLanding, ArrowLeftRight,
     Loader2, Calendar, ArrowRight, History, Plus, Globe, Map, Check,
-    Sunrise, Sun, Moon, Home 
+    Sunrise, Sun, Moon, Home, Download
 } from 'lucide-react';
 import { IOSButton, IOSInput } from '../../../components/UI';
 import { generateItinerary, lookupFlightInfo } from '../../../services/gemini';
@@ -72,7 +72,7 @@ const ORIGIN_OPTIONS = {
     ]
 };
 
-export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void }> = ({ onClose, onAddTrip }) => {
+export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void, onImport?: () => void }> = ({ onClose, onAddTrip, onImport }) => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     
@@ -874,6 +874,12 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                     下一步
                                 </IOSButton>
                                 {step === 2 && <button onClick={handleManualCreate} className="text-gray-400 text-xs font-medium py-2 hover:text-gray-600 transition-colors">跳過，自己手動建立空白行程</button>}
+                                {/* 🎟️ 暫存入口：從分享連結匯入（原在首頁，移入此處保持首頁乾淨；待五步清單重做時再正式設計） */}
+                                {step === 2 && onImport && (
+                                    <button onClick={onImport} className="text-gray-400 text-xs font-medium py-1 hover:text-gray-600 transition-colors flex items-center justify-center gap-1.5">
+                                        <Download className="w-3.5 h-3.5" /> 從分享連結匯入行程
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="flex gap-3">

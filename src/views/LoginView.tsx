@@ -4,6 +4,7 @@ import type { User } from '../types';
 import { supabase } from '../services/supabase';
 // 確保引用正確的 Footer 元件
 import { MadeByFooter } from '../components/UI';
+import { BrandStamp, BrandWordmark } from '../components/brand/BrandLogo';
 
 interface LoginViewProps {
   onLogin: (user: User) => void;
@@ -99,27 +100,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         {/* 內容區塊 (Flex-1)：這會佔據中間所有剩餘空間，自然把 Footer 推到底部 */}
         <div className="flex-1 flex flex-col justify-center items-center w-full max-w-md mx-auto px-6 z-10">
             
-            <div className="text-center mb-10 w-full">
-                {/* Logo */}
-                <div className="w-24 h-24 mx-auto mb-6 relative flex items-center justify-center">
-                    <img 
-                        src="/favicon.svg" 
-                        alt="Kelvin Trip Logo" 
-                        className="w-full h-full object-contain drop-shadow-md"
-                        onError={(e) => {
-                             e.currentTarget.style.display = 'none';
-                             const parent = e.currentTarget.parentElement!;
-                             parent.innerHTML = '<span class="text-6xl font-black text-[#45846D] font-serif">K</span>';
-                        }} 
-                    />
+            <div className="text-center mb-10 w-full flex flex-col items-center">
+                {/* Logo：護照戳章（品牌統一，放大） */}
+                <div className="mb-6 flex items-center justify-center">
+                    <BrandStamp size={152} />
                 </div>
 
-                <h1 className="text-3xl font-bold text-[#1D1D1B] tracking-tight font-serif">
-                    Kelvin Trip.
-                </h1>
-                <p className="text-gray-500 text-sm mt-2 font-medium tracking-wide uppercase">
-                    Design Your Memories
-                </p>
+                {/* 字標與副標一律走共用元件 BrandWordmark（襯線＋綠點），與開場動畫同一套，避免兩邊各刻各的字體 */}
+                <BrandWordmark size={34} />
+                <div className="mt-2" style={{ fontFamily: "ui-monospace, 'Roboto Mono', monospace", fontSize: 11, letterSpacing: '.22em', color: '#8A8266' }}>
+                    DESIGN YOUR MEMORIES
+                </div>
             </div>
 
             {/* 卡片本體 */}

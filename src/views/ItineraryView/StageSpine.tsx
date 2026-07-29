@@ -18,27 +18,10 @@ export const STAGES = [
 ] as const;
 export type StageKey = typeof STAGES[number]['key'];
 
-// 只有前夕(2)/旅途(3)/回憶(4)是「非到不可」的時間閘門；規劃/準備隨時可進。
-export const LOCKABLE_FROM = 2;
-
-// 時間驅動階段：回來後(4)｜旅途中(3)｜前夕≤3天(2)｜準備≤21天(1)｜規劃(>21天,0)
-//   注意：階段分界(21天)與「脊椎啟動/變暗」門檻(30天,見 ItineraryView spineActivated)是兩件事。
-//   時間軸：>30天整條變暗 → 30~21天規劃亮「現在」→ 21~3天準備亮 → ≤3天前夕。
-export const computeStage = (trip: { startDate?: string; endDate?: string }): number => {
-    const p = (s?: string) => { const [y, m, d] = (s || '').split('-').map(Number); if (!y) return null; const dt = new Date(y, m - 1, d); dt.setHours(0, 0, 0, 0); return dt.getTime(); };
-    const s = p(trip.startDate), e = p(trip.endDate);
-    if (s == null) return 0;
-    const t = new Date(); t.setHours(0, 0, 0, 0); const now = t.getTime();
-    if (e != null && now > e) return 4;
-    if (now >= s && (e == null || now <= e)) return 3;
-    const days = Math.ceil((s - now) / 86400000);
-    if (days <= 3) return 2;
-    if (days <= 21) return 1;
-    return 0;
-};
-
-// 脊椎「啟動」門檻：出發前 30 天內（或已在旅途/回憶）才點亮「現在」；更早整條變暗、只開放不施壓。
-export const ACTIVATE_DAYS = 30;
+// 🕰️ 階段判定已移至 src/services/tripPhase.ts（純函式層，供 services 共用）。
+//   本地 import 供元件使用（LOCKABLE_FROM），並 re-export 維持既有 `from './StageSpine'` 相容。
+import { computeStage, ACTIVATE_DAYS, LOCKABLE_FROM } from '../../services/tripPhase';
+export { computeStage, ACTIVATE_DAYS, LOCKABLE_FROM };
 
 interface Props {
     current: number;

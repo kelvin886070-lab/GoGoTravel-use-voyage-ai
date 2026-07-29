@@ -13,6 +13,7 @@ import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
 import { planArrangement, activityTypeOf, insertionTimeForDay, dayDistanceKm } from '../../services/scheduler';
 import { ensureTripGeocoded, isMappable, geocodeItems } from '../../services/geo';
+import { computeBookingReadiness } from '../../services/readiness';
 import { locationWarnings, type LatLng } from '../../services/geoCheck';
 import { TimePickerWheel } from '../../components/common/TimePickerWheel';
 import { useNearby, haversineKm, fmtDist } from '../../hooks/useNearby';
@@ -247,6 +248,16 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const hasFlightBooking = useMemo(() => bookings.some(b => b.kind === 'flight'), [bookings]);
     const flightBookings = useMemo(() => bookings.filter(b => b.kind === 'flight') as FlightBooking[], [bookings]);
     const hotelBookings = useMemo(() => bookings.filter(b => b.kind === 'hotel') as HotelBooking[], [bookings]);
+    // 🎟️ 就緒快照：bookings 變動時把「機票/住宿完整性把關」結果寫進 trip.readiness，
+    //   讓沒有 bookings 的首頁只讀快照即可（單一真相）。idempotent guard 防寫入迴圈。
+    useEffect(() => {
+        const next = computeBookingReadiness(trip, flightBookings, hotelBookings);
+        const r = trip.readiness || {};
+        if (r.flight !== next.flight || r.hotel !== next.hotel) {
+            onUpdateTrip({ ...trip, readiness: { ...r, flight: next.flight, hotel: next.hotel } });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [flightBookings, hotelBookings, trip.startDate, trip.endDate, trip.readiness]);
     const [importOpen, setImportOpen] = useState(false);
     const [viewBooking, setViewBooking] = useState<StoredBooking | null>(null);
     // 🎟️ Phase 4a：對帳收據 ＋ 待安排托盤

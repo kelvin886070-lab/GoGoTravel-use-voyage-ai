@@ -1,7 +1,7 @@
 // src/components/brand/BrandIntro.tsx
 // 🎟️ 冷啟動「蓋章」開場動畫：戳章壓下→油墨暈開→字標浮起，約 1.25 秒。
 //   紙灰底與 manifest background_color 一致，和 OS 靜態啟動畫面無縫接。
-//   只在冷啟動跑一次（sessionStorage 守衛）、可點跳過。跑在「本來就要等資料」的時間上，不硬加延遲。
+//   只在冷啟動跑一次（sessionStorage 守衛）；短動畫故不給跳過，保證品牌時刻完整播完。跑在「本來就要等資料」的時間上。
 import React, { useEffect, useState } from 'react';
 import { BrandStamp, BrandWordmark } from './BrandLogo';
 
@@ -9,13 +9,13 @@ const BrandIntro: React.FC<{ onDone: () => void }> = ({ onDone }) => {
     const [leaving, setLeaving] = useState(false);
     const finish = () => { setLeaving(true); window.setTimeout(onDone, 340); };
     useEffect(() => {
-        const t = window.setTimeout(finish, 4650);   // 蓋章→字標約 2.1s 完成，之後輕微呼吸停留，總長約 5 秒（fade 340ms 收尾）
+        const t = window.setTimeout(finish, 3150);   // 蓋章→字標約 2.2s 完成，之後輕微呼吸停留，總長約 3.5 秒（fade 340ms 收尾）
         return () => window.clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
-        <div onClick={finish}
+        <div
             style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#E4E2DD', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 26, opacity: leaving ? 0 : 1, transition: 'opacity 340ms ease' }}>
             <div className="kti-breath" style={{ position: 'relative', width: 150, height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span className="kti-ink" style={{ position: 'absolute', width: 150, height: 150, borderRadius: '50%', border: '2px solid #3F6B52' }} />

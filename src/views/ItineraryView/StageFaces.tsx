@@ -6,6 +6,7 @@ import type { Trip, Activity } from '../../types';
 import type { FlightBooking, HotelBooking, StoredBooking } from '../../types/booking';
 import { haversineKm } from '../../hooks/useNearby';
 import { nightsCoverage, shortNight, hotelNights, hotelDateWarnings } from '../../services/booking/nights';
+import { isFlightRoundTrip } from '../../services/readiness';
 import { isSystemType } from './shared';
 
 const INK = '#232320', PAPER = '#F6F1E7', BORDER = '#E0D8C6', GREEN = '#3F6B52', STAMP = '#A23B2E', MUTE = '#8A8266', DASH = '#D6CDB8';
@@ -26,7 +27,9 @@ export const PrepareFace: React.FC<{
 }> = ({ trip, daysToDep, flightBookings, hotelBookings, onImport, onView, onMarkReady, onFix }) => {
     const r = trip.readiness || {};
     const fbs = flightBookings ?? [];
-    const flightDone = fbs.length > 0;
+    // 🎟️ 機票「完整性」把關：來回閉環（首段起點＝末段終點）才算訂購完成，不只「有匯入」。
+    //   與 services/readiness.computeBookingReadiness 同一判定，確保準備臉與首頁快照一致。
+    const flightDone = isFlightRoundTrip(fbs);
     // 🛏️ 住宿覆蓋：全覆蓋才算「訂購完成」；部分覆蓋顯示尚缺幾晚
     const hbs = hotelBookings ?? [];
     const hb = hbs[0];

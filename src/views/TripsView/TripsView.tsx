@@ -1,14 +1,17 @@
+// src/views/TripsView/TripsView.tsx
+// 🏠 首頁骨架：產品身份＝「掌控為優先」的規劃工具。一進來就回答「哪一趟＋還有幾天＋下一步」。
+//   結構：Header（戳章字標＋頭像）→ 旅途中捷徑（若在途中）→ 開新旅程 CTA（上移，統一風格）
+//         → 下一趟 主 hero（最近出發）→ 其他計畫 次 hero（較遠、矮一號、同結構可展開）。
+//   排序：按出發日（最近的當主角），取代手動拖曳。旅途中的行程只出現在捷徑、不重複進清單。
+//   「從分享連結匯入」已移入 CreateTripModal（暫存），保持首頁乾淨。精彩回憶移出（改個人頁）。
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Bell, ChevronRight, LayoutGrid, Navigation } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { Navigation, ArrowRight } from 'lucide-react';
 
-import type { Trip, User } from '../../types';
+import type { Trip, User, WishItem } from '../../types';
 import { MadeByFooter } from '../../components/UI';
+import { BrandStamp, BrandWordmark } from '../../components/brand/BrandLogo';
 
-// --- Components ---
-import { DashboardWidgets } from './components/widgets/DashboardWidgets';
-import { DiscoveryWidget } from './components/widgets/DiscoveryWidget';
-import { TripCard } from './components/cards/TripCard';
+import { TripHeroCard } from './components/cards/TripHeroCard';
 
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
@@ -19,8 +22,9 @@ import { EditTripModal } from './modals/EditTripModal';
 interface TripsViewProps {
   trips: Trip[];
   user: User;
-  activeTrip?: Trip | null;              // 🧭 旅途中的行程（顯示捷徑卡）
-  onOpenActiveTrip?: () => void;         // 跳進該行程（自動落走模式）
+  wishItems?: WishItem[];
+  activeTrip?: Trip | null;              // 🧭 旅途中的行程（顯示捷徑卡；不重複進清單）
+  onOpenActiveTrip?: () => void;
   onLogout: () => void;
   onAddTrip: (trip: Trip) => void;
   onImportTrip: (trip: Trip) => void;
@@ -30,219 +34,154 @@ interface TripsViewProps {
   onUpdateTrip?: (trip: Trip) => void;
 }
 
+// 本地日期字串（YYYY-MM-DD）轉當地 00:00 timestamp；避免 UTC 位移。
+const dayTs = (dateStr: string): number => {
+  if (!dateStr) return 0;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+};
+
 export const TripsView: React.FC<TripsViewProps> = ({
     trips, user, activeTrip, onOpenActiveTrip, onLogout, onAddTrip, onImportTrip, onSelectTrip,
-    onDeleteTrip, onReorderTrips, onUpdateTrip
+    onUpdateTrip,
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
 
-  // --- 1. 日期分類邏輯 (Logic Fix) ---
-  const { upcomingTrips, pastTrips } = useMemo(() => {
-    // 基準點：今天的凌晨 00:00:00 (排除時分秒干擾)
+  // 即將出發＝endDate ≥ 今天、且非「旅途中那趟」（去重）；按出發日升冪（最近的在前）。
+  const upcomingTrips = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    const todayTimestamp = now.getTime();
+    const todayTs = now.getTime();
+    return trips
+      .filter(t => dayTs(t.endDate) >= todayTs && t.id !== activeTrip?.id)
+      .sort((a, b) => dayTs(a.startDate) - dayTs(b.startDate));
+  }, [trips, activeTrip]);
 
-    const getTripEndTimestamp = (dateStr: string) => {
-        if (!dateStr) return 0;
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d).getTime();
-    };
-
-    const upcoming: Trip[] = [];
-    const past: Trip[] = [];
-
-    trips.forEach(trip => {
-        const tripEnd = getTripEndTimestamp(trip.endDate);
-        
-        // 嚴格判定：只有當行程「完全結束」(EndDate < Today) 才算回憶
-        // 只要今天還在行程範圍內，或是未來，都算 Upcoming
-        if (tripEnd < todayTimestamp) {
-            past.push(trip);
-        } else {
-            upcoming.push(trip);
-        }
-    });
-
-    // 排序邏輯：
-    // 即將出發：不強制 Sort，保留使用者拖曳後的順序 (或依原始資料順序)
-    // 精彩回憶：強制依日期降序 (最新的回憶在最前面)
-    past.sort((a, b) => b.startDate.localeCompare(a.startDate));
-
-    return { upcomingTrips: upcoming, pastTrips: past };
-  }, [trips]);
+  // 主 hero＝最近出發那趟；其餘進「其他計畫」次 hero 清單。
+  const heroTrip = upcomingTrips[0] ?? null;
+  const restTrips = useMemo(() => upcomingTrips.slice(1), [upcomingTrips]);
 
   // 🧭 旅途中捷徑卡：今天是該行程第幾天
   const activeDayN = useMemo(() => {
     if (!activeTrip?.startDate) return 1;
-    const [y, m, d] = activeTrip.startDate.split('-').map(Number);
-    const s = new Date(y, m - 1, d); s.setHours(0, 0, 0, 0);
+    const s = dayTs(activeTrip.startDate);
     const t = new Date(); t.setHours(0, 0, 0, 0);
-    return Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
+    return Math.floor((t.getTime() - s) / 86400000) + 1;
   }, [activeTrip]);
-
-
-  // --- 2. 拖曳邏輯 (Drag Logic) ---
-  const onDragEnd = (result: DropResult) => {
-      // 只有「即將出發」支援拖曳
-      if (!result.destination || result.source.droppableId !== 'upcoming-list') return;
-
-      const newUpcoming = Array.from(upcomingTrips);
-      const [movedItem] = newUpcoming.splice(result.source.index, 1);
-      newUpcoming.splice(result.destination.index, 0, movedItem);
-
-      // 更新全域狀態：將排序後的 Upcoming 與原本的 Past 合併
-      // 確保資料庫中的順序也是 Upcoming 在前
-      onReorderTrips([...newUpcoming, ...pastTrips]);
-  };
 
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
-      
-      {/* Header: Kelvin Trip */}
-      <div className="flex-shrink-0 pt-16 pb-2 px-6 bg-[#E4E2DD]/95 backdrop-blur-xl z-40 border-b border-gray-200/30 w-full sticky top-0 flex justify-between items-center transition-all">
-         <h1 className="text-3xl font-black tracking-tighter text-[#1D1D1B] font-serif">
-            Kelvin Trip
-         </h1>
-         <div className="flex gap-3">
-             <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm border border-gray-100 active:scale-95 transition-all text-gray-600 hover:text-[#1D1D1B]">
-                <Bell className="w-5 h-5" />
-             </button>
-             <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-md active:scale-90 transition-transform">
-                <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
-             </button>
-         </div>
+
+      {/* Header：戳章 + 字標 ＋ 頭像 */}
+      <div className="flex-shrink-0 pt-9 pb-2 px-6 bg-[#E4E2DD]/95 backdrop-blur-xl z-40 border-b border-black/5 w-full sticky top-0 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <BrandStamp size={66} />
+          <BrandWordmark size={22} />
+        </div>
+        <button
+          onClick={() => setShowProfile(true)}
+          className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-md active:scale-90 transition-transform"
+          aria-label="會員"
+        >
+          <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+        </button>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto w-full scroll-smooth no-scrollbar pb-24">
-        
-        {/* 🧭 旅途中捷徑卡：一鍵跳進走模式 */}
+
+        {/* 🧭 旅途中捷徑卡 */}
         {activeTrip && (
-            <div className="px-5 pt-2">
-                <button onClick={onOpenActiveTrip} className="w-full bg-[#2C2C2A] rounded-[24px] p-4 flex items-center gap-3 active:scale-[0.99] transition-transform text-left">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" /></span>
-                            <span className="text-[10px] font-bold tracking-widest text-white/70">旅途中</span>
-                        </div>
-                        <p className="text-lg font-black font-serif text-white mt-1 truncate uppercase">{activeTrip.destination}</p>
-                        <p className="text-[11px] font-mono text-white/60 tracking-widest mt-0.5">DAY {activeDayN} · 開啟今天</p>
-                    </div>
-                    <div className="w-11 h-11 rounded-full bg-[#45846D] text-white flex items-center justify-center shrink-0"><Navigation className="w-5 h-5" /></div>
-                </button>
-            </div>
+          <div className="px-5 pt-4">
+            <button onClick={onOpenActiveTrip} className="w-full bg-[#232320] rounded-[24px] p-4 flex items-center gap-3 active:scale-[0.99] transition-transform text-left">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" /></span>
+                  <span className="text-[10px] font-bold tracking-widest text-white/70">旅途中</span>
+                </div>
+                <p className="text-lg font-bold font-serif text-white mt-1 truncate">{activeTrip.destination}</p>
+                <p className="text-[11px] font-mono text-white/60 tracking-widest mt-0.5">DAY {activeDayN} · 開啟今天</p>
+              </div>
+              <div className="w-11 h-11 rounded-full bg-[#45846D] text-white flex items-center justify-center shrink-0"><Navigation className="w-5 h-5" /></div>
+            </button>
+          </div>
         )}
 
-        {/* Dashboard & Discovery */}
-        <div className="px-5 pt-2 space-y-4">
-            <DashboardWidgets />
-            <DiscoveryWidget />
+        {/* 🎟️ 開新旅程 CTA（票根式）：上移統一風格。匯入入口已移入建立流程 */}
+        <div className="px-5 pt-4">
+          <button
+            onClick={() => setIsCreating(true)}
+            className="w-full h-[66px] bg-white border border-black/[0.08] rounded-2xl flex items-stretch p-0 overflow-hidden active:scale-[0.99] transition-transform"
+          >
+            <span className="flex-1 flex flex-col justify-center items-start pl-[18px]">
+              <span className="font-mono text-[10px] tracking-[0.2em] text-[#3F6B52] mb-0.5">START A NEW TRIP</span>
+              <span className="font-serif text-[19px] font-bold text-[#232320]">規劃新的一趟</span>
+            </span>
+            <span className="w-[66px] border-l-2 border-dashed border-[#D6CDB8] flex items-center justify-center relative">
+              <span className="absolute -left-[7px] -top-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
+              <span className="absolute -left-[7px] -bottom-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
+              <span className="w-11 h-11 rounded-full bg-[#232320] text-white flex items-center justify-center"><ArrowRight className="w-5 h-5" /></span>
+            </span>
+          </button>
         </div>
 
-        <DragDropContext onDragEnd={onDragEnd}>
-            
-            {/* Section: 即將出發 (Upcoming) - 垂直列表 + 拖曳 */}
-            <div className="mt-6 px-5">
-                <div className="flex justify-between items-end mb-4 px-1">
-                    <h2 className="text-xl font-black font-serif tracking-wide text-[#1D1D1B]">即將出發</h2>
-                    <button onClick={() => setIsCreating(true)} className="flex items-center gap-1 text-xs font-bold bg-[#1D1D1B] text-white px-3 py-1.5 rounded-full shadow-lg active:scale-90 transition-all">
-                        <Plus className="w-3.5 h-3.5" /> 新增行程
-                    </button>
-                </div>
-
-                <Droppable droppableId="upcoming-list">
-                    {(provided) => (
-                        <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-5">
-                            {upcomingTrips.length === 0 ? (
-                                <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-[32px] opacity-50 bg-white/30">
-                                    <p className="text-sm font-bold text-gray-400">尚無計畫，準備出發了嗎？</p>
-                                </div>
-                            ) : (
-                                upcomingTrips.map((trip, index) => (
-                                    <Draggable key={trip.id} draggableId={trip.id} index={index}>
-                                        {(provided, snapshot) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.draggableProps}
-                                                style={{ ...provided.draggableProps.style }}
-                                                className={`transition-all duration-300 ${snapshot.isDragging ? 'z-50 scale-105 shadow-2xl rotate-1' : ''}`}
-                                            >
-                                                <TripCard 
-                                                    trip={trip} 
-                                                    onSelect={() => onSelectTrip(trip)} 
-                                                    dragHandleProps={provided.dragHandleProps}
-                                                    isPast={false}
-                                                />
-                                            </div>
-                                        )}
-                                    </Draggable>
-                                ))
-                            )}
-                            {provided.placeholder}
-                        </div>
-                    )}
-                </Droppable>
+        {/* 下一趟：主 hero（最近出發） */}
+        {heroTrip ? (
+          <div className="px-5 pt-6">
+            <div className="flex items-end justify-between mb-3 px-1">
+              <h2 className="text-xl font-bold font-serif tracking-wide text-[#232320]">下一趟</h2>
+              <span className="font-mono text-[11px] text-[#8A8266]">{upcomingTrips.length} 趟計畫中</span>
             </div>
+            <TripHeroCard trip={heroTrip} onSelect={() => onSelectTrip(heroTrip)} variant="primary" />
+          </div>
+        ) : (
+          <div className="px-5 pt-8">
+            <div className="py-14 text-center border-2 border-dashed border-black/10 rounded-[32px] bg-white/30">
+              <p className="text-sm font-bold text-[#8A8266]">還沒有計畫，用上面的票券開一趟吧</p>
+            </div>
+          </div>
+        )}
 
-            {/* Section: 精彩回憶 (Memories) - 橫向捲動 + View All */}
-            {pastTrips.length > 0 && (
-                <div className="mt-10 mb-6">
-                    <div className="flex items-center justify-between mb-4 px-6">
-                         <h2 className="text-xl font-black font-serif tracking-wide text-[#1D1D1B] opacity-40">精彩回憶</h2>
-                         {/* View All 按鈕 (目前僅為視覺，未來可連接到檔案館頁面) */}
-                         <button className="flex items-center gap-1 text-xs font-bold text-gray-400 hover:text-[#1D1D1B] transition-colors">
-                             查看全部 <ChevronRight className="w-3 h-3" />
-                         </button>
-                    </div>
-
-                    {/* 橫向捲動容器 */}
-                    <div className="flex overflow-x-auto px-6 pb-8 gap-4 no-scrollbar snap-x snap-mandatory">
-                        {/* 只顯示最近 5 筆 */}
-                        {pastTrips.slice(0, 5).map((trip) => (
-                            <div key={trip.id} className="min-w-[85vw] sm:min-w-[300px] snap-center">
-                                {/* 這裡直接復用 TripCard，但設為 isPast 模式 */}
-                                <TripCard 
-                                    trip={trip} 
-                                    onSelect={() => onSelectTrip(trip)} 
-                                    isPast={true}
-                                />
-                            </div>
-                        ))}
-                        
-                        {/* More Card (當超過 5 筆時顯示) */}
-                        {pastTrips.length > 5 && (
-                            <div className="min-w-[120px] flex items-center justify-center snap-center">
-                                <button className="w-16 h-16 rounded-full bg-white shadow-md flex items-center justify-center text-gray-400 hover:scale-110 transition-transform">
-                                    <LayoutGrid className="w-6 h-6" />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-        </DragDropContext>
+        {/* 其他計畫：次 hero（較遠、矮一號、同結構可展開），按出發日排序 */}
+        {restTrips.length > 0 && (
+          <div className="mt-8 px-5">
+            <div className="mb-3 px-1">
+              <span className="block font-mono text-[10px] tracking-[0.18em] text-[#8A8266] mb-0.5">COMING UP</span>
+              <h3 className="text-lg font-bold font-serif tracking-wide text-[#232320]">接下來</h3>
+            </div>
+            <div className="space-y-4">
+              {restTrips.map(trip => (
+                <TripHeroCard key={trip.id} trip={trip} onSelect={() => onSelectTrip(trip)} variant="secondary" />
+              ))}
+            </div>
+          </div>
+        )}
 
         <MadeByFooter />
       </div>
 
       {/* Modals */}
-      {isCreating && <CreateTripModal onClose={() => setIsCreating(false)} onAddTrip={onAddTrip} />}
+      {isCreating && (
+        <CreateTripModal
+          onClose={() => setIsCreating(false)}
+          onAddTrip={onAddTrip}
+          onImport={() => { setIsCreating(false); setIsImporting(true); }}
+        />
+      )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
       {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
-      
+
       {editingTrip && onUpdateTrip && (
-          <EditTripModal 
-            trip={editingTrip} 
-            onClose={() => setEditingTrip(null)} 
-            onUpdate={(updated) => {
-                onUpdateTrip(updated);
-                setEditingTrip(null);
-            }} 
-          />
+        <EditTripModal
+          trip={editingTrip}
+          onClose={() => setEditingTrip(null)}
+          onUpdate={(updated) => {
+            onUpdateTrip(updated);
+            setEditingTrip(null);
+          }}
+        />
       )}
     </div>
   );

@@ -7,44 +7,27 @@ import React from 'react';
 import { MoreHorizontal, AlertTriangle } from 'lucide-react';
 import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import type { Trip } from '../../../../types';
+import { tripCountdown } from './countdown';
 
 interface TripCardProps {
     trip: Trip;
     onSelect: () => void;
     dragHandleProps?: DraggableProvidedDragHandleProps | null;
     isPast?: boolean;
+    hero?: boolean;   // 首頁「下一趟」的主角卡：更高、標題更大；預設 false，不影響列表卡／回憶卡
 }
 
-export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandleProps, isPast }) => {
+export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandleProps, isPast, hero }) => {
     const formattedDate = (trip.startDate || '').replace(/-/g, '.');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nowTs = today.getTime();
-    const getTs = (dateStr: string) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return new Date(y, m - 1, d).getTime();
-    };
-    const startTs = getTs(trip.startDate);
-    const endTs = getTs(trip.endDate);
-    const isOnTrip = nowTs >= startTs && nowTs <= endTs;
-    const daysUntil = Math.ceil((startTs - nowTs) / (1000 * 60 * 60 * 24));
-
-    // 🎟️ 倒數升溫：>7 天灰（安靜）→ ≤7 天琥珀 → ≤2 天/今天紅（用字比數字戳）→ 旅途中綠。
-    const countdown = (() => {
-        if (isOnTrip) return { label: '旅途中', bg: '#3F6B52', dot: true };
-        if (daysUntil <= 0) return { label: '今天出發', bg: '#A23B2E' };
-        if (daysUntil === 1) return { label: '明天出發', bg: '#A23B2E' };
-        if (daysUntil === 2) return { label: '後天出發', bg: '#A23B2E' };
-        if (daysUntil <= 7) return { label: `剩 ${daysUntil} 天`, bg: '#BA7517' };
-        return { label: `還有 ${daysUntil} 天`, bg: 'rgba(35,35,32,0.45)' };
-    })();
+    // 🎟️ 倒數升溫：共用 tripCountdown（與 hero 卡同源，字色不漂移）。
+    const countdown = tripCountdown(trip);
 
     // 🎟️ 可行動提示：未排入行程的「待安排」項目數；沒有就完全不顯示（沉默＝就緒）。
     const todoCount = isPast ? 0 : (trip.stagedWishes || []).filter(w => w.assignedDay === undefined).length;
 
     return (
         <div
-            className={`relative w-full h-56 rounded-[24px] overflow-hidden group select-none transition-all duration-500 bg-[#1D1D1B] ${isPast ? 'scale-[0.98]' : 'hover:scale-[1.01] hover:shadow-2xl'}`}
+            className={`relative w-full ${hero ? 'h-72' : 'h-56'} rounded-[24px] overflow-hidden group select-none transition-all duration-500 bg-[#1D1D1B] ${isPast ? 'scale-[0.98]' : 'hover:scale-[1.01] hover:shadow-2xl'}`}
             onClick={onSelect}
         >
             {/* 背景：封面圖，或深色 fallback（與封面 A 一致，不再破圖/套巴黎） */}
@@ -90,7 +73,7 @@ export const TripCard: React.FC<TripCardProps> = ({ trip, onSelect, dragHandlePr
 
                 {/* 底部：完整名字（serif 主角、不截斷）＋ mono 日期·天數 */}
                 <div>
-                    <h2 className="font-serif text-[30px] font-bold text-white leading-[1.12]" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.35)' }}>
+                    <h2 className={`font-serif ${hero ? 'text-[34px]' : 'text-[30px]'} font-bold text-white leading-[1.12]`} style={{ textShadow: '0 1px 8px rgba(0,0,0,0.35)' }}>
                         {trip.destination}
                     </h2>
                     <div className="font-mono text-[12px] mt-2 tracking-wide" style={{ color: 'rgba(255,255,255,0.74)' }}>

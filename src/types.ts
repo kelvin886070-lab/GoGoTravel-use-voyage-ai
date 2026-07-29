@@ -204,6 +204,7 @@ export interface Trip {
   // 🧬 Phase 0：常駐約束模型（生成/把關/對帳共讀）。先與下方扁平欄位(pace/currency/…)並存為 legacy 鏡像，Phase 1/3 再逐步收斂。
   constraints?: TripConstraints;
   planningStatus?: 'draft' | 'booked' | 'ready';
+  finalizedAt?: string;          // 🎟️ 規劃「定案」時間戳（ISO）；有值＝已定案（可撤章＝清空）。與 planningStatus='ready' 並存為就緒判定來源。
   // 🎟️ 準備臉「就緒」＝使用者明確確認，不靠行程結構偵測（flight 連接活動是自動生成的，會假陽性）
   readiness?: { flight?: boolean; hotel?: boolean; docs?: boolean; pack?: boolean };
   reminders?: Reminder[];
