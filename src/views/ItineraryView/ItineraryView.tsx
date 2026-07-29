@@ -14,6 +14,7 @@ import { recalculateTimeline } from '../../services/timeline';
 import { planArrangement, activityTypeOf, insertionTimeForDay, dayDistanceKm } from '../../services/scheduler';
 import { ensureTripGeocoded, isMappable, geocodeItems } from '../../services/geo';
 import { computeBookingReadiness } from '../../services/readiness';
+import { FinalizePlan } from './FinalizePlan';
 import { locationWarnings, type LatLng } from '../../services/geoCheck';
 import { TimePickerWheel } from '../../components/common/TimePickerWheel';
 import { useNearby, haversineKm, fmtDist } from '../../hooks/useNearby';
@@ -253,8 +254,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     useEffect(() => {
         const next = computeBookingReadiness(trip, flightBookings, hotelBookings);
         const r = trip.readiness || {};
-        if (r.flight !== next.flight || r.hotel !== next.hotel) {
-            onUpdateTrip({ ...trip, readiness: { ...r, flight: next.flight, hotel: next.hotel } });
+        if (r.flight !== next.flight || r.hotel !== next.hotel || r.hasBooking !== next.hasBooking) {
+            onUpdateTrip({ ...trip, readiness: { ...r, flight: next.flight, hotel: next.hotel, hasBooking: next.hasBooking } });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [flightBookings, hotelBookings, trip.startDate, trip.endDate, trip.readiness]);
@@ -1364,6 +1365,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                                     </div>
                                 );
                             })}
+                            {/* 🎟️ 批 B：行程最下方的「行程排定」（點亮就緒五段的規劃格） */}
+                            <FinalizePlan trip={trip} onUpdateTrip={onUpdateTrip} />
                             <div className="h-24"></div>
                         </div>
                     </DragDropContext>

@@ -206,7 +206,7 @@ export interface Trip {
   planningStatus?: 'draft' | 'booked' | 'ready';
   finalizedAt?: string;          // 🎟️ 規劃「定案」時間戳（ISO）；有值＝已定案（可撤章＝清空）。與 planningStatus='ready' 並存為就緒判定來源。
   // 🎟️ 準備臉「就緒」＝使用者明確確認，不靠行程結構偵測（flight 連接活動是自動生成的，會假陽性）
-  readiness?: { flight?: boolean; hotel?: boolean; docs?: boolean; pack?: boolean };
+  readiness?: { flight?: boolean; hotel?: boolean; docs?: boolean; pack?: boolean; hasBooking?: boolean };   // hasBooking＝有任一訂位（規劃自動排定用）
   reminders?: Reminder[];
   startDate: string;
   endDate: string;

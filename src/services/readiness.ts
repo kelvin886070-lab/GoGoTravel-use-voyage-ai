@@ -55,10 +55,11 @@ export function computeBookingReadiness(
     trip: Trip,
     flights: FlightBooking[],
     hotels: HotelBooking[],
-): { flight: boolean; hotel: boolean } {
+): { flight: boolean; hotel: boolean; hasBooking: boolean } {
     return {
         flight: isFlightRoundTrip(flights),
         hotel: isHotelFullyCovered(trip, hotels),
+        hasBooking: flights.length > 0 || hotels.length > 0,   // 有任一訂位＝行程實質定了（規劃自動排定）
     };
 }
 
@@ -74,15 +75,25 @@ export interface ReadinessSegment {
 }
 
 /**
- * 規劃是否「已定案」。取以下最先成立：
- *   ① planningStatus==='ready' 或有 finalizedAt（使用者明確定案／匯出並標記）
- *   ② computeStage>=1（≤21 天準備期起，含前夕/旅途/回憶）→ 保底自動定案（補 solo 不匯出）
- * 可撤章＝清 finalizedAt 且 planningStatus≠'ready'（但 ≤21 天仍會被 ② 判為定案，符合現實）。
+ * 規劃是否「已排定」。優先序：
+ *   ① 手動排定：planningStatus==='ready' 或有 finalizedAt → true
+ *   ② 明確撤銷：planningStatus==='draft' → false（使用者明說「還沒排好」，所有自動判定讓路——
+ *      修「訂票優先流」假陽性：先搶票後排行程的人，五天全空不該被蓋已排定）
+ *   ③ 已開始訂票：readiness.hasBooking → true（未表態時的合理預設；可被 ② 否決）
+ *   ④ 前夕保底：computeStage>=2（≤3 天，避免看起來像壞掉；同樣可被 ② 否決）
+ * ⚠️ 刻意「不做」≤21 天自動排定：否則近期情境按鈕形同虛設（與 Kelvin 定案）。
  */
 export function isPlanFinalized(trip: Trip): boolean {
     if (trip.planningStatus === 'ready') return true;
     if (trip.finalizedAt) return true;
-    return computeStage(trip) >= 1;
+    if (trip.planningStatus === 'draft') return false;   // 明確意圖，蓋過下面所有自動
+    if (trip.readiness?.hasBooking) return true;
+    return computeStage(trip) >= 2;
+}
+
+/** 手動排定（可撤）；②③ 自動來源不算手動 → UI 用它決定要不要顯示「撤銷」。 */
+export function isManuallyFinalized(trip: Trip): boolean {
+    return trip.planningStatus === 'ready' || !!trip.finalizedAt;
 }
 
 /**
