@@ -1,17 +1,19 @@
 // src/views/TripsView/TripsView.tsx
 // 🏠 首頁骨架：產品身份＝「掌控為優先」的規劃工具。一進來就回答「哪一趟＋還有幾天＋下一步」。
-//   結構：Header（戳章字標＋頭像）→ 旅途中捷徑（若在途中）→ 開新旅程 CTA（上移，統一風格）
-//         → 下一趟 主 hero（最近出發）→ 其他計畫 次 hero（較遠、矮一號、同結構可展開）。
+//   結構（骨架恆定，hero 槽位 adaptive 變臉＝批4）：Header → 開新旅程 CTA（恆在頂）
+//         → Hero 槽位（旅途中 OnTripHeroCard ＞ 下一趟 TripHeroCard ＞ 空狀態）
+//         → 接下來（次 hero，按出發日）→ 回憶（過渡版）。
 //   排序：按出發日（最近的當主角），取代手動拖曳。旅途中的行程只出現在捷徑、不重複進清單。
 //   「從分享連結匯入」已移入 CreateTripModal（暫存），保持首頁乾淨。精彩回憶移出（改個人頁）。
 import React, { useState, useMemo } from 'react';
-import { Navigation, ArrowRight, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronRight } from 'lucide-react';
 
 import type { Trip, User, WishItem } from '../../types';
 import { MadeByFooter } from '../../components/UI';
 import { BrandStamp, BrandWordmark } from '../../components/brand/BrandLogo';
 
 import { TripHeroCard } from './components/cards/TripHeroCard';
+import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
@@ -74,13 +76,8 @@ export const TripsView: React.FC<TripsViewProps> = ({
       .sort((a, b) => dayTs(b.startDate) - dayTs(a.startDate));
   }, [trips]);
 
-  // 🧭 旅途中捷徑卡：今天是該行程第幾天
-  const activeDayN = useMemo(() => {
-    if (!activeTrip?.startDate) return 1;
-    const s = dayTs(activeTrip.startDate);
-    const t = new Date(); t.setHours(0, 0, 0, 0);
-    return Math.floor((t.getTime() - s) / 86400000) + 1;
-  }, [activeTrip]);
+  // 🧭 批4臉1：旅途中時，hero 槽位讓給旅途中那趟；其餘 upcoming 全部進「接下來」。骨架不動（CTA 恆在頂）。
+  const comingUpTrips = activeTrip ? upcomingTrips : restTrips;
 
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
@@ -102,23 +99,6 @@ export const TripsView: React.FC<TripsViewProps> = ({
 
       <div className="flex-1 min-h-0 overflow-y-auto w-full scroll-smooth no-scrollbar pb-24">
 
-        {/* 🧭 旅途中捷徑卡 */}
-        {activeTrip && (
-          <div className="px-5 pt-4">
-            <button onClick={onOpenActiveTrip} className="w-full bg-[#232320] rounded-[24px] p-4 flex items-center gap-3 active:scale-[0.99] transition-transform text-left">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" /></span>
-                  <span className="text-[10px] font-bold tracking-widest text-white/70">旅途中</span>
-                </div>
-                <p className="text-lg font-bold font-serif text-white mt-1 truncate">{activeTrip.destination}</p>
-                <p className="text-[11px] font-mono text-white/60 tracking-widest mt-0.5">DAY {activeDayN} · 開啟今天</p>
-              </div>
-              <div className="w-11 h-11 rounded-full bg-[#45846D] text-white flex items-center justify-center shrink-0"><Navigation className="w-5 h-5" /></div>
-            </button>
-          </div>
-        )}
-
         {/* 🎟️ 開新旅程 CTA（票根式）：上移統一風格。匯入入口已移入建立流程 */}
         <div className="px-5 pt-4">
           <button
@@ -137,8 +117,19 @@ export const TripsView: React.FC<TripsViewProps> = ({
           </button>
         </div>
 
-        {/* 下一趟：主 hero（最近出發） */}
-        {heroTrip ? (
+        {/* 🧭 Hero 槽位（adaptive）：旅途中＞下一趟＞空狀態。骨架不變，變的是內容（Kelvin 定案）。 */}
+        {activeTrip ? (
+          <div className="px-5 pt-6">
+            <div className="flex items-center gap-2.5 mb-3 px-1">
+              <h2 className="text-xl font-bold font-serif tracking-wide text-[#3F6B52]">旅途中</h2>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3F6B52] opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3F6B52]" />
+              </span>
+            </div>
+            <OnTripHeroCard trip={activeTrip} onOpen={onOpenActiveTrip} />
+          </div>
+        ) : heroTrip ? (
           <div className="px-5 pt-6">
             <div className="flex items-end justify-between mb-3 px-1">
               <h2 className="text-xl font-bold font-serif tracking-wide text-[#232320]">下一趟</h2>
@@ -155,14 +146,14 @@ export const TripsView: React.FC<TripsViewProps> = ({
         )}
 
         {/* 其他計畫：次 hero（較遠、矮一號、同結構可展開），按出發日排序 */}
-        {restTrips.length > 0 && (
+        {comingUpTrips.length > 0 && (
           <div className="mt-8 px-5">
             <div className="mb-3 px-1">
               <span className="block font-mono text-[10px] tracking-[0.18em] text-[#8A8266] mb-0.5">COMING UP</span>
               <h3 className="text-lg font-bold font-serif tracking-wide text-[#232320]">接下來</h3>
             </div>
             <div className="space-y-4">
-              {restTrips.map(trip => (
+              {comingUpTrips.map(trip => (
                 <TripHeroCard key={trip.id} trip={trip} onSelect={() => onSelectTrip(trip)} variant="secondary" />
               ))}
             </div>
