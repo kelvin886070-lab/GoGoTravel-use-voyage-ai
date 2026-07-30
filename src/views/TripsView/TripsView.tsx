@@ -10,7 +10,7 @@ import { ArrowRight, ChevronRight } from 'lucide-react';
 
 import type { Trip, User, WishItem } from '../../types';
 import { MadeByFooter } from '../../components/UI';
-import { BrandStamp, BrandWordmark } from '../../components/brand/BrandLogo';
+import { BrandWordmark } from '../../components/brand/BrandLogo';
 
 import { TripHeroCard } from './components/cards/TripHeroCard';
 import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
@@ -18,7 +18,6 @@ import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
 import { ImportTripModal } from './modals/ImportTripModal';
-import { ProfileModal } from './modals/ProfileModal';
 import { EditTripModal } from './modals/EditTripModal';
 
 interface TripsViewProps {
@@ -49,7 +48,6 @@ export const TripsView: React.FC<TripsViewProps> = ({
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
 
   // 即將出發＝endDate ≥ 今天、且非「旅途中那趟」（去重）；按出發日升冪（最近的在前）。
@@ -82,22 +80,12 @@ export const TripsView: React.FC<TripsViewProps> = ({
   return (
     <div className="h-full flex flex-col w-full bg-transparent">
 
-      {/* Header：戳章 + 字標 ＋ 頭像 */}
-      <div className="flex-shrink-0 pt-9 pb-2 px-6 bg-[#E4E2DD]/95 backdrop-blur-xl z-40 border-b border-black/5 w-full sticky top-0 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <BrandStamp size={66} />
-          <BrandWordmark size={22} />
-        </div>
-        <button
-          onClick={() => setShowProfile(true)}
-          className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-md active:scale-90 transition-transform"
-          aria-label="會員"
-        >
-          <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
-        </button>
-      </div>
-
       <div className="flex-1 min-h-0 overflow-y-auto w-full scroll-smooth no-scrollbar pb-24">
+
+        {/* 刊頭：純字標置中，隨內容一起捲動（不固定）；戳章退場——品牌已有四個主場 */}
+        <div className="pt-7 pb-3 flex items-center justify-center">
+          <BrandWordmark size={24} />
+        </div>
 
         {/* 🎟️ 開新旅程 CTA（票根式）：上移統一風格。匯入入口已移入建立流程 */}
         <div className="px-5 pt-4">
@@ -202,7 +190,6 @@ export const TripsView: React.FC<TripsViewProps> = ({
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
-      {showProfile && <ProfileModal user={user} tripCount={trips.length} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
 
       {editingTrip && onUpdateTrip && (
         <EditTripModal

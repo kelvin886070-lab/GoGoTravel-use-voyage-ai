@@ -9,6 +9,7 @@ export const AppView = {
   WISHBOX: 'wishbox',
   TOOLS: 'tools',
   VAULT: 'vault',
+  PROFILE: 'profile',   // 🛂 個人檔案（護照）分頁
   LOGIN: 'login'
 } as const;
 export type AppView = typeof AppView[keyof typeof AppView];

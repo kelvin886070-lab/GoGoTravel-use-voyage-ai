@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Home, FileText, Sparkles } from 'lucide-react';
+import { Home, FileText, Sparkles, User as UserIcon } from 'lucide-react';
 import { AppView } from './types';
 import type { Trip, User, Document, VaultFolder, VaultFile, WishItem, WishList } from './types';
 import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow, WishListRow } from './db-types';
@@ -14,6 +14,7 @@ import { ensureTripActivityIds } from './utils/activityId';
 import type { ParsedWish } from './services/gemini';
 import { TripsView } from './views/TripsView/TripsView';
 import { VaultView } from './views/VaultView';
+import { ProfileView } from './views/ProfileView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
 import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath } from './services/storage';
@@ -1026,6 +1027,18 @@ const App: React.FC = () => {
                     onPermanentDeleteTrip={handlePermanentDeleteTrip} 
                 />
             )}
+
+            {/* 🛂 個人檔案（護照）——批①過渡殼，批②③換完整護照本 */}
+            {currentView === AppView.PROFILE && (
+                <ProfileView
+                    user={user}
+                    trips={trips.filter(t => !t.isDeleted)}
+                    onLogout={handleLogout}
+                    onPlanNew={() => setCurrentView(AppView.TRIPS)}
+                    onGoWishbox={() => setCurrentView(AppView.WISHBOX)}
+                    onGoVault={() => setCurrentView(AppView.VAULT)}
+                />
+            )}
         </div>
 
         <div className="flex-shrink-0 z-50 relative w-full bg-white/90 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
@@ -1033,6 +1046,7 @@ const App: React.FC = () => {
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="首頁" />
                 <TabButton active={currentView === AppView.WISHBOX} onClick={() => setCurrentView(AppView.WISHBOX)} icon={<Sparkles />} label="心願盒" />
                 <TabButton active={currentView === AppView.VAULT} onClick={() => setCurrentView(AppView.VAULT)} icon={<FileText />} label="保管箱" />
+                <TabButton active={currentView === AppView.PROFILE} onClick={() => setCurrentView(AppView.PROFILE)} icon={<UserIcon />} label="個人檔案" />
             </div>
         </div>
       </main>
