@@ -138,6 +138,7 @@ export interface TripDay {
   date?: string;
   vibeTag?: string;
   city?: string;          // 🧭 空間類·第一刀：這天基地在哪個城市（多城市時由生成分配，連續、少換城）。地點把關用它比對。
+  cityEn?: string;        // 🖼️ 封面B：該城市英文名（生成時 LLM 順帶輸出；封面抓圖查詢用，舊資料退回 cityEn 對照表）
   activities: Activity[];
 }
 

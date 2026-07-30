@@ -347,6 +347,7 @@ export const generateItinerary = async (
         1b. **Multi-city allocation (CRITICAL when the destination lists more than one city, e.g. "京都 + 大阪")**:
            - Allocate the ${days} days across the cities in CONTIGUOUS blocks — each city's days MUST be consecutive. Minimise city changes: ideally visit each city exactly once and NEVER return to a city after leaving it (no zig-zag between cities).
            - For EACH day output a **"city"** field naming the single city that day is based in. EVERY activity that day must be located in that city.
+           - For EACH day ALSO output a **"cityEn"** field: the English name of that day's city (e.g. 京都 → "Kyoto", 台南 → "Tainan", 曼谷 → "Bangkok"). Latin letters only.
            - On a day whose base city CHANGES from the previous day, the FIRST item must be an inter-city "transport" card representing the move (e.g. Shinkansen / domestic flight).
 
         2. **Arrival / Departure — DO NOT FABRICATE (single source of truth)**:
@@ -375,6 +376,7 @@ export const generateItinerary = async (
           {
             "day": 1,
             "city": "京都",
+            "cityEn": "Kyoto",
             "vibeTag": "城市初探與質感選物",
             "activities": [
               {

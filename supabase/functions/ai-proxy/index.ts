@@ -81,6 +81,8 @@ Deno.serve(async (req) => {
         return json(await placeDetails(payload, user.id));
       case "place-lookup":
         return json(await placeLookup(payload, user.id));
+      case "cover-photo":
+        return json(await coverPhoto(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -440,6 +442,34 @@ async function placeSearchGoogle(query: string, bias?: { lat: number; lng: numbe
       lng: p.location.longitude,
     }));
   return { results, nextPageToken: data.nextPageToken };
+}
+
+// ── 🖼️ 封面B：目的地嚮往照（Pexels）─────────────────────────────
+// 金鑰只在 server env（PEXELS_KEY），客戶端永遠拿不到；$0 免費方案（見 docs/成本記錄與估算.md §3.6）。
+// 一趟一張：前端拿到 URL 後存進 trip_data，之後不再呼叫。共用每日限額（防濫打）。
+// 寧素勿錯：查無、非橫幅、任何失敗 → url: null，前端維持深色 fallback。
+const PEXELS_KEY = Deno.env.get("PEXELS_KEY") ?? "";
+
+async function coverPhoto(payload: { query?: string }, userId: string) {
+  const query = (payload?.query || "").trim();
+  if (!PEXELS_KEY) return { url: null, error: "PEXELS_KEY 未設定" };
+  if (query.length < 2 || query.length > 80) return { url: null };
+  if ((await bumpDailyOrLimit(userId)).limited) return { url: null, limited: true };
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=landscape&per_page=5`,
+      { headers: { Authorization: PEXELS_KEY } },
+    );
+    if (!res.ok) return { url: null };
+    const data = await res.json();
+    const photos: Array<{ width: number; height: number; src?: { landscape?: string; large2x?: string } }> =
+      Array.isArray(data?.photos) ? data.photos : [];
+    // 擇圖：第一張「確實橫幅」且有可用尺寸者（Pexels 偶爾混入直幅）
+    const hit = photos.find(p => p.width > p.height && (p.src?.landscape || p.src?.large2x));
+    return { url: hit?.src?.landscape || hit?.src?.large2x || null };
+  } catch {
+    return { url: null };
+  }
 }
 
 // 每日限額檢查＋計數（與 geocode 共享 spend budget）

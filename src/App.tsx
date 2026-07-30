@@ -7,6 +7,7 @@ import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow, WishListRow } 
 import { confirmDialog } from './components/ConfirmDialog';
 import { toast } from './components/Toast';
 import { resolvePlace, resolvePlaces, coordsFromMapsUrl, fetchPlaceDetails, lookupPlaceByText } from './services/geo';
+import { enrichTripCover } from './services/coverPhoto';
 import { haversineKm } from './hooks/useNearby';
 import { looksLikeMapsUrl } from './utils/mapsUrl';
 import { ensureTripActivityIds } from './utils/activityId';
@@ -263,6 +264,11 @@ const App: React.FC = () => {
           // 🧱 F1：載入既有資料時 backfill 活動 id（舊資料多半沒有），確保全站活動都有穩定身分
           const resolved = loadedTrips.map(t => ensureTripActivityIds(resolveTripImages(t, urlMap)));
           setTrips(resolved);
+          // 🖼️ 封面B backfill：既有行程缺封面 → 背景補抓（每次載入最多 3 趟，節制、抓到即存雲）
+          resolved
+              .filter(t => !t.isDeleted && !(t.coverImage || '').trim() && !(t.coverImagePath || '').trim())
+              .slice(0, 3)
+              .forEach(t => enrichCoverInBackground(t));
       }
       setIsSyncing(false);
   };
@@ -464,20 +470,37 @@ const App: React.FC = () => {
       }
   };
 
+  // 🖼️ 封面B：背景補「目的地嚮往照」（fire-and-forget）。抓到才更新+存雲；抓不到維持深色 fallback（寧素勿錯）。
+  //   用 setTrips 函式型更新比對現值：若期間使用者已自訂封面，放棄套用（自訂永遠優先）。
+  const enrichCoverInBackground = (trip: Trip) => {
+      void enrichTripCover(trip).then(enriched => {
+          if (enriched === trip || !enriched.coverImage) return;
+          setTrips(prev => prev.map(t => {
+              if (t.id !== trip.id) return t;
+              if ((t.coverImage || '').trim() || (t.coverImagePath || '').trim()) return t;   // 已被使用者設了 → 不覆蓋
+              const next = { ...t, coverImage: enriched.coverImage };
+              saveTripToCloud(next);
+              return next;
+          }));
+      });
+  };
+
   const handleImportTrip = (tripData: Trip) => {
       const newTrip = { ...tripData, id: crypto.randomUUID(), isDeleted: false };
-      // 🎟️ A：不再套寫死的預設圖（picsum/巴黎）；沒設封面＝空 → 行程頁顯示深色票根 fallback。B（Places 目的地照）之後補。
+      // 🎟️ A：不再套寫死的預設圖（picsum/巴黎）；沒設封面＝空 → 深色票根 fallback，背景再補目的地照（封面B）。
       if (!newTrip.coverImage || newTrip.coverImage.length < 100) {
           newTrip.coverImage = '';
       }
       setTrips(prev => [newTrip, ...prev]);
       saveTripToCloud(newTrip);
+      enrichCoverInBackground(newTrip);
   };
 
   const handleAddTrip = (newTrip: Trip) => {
       const tripWithUuid = { ...newTrip, id: crypto.randomUUID() };
       setTrips(prev => [...prev, tripWithUuid]);
       saveTripToCloud(tripWithUuid);
+      enrichCoverInBackground(tripWithUuid);
   }
 
   // 🧱 Phase C0：心願盒雲端讀取
