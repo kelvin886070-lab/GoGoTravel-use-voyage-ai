@@ -2,14 +2,37 @@
 // 🛂 會員中心（批⑤a）：獨立整頁、右滑入、白底＝「離開書的世界」（護照＝情感物件、這裡＝工具管理）。
 //   v1 只放真功能（無假入口鐵律）：身份列、編輯個人檔案、旅行證件·保管箱、回報問題、登出、版本。
 //   上架批再加（docs 已記）：帳號與安全、刪除帳號（Apple 5.1.1 強制）、隱私權政策、服務條款、通知。
-//   批⑥加：翻頁音效開關。未來擴大＝頁內分節＋搜尋（不升分頁——Kelvin 定案）。
+//   批⑥：翻頁音效真開關（localStorage、預設開；services/sounds）。未來擴大＝頁內分節＋搜尋（不升分頁——Kelvin 定案）。
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, UserPen, FileText, Mail, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserPen, FileText, Mail, LogOut, Volume2 } from 'lucide-react';
 import type { User } from '../../types';
 import { friendCodeOf } from '../../services/passportStats';
 import { EditProfileModal } from './EditProfileModal';
+import { isPageSoundOn, setPageSoundOn } from '../../services/sounds';
 
 const MUTE = '#8A8266';
+
+// 批⑥：翻頁音效開關列（真開關；狀態即刻寫 localStorage，護照翻頁下一次生效）
+const SoundRow: React.FC = () => {
+    const [on, setOn] = useState(isPageSoundOn);
+    const toggle = () => { const next = !on; setOn(next); setPageSoundOn(next); };
+    return (
+        <button onClick={toggle} role="switch" aria-checked={on} aria-label="翻頁音效"
+            className="w-full flex items-center gap-3 py-3.5 border-b border-black/5 active:bg-black/5">
+            <span style={{ color: MUTE }}><Volume2 className="w-[17px] h-[17px]" /></span>
+            <span className="font-serif flex-1 text-left text-[14px] font-bold text-[#232320]">翻頁音效</span>
+            <span style={{
+                width: 40, height: 24, borderRadius: 12, position: 'relative', flexShrink: 0,
+                background: on ? '#3F6B52' : '#D6D3CC', transition: 'background .2s',
+            }}>
+                <span style={{
+                    position: 'absolute', top: 2, left: on ? 18 : 2, width: 20, height: 20, borderRadius: '50%',
+                    background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left .2s',
+                }} />
+            </span>
+        </button>
+    );
+};
 
 const Row: React.FC<{ icon: React.ReactNode; label: string; danger?: boolean; onClick?: () => void; href?: string }> =
     ({ icon, label, danger, onClick, href }) => {
@@ -65,6 +88,7 @@ export const AccountCenter: React.FC<{
 
                 <Row icon={<UserPen className="w-[17px] h-[17px]" />} label="編輯個人檔案" onClick={() => setEditOpen(true)} />
                 <Row icon={<FileText className="w-[17px] h-[17px]" />} label="旅行證件 · 保管箱" onClick={onGoVault} />
+                <SoundRow />
                 <Row icon={<Mail className="w-[17px] h-[17px]" />} label="回報問題" href="mailto:kelvin886070@gmail.com?subject=Kelvin%20Trip%20%E5%95%8F%E9%A1%8C%E5%9B%9E%E5%A0%B1" />
                 <Row icon={<LogOut className="w-[17px] h-[17px]" />} label="登出" danger onClick={onLogout} />
 

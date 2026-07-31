@@ -7,9 +7,11 @@
 //   跳頁 riffle：距離 >1 頁時用 tween（每頁 ~0.16s、全程封頂 1.6s）——連續 p 模型會讓中間頁自動依序嘩啦翻過。
 //   感官層：動態翻頁陰影（翻到一半最深＝紙的重量感）＋紙質背面（>90° 看到的是紙背不是鏡像字）。
 //   開啟（Kelvin 定案）：封面由使用者親手翻開（儀式感，無自動翻）；session 內記住停留頁，再進直接回到該頁。
-//   音效：留 stub（批⑥ 接素材與開關）。
+//   🎵 批⑥音效（services/sounds）：單頁＝flip、跳多頁＝riffle、翻到封底（backCoverIndex）＝close；
+//   聲音在「動畫起點」播（紙聲發生在翻的過程，不是翻完）；開關與失敗處理都在音效引擎內（永不 throw）。
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { motion, useMotionValue, useTransform, animate, type MotionValue } from 'framer-motion';
+import { playPageSound, preloadPageSounds } from '../../services/sounds';
 
 const OPENED_KEY = 'kt_pp_open';    // 本 session 已翻開過
 const PAGE_KEY = 'kt_pp_page';      // 上次停留頁（session）
@@ -17,9 +19,6 @@ const HINT_KEY = 'kt_pp_hint';      // 首次翻頁提示已看過（永久）
 // ⚠️ 自動翻開已移除（Kelvin 定案）：封面由使用者親手翻開＝儀式感；session 內記住停留頁不變。
 // 翻頁彈簧：偏慢偏穩（真書頁的重量），Kelvin 兩輪反饋後定為 72/19/1.15（更沉、更有質感）。
 const FLIP_SPRING = { type: 'spring', stiffness: 72, damping: 19, mass: 1.15 } as const;
-
-// 🎵 批⑥接素材：翻頁完成的紙聲（此處先留接口，永不 throw）
-export const playFlipSound = () => { /* stub：批⑥ 實作（素材＋設定開關） */ };
 
 // 單張書頁：正面內容＋紙質背面＋動態陰影。rotateY 由連續位置 p 導出。
 const Sheet: React.FC<{
@@ -52,8 +51,8 @@ const Sheet: React.FC<{
 };
 
 export interface PassportBookHandle {
-    /** 跳到第 n 張（0=封面）。距離 >1 自動 riffle 快翻。 */
-    goTo: (target: number) => void;
+    /** 跳到第 n 張（0=封面）。距離 >1 自動 riffle 快翻。回傳動畫完成的 Promise（蓋章儀式等收尾用）。 */
+    goTo: (target: number) => Promise<void>;
 }
 
 export const PassportBook = forwardRef<PassportBookHandle, {
@@ -61,7 +60,9 @@ export const PassportBook = forwardRef<PassportBookHandle, {
     pages: React.ReactNode[];
     /** 目前頁變更回呼（頁碼指示外掛用） */
     onPageChange?: (idx: number) => void;
-}>(({ cover, pages, onPageChange }, ref) => {
+    /** 封底頁的 sheet 索引（有＝往前翻到此頁播 book-close；在此頁點任意處＝翻回內頁） */
+    backCoverIndex?: number;
+}>(({ cover, pages, onPageChange, backCoverIndex }, ref) => {
     const sheets = [cover, ...pages];
     const maxP = sheets.length - 1;
 
@@ -81,9 +82,10 @@ export const PassportBook = forwardRef<PassportBookHandle, {
     const [hint, setHint] = useState(false);          // 首次翻頁提示
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const settle = (target: number) => {
+    const settle = (target: number): Promise<void> => {
         const t = Math.min(Math.max(Math.round(target), 0), maxP);
         const dist = Math.abs(t - idx);
+        if (t === idx && p.get() === t) return Promise.resolve();   // 邊界點擊（封底再往前等）＝無事發生、無聲
         // riffle：跳多頁改用 tween，中間頁依序翻過；節奏放慢（每頁 ~0.16s、封頂 1.6s）——
         // 太快會讓紙變輕、質感減分（Kelvin 反饋調降）。單頁維持書頁彈簧。
         const transition = dist > 1
@@ -91,14 +93,17 @@ export const PassportBook = forwardRef<PassportBookHandle, {
             : FLIP_SPRING;
         // 頁碼指示「翻頁一開始」就同步（不等彈簧收尾——Kelvin 反饋延遲/慢半拍）；
         // idx（pointerEvents 用）仍等動畫完成才切，避免翻到一半頁面互動錯亂。
-        if (t !== idx) onPageChange?.(t);
+        if (t !== idx) {
+            onPageChange?.(t);
+            // 🎵 聲音在動畫起點播：跳多頁＝riffle；往前翻到封底＝闔書；其餘＝單頁紙聲
+            playPageSound(dist > 1 ? 'riffle' : (backCoverIndex !== undefined && t === backCoverIndex && t > idx) ? 'close' : 'flip');
+        }
         try {
             sessionStorage.setItem(PAGE_KEY, String(t));
             if (t >= 1) sessionStorage.setItem(OPENED_KEY, '1');
         } catch { /* ignore */ }
-        animate(p, t, transition).then(() => {
+        return animate(p, t, transition).then(() => {
             setIdx(t);
-            if (t !== idx) playFlipSound();
             try {
                 if (t >= 1 && !localStorage.getItem(HINT_KEY)) { setHint(true); localStorage.setItem(HINT_KEY, '1'); }
             } catch { /* ignore */ }
@@ -107,6 +112,9 @@ export const PassportBook = forwardRef<PassportBookHandle, {
 
     useImperativeHandle(ref, () => ({ goTo: settle }));
 
+    // 🎵 進到護照畫面就預載音效（lazy 建 Audio；失敗靜默）
+    useEffect(() => { preloadPageSounds(); }, []);
+
     // 提示自動淡出
     useEffect(() => {
         if (!hint) return;
@@ -114,16 +122,18 @@ export const PassportBook = forwardRef<PassportBookHandle, {
         return () => window.clearTimeout(t);
     }, [hint]);
 
-    // 點擊：封面任意處＝翻開；內頁點右緣 30%＝下一頁、左緣 30%＝上一頁；互動元素放行
+    // 點擊：封面任意處＝翻開；封底任意處＝翻回內頁（首尾對稱的儀式）；
+    // 內頁點右緣 30%＝下一頁、左緣 30%＝上一頁；互動元素放行
     const onTap = (e: React.MouseEvent) => {
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, textarea, [data-no-flip]')) return;
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
         const x = e.clientX - rect.left;
-        if (idx === 0) { settle(1); return; }
-        if (x > rect.width * 0.7) settle(idx + 1);
-        else if (x < rect.width * 0.3) settle(idx - 1);
+        if (idx === 0) { void settle(1); return; }
+        if (backCoverIndex !== undefined && idx === backCoverIndex) { void settle(idx - 1); return; }
+        if (x > rect.width * 0.7) void settle(idx + 1);
+        else if (x < rect.width * 0.3) void settle(idx - 1);
     };
 
     return (

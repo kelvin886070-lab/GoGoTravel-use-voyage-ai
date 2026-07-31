@@ -2,7 +2,9 @@
 // 🛂 個人檔案＝一本可以翻的護照（批②：骨架組裝）。
 //   結構：封面（深綠燙金）→ 個資頁（批③換完整版，現為過渡內容＋登出）→ 空白頁（下一枚章鉤子）。
 //   翻頁引擎見 components/passport/PassportBook（T2 跟手＋A+B 開啟）。
-//   批③：個資頁完整版＋profiles 表；批④：內頁回憶卡；批⑤：照片；批⑥：蓋章儀式＋音效。
+//   批⑥：封底頁（空白頁之後再翻＝護照背面＋闔書聲；點任意處翻回——首尾對稱的儀式）＋
+//   蓋章儀式：偵測「新完成、還沒蓋過章」的旅程 → 翻開護照後自動 riffle 到該回憶頁、PASS 章當面壓印一次
+//   （localStorage 每趟旗標；首次啟用時只演最新一趟、其餘一次補記為已蓋，避免舊行程排隊連演）。
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Trip, User } from '../types';
 import { PassportBook, type PassportBookHandle } from '../components/passport/PassportBook';
@@ -32,6 +34,28 @@ const BlankPage: React.FC<{ pageNo: string; onPlanNew: () => void; onGoWishbox: 
         <span className="font-mono absolute bottom-3 inset-x-0 text-center" style={{ fontSize: 10, letterSpacing: '0.3em', color: '#B4B2A9' }}>{pageNo}</span>
     </div>
 );
+
+// 封底（批⑥）：與封面同族的深綠＋一枚小金徽，無文字（真護照封底的安靜）；左緣書脊陰影。
+const BackCover: React.FC = () => (
+    <div
+        className="w-full h-full relative select-none flex items-center justify-center"
+        style={{ background: 'linear-gradient(200deg, #3A6350, #2C5240 55%, #254536)', borderRadius: 16 }}
+    >
+        <div style={{ position: 'absolute', inset: 10, border: '1px solid rgba(201,185,143,0.35)', borderRadius: 10, pointerEvents: 'none' }} />
+        <img src="/brand/kt-mark-gold.svg" width={92} height={92} alt="" draggable={false} style={{ opacity: 0.8, transform: 'translateY(14%)' }} />
+        {/* 書脊（左緣）：闔上的書從背面看，脊在左 */}
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, borderRadius: '16px 0 0 16px', background: 'linear-gradient(270deg, rgba(0,0,0,0.18), rgba(255,255,255,0.05))', pointerEvents: 'none' }} />
+    </div>
+);
+
+// 🛂 批⑥：蓋章儀式旗標（localStorage；每趟一次）。首次啟用＝只演最新、其餘補記，防舊行程排隊連演。
+const STAMP_PREFIX = 'kt_pp_stamped_';
+const isStamped = (tripId: string): boolean => {
+    try { return !!localStorage.getItem(STAMP_PREFIX + tripId); } catch { return true; }   // 讀不到＝當作蓋過（寧靜勿誤演）
+};
+const markStamped = (tripIds: string[]): void => {
+    try { for (const id of tripIds) localStorage.setItem(STAMP_PREFIX + id, '1'); } catch { /* ignore */ }
+};
 
 // 🛂 批④：回憶內頁組頁（純函式）——已完成旅程按「年份新→舊」分組、組內按出發日新→舊、一頁一張卡（照片同旅途中 hero 高度）。
 //   內頁編號 01 起連號（封面/個資頁不編號，Kelvin 定案），空白頁接在最後一號。
@@ -65,6 +89,8 @@ export const ProfileView: React.FC<{
     const [pageIdx, setPageIdx] = useState(0);
     const [tocOpen, setTocOpen] = useState(false);
     const [accountOpen, setAccountOpen] = useState(false);
+    const [ceremonyTripId, setCeremonyTripId] = useState<string | null>(null);   // 批⑥：壓印動畫目標趟
+    const ceremonyRanRef = useRef(false);                                        // 每次進分頁最多演一次
     const bookRef = useRef<PassportBookHandle>(null);
     // profiles 列 best-effort 同步（表未建/離線皆靜默，見 services/profile.ts）
     useEffect(() => { void ensureProfile(user.id, user.name); }, [user.id, user.name]);
@@ -75,7 +101,29 @@ export const ProfileView: React.FC<{
         { zh: '個人資料頁', en: 'DATA PAGE' },
         ...memorySheets.map(sh => ({ zh: '回憶', en: `MEMORIES ${sh.year}` })),
         { zh: '空白頁', en: 'BLANK' },
+        { zh: '封底', en: 'BACK' },
     ]), [memorySheets]);
+
+    // 🛂 批⑥ 蓋章儀式：最新一趟「已完成、未蓋章」＝目標（memorySheets 已是新→舊）
+    const ceremony = useMemo(() => {
+        const first = memorySheets[0]?.trips[0];
+        if (!first || isStamped(first.id)) return null;
+        return { tripId: first.id, pageIdx: 2 };   // 最新趟＝第一張回憶內頁（sheet 索引 2）
+    }, [memorySheets]);
+
+    // 觸發：使用者翻開護照（pageIdx ≥ 1）後 → 稍候 → riffle 到該回憶頁 → 動畫完成才壓印＋記旗標
+    useEffect(() => {
+        if (!ceremony || ceremonyRanRef.current || pageIdx < 1) return;
+        ceremonyRanRef.current = true;
+        const timer = window.setTimeout(() => {
+            void bookRef.current?.goTo(ceremony.pageIdx).then(() => {
+                setCeremonyTripId(ceremony.tripId);
+                // 記旗標：目標趟＋所有已完成趟一次補記（首次啟用不讓舊行程排隊連演）
+                markStamped(memorySheets.flatMap(sh => sh.trips.map(t => t.id)));
+            });
+        }, 700);
+        return () => window.clearTimeout(timer);
+    }, [ceremony, pageIdx, memorySheets]);
 
     // 目錄項：封面/個資頁 → 年份節標 → 每趟回憶（頁碼）→ 空白頁
     interface TocEntry { key: string; label: string; idx?: number; pageNo?: string; section?: boolean; muted?: boolean }
@@ -90,6 +138,7 @@ export const ProfileView: React.FC<{
             out.push({ key: `m-${i}`, label: sh.trips[0]?.destination || '旅程', idx: 2 + i, pageNo: pad2(i + 1) });
         });
         out.push({ key: 'blank', label: '空白頁', idx: 2 + memorySheets.length, pageNo: pad2(memorySheets.length + 1), muted: true });
+        out.push({ key: 'back', label: '封底', idx: 3 + memorySheets.length, muted: true });
         return out;
     }, [memorySheets]);
     return (
@@ -101,12 +150,14 @@ export const ProfileView: React.FC<{
                     ref={bookRef}
                     cover={<PassportCover />}
                     onPageChange={setPageIdx}
+                    backCoverIndex={3 + memorySheets.length}
                     pages={[
                         <DataPage key="data" user={user} trips={trips} active={pageIdx === 1} onAvatarChange={onAvatarChange} />,
                         ...memorySheets.map((sh, i) => (
-                            <MemoryPage key={`mem-${sh.year}-${i}`} year={sh.year} trips={sh.trips} pageNo={pad2(i + 1)} onOpenTrip={onOpenTrip} onUpdateTrip={onUpdateTrip} />
+                            <MemoryPage key={`mem-${sh.year}-${i}`} year={sh.year} trips={sh.trips} pageNo={pad2(i + 1)} onOpenTrip={onOpenTrip} onUpdateTrip={onUpdateTrip} ceremonyTripId={ceremonyTripId} />
                         )),
                         <BlankPage key="blank" pageNo={pad2(memorySheets.length + 1)} onPlanNew={onPlanNew} onGoWishbox={onGoWishbox} />,
+                        <BackCover key="back" />,
                     ]}
                 />
             </div>
