@@ -78,14 +78,18 @@ export const PassportBook = forwardRef<PassportBookHandle, {
     })();
 
     const p = useMotionValue(initial);
-    const [idx, setIdx] = useState(initial);          // 已定格的頁（整數）
+    const [idx, setIdx] = useState(initial);          // 已定格的頁（整數；pointerEvents/flipped 用）
+    // 邏輯位置：settle 一「開始」就提交（idx 要等彈簧收尾 ~1s 才更新，連續點擊若以 idx 為基準，
+    // 第二下會算出同一個目標頁而被吞掉——Kelvin 實測連打翻不動的真因，非音效阻塞）。
+    const targetRef = useRef(initial);
     const [hint, setHint] = useState(false);          // 首次翻頁提示
     const containerRef = useRef<HTMLDivElement>(null);
 
     const settle = (target: number): Promise<void> => {
         const t = Math.min(Math.max(Math.round(target), 0), maxP);
-        const dist = Math.abs(t - idx);
-        if (t === idx && p.get() === t) return Promise.resolve();   // 邊界點擊（封底再往前等）＝無事發生、無聲
+        const from = targetRef.current;                             // 以邏輯位置為基準（非 idx——見上）
+        const dist = Math.abs(t - from);
+        if (t === from && p.get() === t) return Promise.resolve();  // 邊界點擊（封底再往前等）＝無事發生、無聲
         // riffle：跳多頁改用 tween，中間頁依序翻過；節奏放慢（每頁 ~0.16s、封頂 1.6s）——
         // 太快會讓紙變輕、質感減分（Kelvin 反饋調降）。單頁維持書頁彈簧。
         const transition = dist > 1
@@ -93,11 +97,12 @@ export const PassportBook = forwardRef<PassportBookHandle, {
             : FLIP_SPRING;
         // 頁碼指示「翻頁一開始」就同步（不等彈簧收尾——Kelvin 反饋延遲/慢半拍）；
         // idx（pointerEvents 用）仍等動畫完成才切，避免翻到一半頁面互動錯亂。
-        if (t !== idx) {
+        if (t !== from) {
             onPageChange?.(t);
             // 🎵 聲音在動畫起點播：跳多頁＝riffle；往前翻到封底＝闔書；其餘＝單頁紙聲
-            playPageSound(dist > 1 ? 'riffle' : (backCoverIndex !== undefined && t === backCoverIndex && t > idx) ? 'close' : 'flip');
+            playPageSound(dist > 1 ? 'riffle' : (backCoverIndex !== undefined && t === backCoverIndex && t > from) ? 'close' : 'flip');
         }
+        targetRef.current = t;
         try {
             sessionStorage.setItem(PAGE_KEY, String(t));
             if (t >= 1) sessionStorage.setItem(OPENED_KEY, '1');
@@ -130,10 +135,11 @@ export const PassportBook = forwardRef<PassportBookHandle, {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
         const x = e.clientX - rect.left;
-        if (idx === 0) { void settle(1); return; }
-        if (backCoverIndex !== undefined && idx === backCoverIndex) { void settle(idx - 1); return; }
-        if (x > rect.width * 0.7) void settle(idx + 1);
-        else if (x < rect.width * 0.3) void settle(idx - 1);
+        const cur = targetRef.current;   // 連打以邏輯位置遞進（動畫途中再點＝直接翻下一頁，不吞）
+        if (cur === 0) { void settle(1); return; }
+        if (backCoverIndex !== undefined && cur === backCoverIndex) { void settle(cur - 1); return; }
+        if (x > rect.width * 0.7) void settle(cur + 1);
+        else if (x < rect.width * 0.3) void settle(cur - 1);
     };
 
     return (
