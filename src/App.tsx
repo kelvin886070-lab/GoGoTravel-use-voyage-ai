@@ -408,13 +408,20 @@ const App: React.FC = () => {
   const pendingTripRef = useRef<Trip | null>(null);
 
   const saveTripToCloud = async (trip: Trip) => {
-      if (!user) return;
+      // ⚠️ 不能只看 user state：背景路徑（trips 瘦身/封面 enrich）在 setUser 同一輪就啟動，
+      // 閉包裡的 user 還是 null → 舊寫法 `if (!user) return` 會「靜默吞掉存檔」
+      // （test02/03 HAR 實錘：遷移上傳 13 檔全成功、存檔零筆＝孤兒檔）。退位：直接問 auth session。
+      let uid = user?.id;
+      if (!uid) {
+          try { uid = (await supabase.auth.getSession()).data.session?.user?.id; } catch { /* ignore */ }
+      }
+      if (!uid) return;
       setIsSyncing(true);
       // 🖼️ 2.2 存 DB 前序列化：把有 Storage 路徑的封面/記帳照片「顯示值」清空，不寫入暫時的 signed URL
       const tripForDb = serializeTripForDb(trip);
       const { error } = await supabase.from('trips').upsert({
               id: trip.id,
-              user_id: user.id,
+              user_id: uid,
               trip_data: tripForDb,
               updated_at: new Date().toISOString()
           });
