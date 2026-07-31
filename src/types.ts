@@ -232,6 +232,16 @@ export interface Trip {
   coverImageThumb?: string;      // 顯示用：封面縮圖 signed URL（封面縮圖小批；舊封面無影子檔＝undefined 退回大圖；不持久化）
 }
 
+// 🐘 垃圾桶輕量投影（lazy-load，Kelvin 定案；HAR 背書：垃圾桶佔冷啟 99% 重量）：
+//   冷啟不抓已刪行程全量，保管箱列表只需這份「資料合約」——未來保管箱視覺重設計在此之上畫皮。
+//   復原/永久刪除時才抓該趟全量（services/trashTrips.ts）。
+export interface TrashSummary {
+  id: string;
+  destination: string;
+  daysCount: number;        // 軟刪時由 days.length 記下；冷啟投影由起訖日推得（皆缺＝0，UI 不顯示天數）
+  coverThumb?: string;      // 封面小圖（影子縮圖 signed URL / Pexels 小圖）；缺＝灰底
+}
+
 // 🧱 3.2 行前待辦清單項目（原本重複定義於 ItineraryView / TripRemindersModal，統一收斂於此）
 export interface TripTodoItem {
   id: string;

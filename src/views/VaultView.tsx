@@ -5,14 +5,14 @@ import {
     Upload, HardDrive, Cloud, Loader2
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import type { Trip, VaultFolder, VaultFile } from '../types';
+import type { TrashSummary, VaultFolder, VaultFile } from '../types';
 import { supabase } from '../services/supabase';
 import { toast } from '../components/Toast';
 import { confirmDialog } from '../components/ConfirmDialog';
 
 // 定義介面：接收從 App.tsx 傳下來的真實資料與刷新函式
 interface VaultViewProps {
-    deletedTrips?: Trip[];
+    deletedTrips?: TrashSummary[];   // 🐘 lazy-load：輕量投影（資料合約，視覺重設計在其上）
     folders: VaultFolder[];
     files: VaultFile[];
     onRefresh: () => void;
@@ -310,8 +310,10 @@ export const VaultView: React.FC<VaultViewProps> = ({
                                         {deletedTrips.map(trip => (
                                             <div key={trip.id} className="bg-white p-3 rounded-2xl border border-blue-100 flex items-center justify-between shadow-sm">
                                                 <div className="flex items-center gap-3 min-w-0">
-                                                    <div className="w-10 h-10 bg-gray-200 rounded-xl overflow-hidden shrink-0"><img src={trip.coverImage} className="w-full h-full object-cover grayscale opacity-60" alt="" /></div>
-                                                    <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{trip.destination}</p><p className="text-[10px] text-gray-400">{trip.days.length} 天</p></div>
+                                                    <div className="w-10 h-10 bg-gray-200 rounded-xl overflow-hidden shrink-0">
+                                                        {trip.coverThumb && <img src={trip.coverThumb} className="w-full h-full object-cover grayscale opacity-60" alt="" />}
+                                                    </div>
+                                                    <div className="min-w-0"><p className="font-medium truncate text-gray-800 text-sm">{trip.destination}</p>{trip.daysCount > 0 && <p className="text-[10px] text-gray-400">{trip.daysCount} 天</p>}</div>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <button onClick={() => { if (onRestoreTrip) onRestoreTrip(trip.id); }} className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100">

@@ -7,7 +7,7 @@ import type { TripRow, VaultFolderRow, VaultFileRow, WishItemRow, WishListRow } 
 import { confirmDialog } from './components/ConfirmDialog';
 import { toast } from './components/Toast';
 import { resolvePlace, resolvePlaces, coordsFromMapsUrl, fetchPlaceDetails, lookupPlaceByText } from './services/geo';
-import { enrichTripCover } from './services/coverPhoto';
+import { enrichTripCover, smallCoverUrl } from './services/coverPhoto';
 import { fetchProfileAvatarUrl } from './services/profile';
 import { haversineKm } from './hooks/useNearby';
 import { looksLikeMapsUrl } from './utils/mapsUrl';
@@ -20,6 +20,8 @@ import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
 import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath } from './services/storage';
 import { tripNeedsSlimming, buildSlimPatch, applySlimPatch } from './services/tripSlimming';
+import { fetchTrashSummaries, fetchTrashTripFull } from './services/trashTrips';
+import type { TrashSummary } from './types';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
 import { PasteImportModal } from './views/PasteImportModal';
@@ -158,7 +160,8 @@ const App: React.FC = () => {
   }, [user?.id]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [bgImage, setBgImage] = useState<string>('');
-  const [trips, setTrips] = useState<Trip[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);                    // 🐘 lazy-load 後：只含「未刪除」行程
+  const [trashTrips, setTrashTrips] = useState<TrashSummary[]>([]);  // 垃圾桶輕量投影（保管箱列表用）
   const [vaultFolders, setVaultFolders] = useState<VaultFolder[]>([]);
   const [vaultFiles, setVaultFiles] = useState<VaultFile[]>([]);
   
@@ -275,7 +278,16 @@ const App: React.FC = () => {
       if (!currentUserId) return;
       
       setIsSyncing(true);
-      const { data } = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
+      // 🐘 垃圾桶 lazy-load：冷啟只抓「未刪除」全量（HAR 實測垃圾桶佔 99% 重量）；
+      //   垃圾桶另抓輕量投影（平行、不阻塞主載入）。JSON 過濾失敗＝防禦性退回全抓（寧慢勿空）。
+      let { data } = await supabase.from('trips').select('*')
+          .or('trip_data->>isDeleted.is.null,trip_data->>isDeleted.neq.true')
+          .order('updated_at', { ascending: false });
+      if (!data) {
+          const fallback = await supabase.from('trips').select('*').order('updated_at', { ascending: false });
+          data = fallback.data ? (fallback.data as TripRow[]).filter(r => !r.trip_data?.isDeleted) : null;
+      }
+      void fetchTrashSummaries().then(setTrashTrips);
       if (data) {
           const loadedTrips: Trip[] = (data as TripRow[]).map((row) => ({
               ...row.trip_data,
@@ -493,6 +505,10 @@ const App: React.FC = () => {
     scheduleTripSave(updatedTrip);
   };
 
+  // 🐘 lazy-load 後的三段流（Kelvin 定案）：
+  //   軟刪＝從 trips 移出＋在地生成投影塞進 trashTrips（手上有全量，天數用 days.length 最準）；
+  //   復原＝點了才抓該趟全量（簽名圖、補活動 id）→ 回 trips；
+  //   永刪＝先抓全量蒐集圖片路徑（連帶清 Storage）→ 再刪 DB 列；抓不到就中止（不做半套，避免孤兒圖）。
   const handleSoftDeleteTrip = async (id: string) => {
     const ok = await confirmDialog({ title: '移至保管箱？', message: '行程會移到保管箱，之後可再還原。', confirmText: '移至保管箱' });
     if (ok) {
@@ -500,29 +516,40 @@ const App: React.FC = () => {
         const targetTrip = trips.find(t => t.id === id);
         if (targetTrip) {
             const deletedTrip = { ...targetTrip, isDeleted: true };
-            setTrips(prev => prev.map(t => t.id === id ? deletedTrip : t));
+            setTrips(prev => prev.filter(t => t.id !== id));
+            setTrashTrips(prev => [{
+                id,
+                destination: (targetTrip.destination || '').trim() || '未命名行程',
+                daysCount: (targetTrip.days || []).length,
+                coverThumb: targetTrip.coverImageThumb || smallCoverUrl(targetTrip.coverImage) || undefined,
+            }, ...prev.filter(s => s.id !== id)]);
             if (selectedTrip?.id === id) setSelectedTrip(null);
             saveTripToCloud(deletedTrip);
         }
     }
   }
 
-  const handleRestoreTrip = (id: string) => {
-      const targetTrip = trips.find(t => t.id === id);
-      if (targetTrip) {
-          const restoredTrip = { ...targetTrip, isDeleted: false };
-          setTrips(prev => prev.map(t => t.id === id ? restoredTrip : t));
-          saveTripToCloud(restoredTrip);
-      }
+  const handleRestoreTrip = async (id: string) => {
+      const full = await fetchTrashTripFull(id);
+      if (!full) { toast('復原失敗，請檢查網路後再試', 'error'); return; }
+      const restoredRaw = { ...full, isDeleted: false };
+      // 顯示解析：簽名圖 URL＋活動 id backfill（與冷啟載入同管線）
+      const urlMap = await signPaths(collectTripImagePaths(restoredRaw));
+      const restored = ensureTripActivityIds(resolveTripImages(restoredRaw, urlMap));
+      setTrips(prev => [restored, ...prev.filter(t => t.id !== id)]);
+      setTrashTrips(prev => prev.filter(s => s.id !== id));
+      saveTripToCloud(restored);
+      toast('行程已復原', 'success');
   };
 
   const handlePermanentDeleteTrip = async (id: string) => {
       const ok = await confirmDialog({ title: '永久刪除這個行程？', message: '刪除後將無法復原，資料會永久消失。', confirmText: '刪除', tone: 'danger' });
       if (ok) {
           cancelPendingSave(); // 取消殘留排程，避免覆蓋刪除
-          const target = trips.find(t => t.id === id);
-          if (target) deleteTripImages(collectTripImagePaths(target)); // 🖼️ 2.2 連帶刪除該行程所有圖（封面+記帳照片）
-          setTrips(prev => prev.filter(t => t.id !== id));
+          const full = await fetchTrashTripFull(id);
+          if (!full) { toast('刪除失敗，請檢查網路後再試', 'error'); return; }   // 不做半套：抓不到就不刪列（避免 Storage 孤兒圖）
+          deleteTripImages(collectTripImagePaths(full)); // 🖼️ 2.2 連帶刪除該行程所有圖（封面+記帳+回憶+影子縮圖）
+          setTrashTrips(prev => prev.filter(s => s.id !== id));
           deleteTripFromCloud(id);
       }
   };
@@ -1075,7 +1102,7 @@ const App: React.FC = () => {
             
             {currentView === AppView.VAULT && (
                 <VaultView 
-                    deletedTrips={trips.filter(t => t.isDeleted)} 
+                    deletedTrips={trashTrips}
                     folders={vaultFolders}
                     files={vaultFiles}
                     onRefresh={() => fetchVaultData()} 
