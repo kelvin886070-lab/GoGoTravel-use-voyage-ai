@@ -52,11 +52,12 @@ const Row: React.FC<{ icon: React.ReactNode; label: string; danger?: boolean; on
 export const AccountCenter: React.FC<{
     open: boolean;
     user: User;
+    friendCode?: string;   // DB 覆寫碼（Founder 序號等）；未提供＝uuid 導出
     onClose: () => void;
     onLogout: () => void;
     onGoVault: () => void;
     onAvatarChange: (url: string) => void;
-}> = ({ open, user, onClose, onLogout, onGoVault, onAvatarChange }) => {
+}> = ({ open, user, friendCode, onClose, onLogout, onGoVault, onAvatarChange }) => {
     const [editOpen, setEditOpen] = useState(false);
     return (
         <div
@@ -82,7 +83,7 @@ export const AccountCenter: React.FC<{
                     <img src={user.avatar} alt={user.name} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm" />
                     <div>
                         <div className="font-serif text-[15px] font-bold text-[#232320]">{user.name}</div>
-                        <div className="font-mono text-[9px] tracking-[0.1em]" style={{ color: MUTE }}>{friendCodeOf(user.id)}</div>
+                        <div className="font-mono text-[9px] tracking-[0.1em]" style={{ color: MUTE }}>{friendCode || friendCodeOf(user.id)}</div>
                     </div>
                 </div>
 

@@ -49,6 +49,12 @@ export const preloadPageSounds = (): void => {
     (Object.keys(SRC) as PageSoundKind[]).forEach(getAudio);
 };
 
+/** 翻頁觸覺回饋（10ms 輕震；與音效開關獨立——靜音的人仍有指尖的紙感）。
+ *  iOS Safari 無 navigator.vibrate＝靜默不動作；原生打包後換 Capacitor Haptics（上架批）。 */
+export const hapticTap = (): void => {
+    try { navigator.vibrate?.(10); } catch { /* ignore */ }
+};
+
 /** 播放翻頁音（永不 throw；關閉時靜默）。 */
 export const playPageSound = (kind: PageSoundKind): void => {
     if (!isPageSoundOn()) return;

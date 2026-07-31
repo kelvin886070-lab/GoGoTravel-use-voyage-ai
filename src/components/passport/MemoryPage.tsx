@@ -11,7 +11,7 @@ import { motion } from 'framer-motion';
 import { Play, Plus, Loader2 } from 'lucide-react';
 import type { Trip } from '../../types';
 import { toast } from '../Toast';
-import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
+import { uploadTripImageWithThumb, signPaths, deleteTripImage, thumbPathOf } from '../../services/storage';
 import { PhotoViewer } from './PhotoViewer';
 
 // 相簿上限＝一律 150 張/趟（Kelvin 定案：上限的本質是每趟成本天花板，規則越簡單越好溝通；§3.7）
@@ -39,19 +39,27 @@ const rangeLabel = (start?: string, end?: string): string => {
 const stopsOf = (t: Trip): number =>
     (t.days || []).reduce((n, d) => n + (d.activities || []).filter(a => (a.type || '').toLowerCase() !== 'transport').length, 0);
 
+// 章的傾角：人手蓋的不會每枚都精準 -10°——由 trip.id 決定性導出 -6°~-14°（同趟永遠同角度，
+// 翻頁不跳動）。Kelvin 保留退路：覺得雜亂就改回統一 const（回傳 -10 即可）。
+const stampTilt = (id: string): number => {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return -6 - (h % 9);   // 整數 -6 .. -14
+};
+
 // 白色 PASS 章（迷你版：外點線圈＋PASS＋回國日）——蓋在照片右上。
 // 🛂 批⑥ ceremony＝壓印動畫：新完成趟第一次翻到（riffle 收尾後才觸發）——章從高處落下壓上（scale 2.1→1
 //   彈簧微震＝蓋章的頓感），只演一次（key 換值 remount 才套 initial）；prefers-reduced-motion＝直接定格。
 const prefersReducedMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 };
-const MiniPass: React.FC<{ date: string; ceremony?: boolean }> = ({ date, ceremony }) => {
+const MiniPass: React.FC<{ date: string; ceremony?: boolean; tilt?: number }> = ({ date, ceremony, tilt = -10 }) => {
     const animated = !!ceremony && !prefersReducedMotion();
     return (
         <motion.div
             key={animated ? 'ceremony' : 'plain'}
-            initial={animated ? { scale: 2.1, opacity: 0, rotate: -2 } : false}
-            animate={{ scale: 1, opacity: 1, rotate: -10 }}
+            initial={animated ? { scale: 2.1, opacity: 0, rotate: tilt + 8 } : false}
+            animate={{ scale: 1, opacity: 1, rotate: tilt }}
             transition={animated ? { type: 'spring', stiffness: 340, damping: 21, delay: 0.15 } : { duration: 0 }}
             style={{ position: 'absolute', top: 10, right: 10, width: 62, height: 62, borderRadius: '50%', border: '2px dashed rgba(255,255,255,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
         >
@@ -112,7 +120,7 @@ const MemoryCard: React.FC<{
                     <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#3a4a44,#232320)' }} />
                 )}
                 <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: 84, background: 'linear-gradient(transparent, rgba(20,22,26,0.78))' }} />
-                <MiniPass date={stampDate(trip.endDate)} ceremony={ceremony} />
+                <MiniPass date={stampDate(trip.endDate)} ceremony={ceremony} tilt={stampTilt(trip.id)} />
                 <div className="absolute left-3 bottom-2 text-white">
                     <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2 }}>{trip.destination}</div>
                     <div className="font-mono" style={{ fontSize: 10, opacity: 0.85, marginTop: 2 }}>{rangeLabel(trip.startDate, trip.endDate)}</div>
@@ -143,11 +151,13 @@ const MemoryCard: React.FC<{
     );
 };
 
-// ⑤c：單趟的照片集控制器（上傳/刪除/瀏覽；安靜更新持久化）
+// ⑤c：單趟的照片集控制器（上傳/刪除/瀏覽；安靜更新持久化）。
+// 縮圖層：上傳走「原圖＋影子縮圖」管線；thumbs 與 photos 同長同序（缺縮圖＝大圖 URL 退位）。
 const useTripPhotos = (trip: Trip, onUpdateTrip: (t: Trip) => void) => {
     const [adding, setAdding] = useState(false);
     const [viewerOpen, setViewerOpen] = useState(false);
     const photos = trip.memoryPhotos || [];
+    const thumbs = trip.memoryPhotoThumbs || photos;   // 舊資料/未載縮圖 → 直接用大圖
     const paths = trip.memoryPhotoPaths || [];
 
     const addFiles = async (files: FileList) => {
@@ -160,10 +170,15 @@ const useTripPhotos = (trip: Trip, onUpdateTrip: (t: Trip) => void) => {
         setAdding(true);
         try {
             const newPaths: string[] = [];
-            for (const f of list) newPaths.push(await uploadTripImage(f));   // 逐張（壓縮管線；私有桶）
-            const map = await signPaths(newPaths);
-            const newUrls = newPaths.map(pp => map[pp]).filter((u): u is string => !!u);
-            onUpdateTrip({ ...trip, memoryPhotoPaths: [...paths, ...newPaths], memoryPhotos: [...photos, ...newUrls] });
+            for (const f of list) newPaths.push(await uploadTripImageWithThumb(f));   // 逐張（原圖＋縮圖；私有桶）
+            const map = await signPaths([...newPaths, ...newPaths.map(thumbPathOf)]);
+            const ok = newPaths.filter(pp => !!map[pp]);
+            onUpdateTrip({
+                ...trip,
+                memoryPhotoPaths: [...paths, ...newPaths],
+                memoryPhotos: [...photos, ...ok.map(pp => map[pp])],
+                memoryPhotoThumbs: [...thumbs, ...ok.map(pp => map[thumbPathOf(pp)] || map[pp])],
+            });
             toast(`已加入 ${list.length} 張照片`, 'success');
         } catch {
             toast('照片上傳失敗，稍後再試', 'error');
@@ -174,11 +189,16 @@ const useTripPhotos = (trip: Trip, onUpdateTrip: (t: Trip) => void) => {
 
     const deletePhoto = (i: number) => {
         const path = paths[i];
-        onUpdateTrip({ ...trip, memoryPhotoPaths: paths.filter((_, x) => x !== i), memoryPhotos: photos.filter((_, x) => x !== i) });
-        void deleteTripImage(path);   // best-effort：清 Storage（失敗不影響資料一致性）
+        onUpdateTrip({
+            ...trip,
+            memoryPhotoPaths: paths.filter((_, x) => x !== i),
+            memoryPhotos: photos.filter((_, x) => x !== i),
+            memoryPhotoThumbs: thumbs.filter((_, x) => x !== i),
+        });
+        void deleteTripImage(path);   // best-effort：清 Storage（含影子縮圖；失敗不影響資料一致性）
     };
 
-    return { adding, viewerOpen, setViewerOpen, photos, addFiles, deletePhoto };
+    return { adding, viewerOpen, setViewerOpen, photos, thumbs, addFiles, deletePhoto };
 };
 
 // 🛂 ⑤b 旅程手記——寫在「護照紙面」上（不在白卡內：卡片像卡片、紀錄像紀錄，Kelvin 定案）。
@@ -216,7 +236,7 @@ const PaperNote: React.FC<{ trip: Trip; onSaveNote: (text: string) => void }> = 
 
 // 卡＋紙面手記＋照片集 viewer（一趟一組）
 const TripMemoryBlock: React.FC<{ trip: Trip; onOpen: () => void; onUpdateTrip: (t: Trip) => void; ceremony?: boolean }> = ({ trip, onOpen, onUpdateTrip, ceremony }) => {
-    const { adding, viewerOpen, setViewerOpen, photos, addFiles, deletePhoto } = useTripPhotos(trip, onUpdateTrip);
+    const { adding, viewerOpen, setViewerOpen, photos, thumbs, addFiles, deletePhoto } = useTripPhotos(trip, onUpdateTrip);
     return (
         <>
             <MemoryCard trip={trip} onOpen={onOpen}
@@ -226,6 +246,7 @@ const TripMemoryBlock: React.FC<{ trip: Trip; onOpen: () => void; onUpdateTrip: 
             {viewerOpen && (
                 <PhotoViewer
                     photos={photos}
+                    thumbs={thumbs}
                     start={0}
                     adding={adding}
                     onClose={() => setViewerOpen(false)}

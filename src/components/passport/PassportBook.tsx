@@ -11,7 +11,7 @@
 //   聲音在「動畫起點」播（紙聲發生在翻的過程，不是翻完）；開關與失敗處理都在音效引擎內（永不 throw）。
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { motion, useMotionValue, useTransform, animate, type MotionValue } from 'framer-motion';
-import { playPageSound, preloadPageSounds } from '../../services/sounds';
+import { playPageSound, preloadPageSounds, hapticTap } from '../../services/sounds';
 
 const OPENED_KEY = 'kt_pp_open';    // 本 session 已翻開過
 const PAGE_KEY = 'kt_pp_page';      // 上次停留頁（session）
@@ -101,6 +101,7 @@ export const PassportBook = forwardRef<PassportBookHandle, {
             onPageChange?.(t);
             // 🎵 聲音在動畫起點播：跳多頁＝riffle；往前翻到封底＝闔書；其餘＝單頁紙聲
             playPageSound(dist > 1 ? 'riffle' : (backCoverIndex !== undefined && t === backCoverIndex && t > from) ? 'close' : 'flip');
+            hapticTap();   // 指尖的紙感（Android 生效；iOS 待原生打包換 Capacitor Haptics）
         }
         targetRef.current = t;
         try {
@@ -119,6 +120,16 @@ export const PassportBook = forwardRef<PassportBookHandle, {
 
     // 🎵 進到護照畫面就預載音效（lazy 建 Audio；失敗靜默）
     useEffect(() => { preloadPageSounds(); }, []);
+
+    // 頁碼指示初始同步（Kelvin 截圖抓到的 bug）：session 記住停留頁重開時，書直接開在內頁，
+    // 但外部指示器只靠 settle 通知、仍停在「封面」——掛載時把初始頁通知出去（只跑一次）。
+    const syncedRef = useRef(false);
+    useEffect(() => {
+        if (syncedRef.current) return;
+        syncedRef.current = true;
+        if (initial !== 0) onPageChange?.(initial);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // 提示自動淡出
     useEffect(() => {

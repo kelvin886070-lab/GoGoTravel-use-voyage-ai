@@ -16,6 +16,15 @@ create table if not exists public.profiles (
 -- 批③微調：頭貼（Storage 路徑，trip-media 私有桶；顯示端簽名 URL）
 alter table public.profiles add column if not exists avatar_path text;
 
+-- 個資頁細節批：role＝內部身份（'FOUNDER' 等職稱；一般使用者 null）。
+--   安全模型（Kelvin 定案）：role 只能由 DB 端賦予（SQL／未來 admin 工具），client 永遠沒有寫入路徑
+--   ——註冊管道天然只產生一般使用者。內部員工＝員編序號制（KT-A＋5 碼，KT-A00001 起），一般使用者維持 uuid 8 碼。
+alter table public.profiles add column if not exists role text;
+
+-- Kelvin 專屬列（範例；用「現有會員碼」當條件最不會貼錯——friend_code 是 UNIQUE，精準鎖定一列）：
+--   update public.profiles set role = 'FOUNDER', friend_code = 'KT-A00001' where friend_code = 'KT-C641B5BA';
+--   驗證：select display_name, friend_code, role from public.profiles;
+
 alter table public.profiles enable row level security;
 
 -- 自己的列自己管；跨使用者查詢（好友搜尋）＝未來社交批再開專用 policy／RPC，現在不開。

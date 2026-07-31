@@ -12,7 +12,7 @@ import { PassportCover } from '../components/passport/PassportCover';
 import { DataPage } from '../components/passport/DataPage';
 import { MemoryPage } from '../components/passport/MemoryPage';
 import { completedTrips } from '../services/passportStats';
-import { ensureProfile } from '../services/profile';
+import { ensureProfile, fetchProfileMeta, type ProfileMeta } from '../services/profile';
 import { AccountCenter } from '../components/passport/AccountCenter';
 
 const PAPER_TEXTURE: React.CSSProperties = {
@@ -92,8 +92,15 @@ export const ProfileView: React.FC<{
     const [ceremonyTripId, setCeremonyTripId] = useState<string | null>(null);   // 批⑥：壓印動畫目標趟
     const ceremonyRanRef = useRef(false);                                        // 每次進分頁最多演一次
     const bookRef = useRef<PassportBookHandle>(null);
-    // profiles 列 best-effort 同步（表未建/離線皆靜默，見 services/profile.ts）
-    useEffect(() => { void ensureProfile(user.id, user.name); }, [user.id, user.name]);
+    // profiles 列 best-effort 同步＋meta 回讀（會員碼覆寫/role/加入年；失敗＝null、各欄有退位）
+    const [profileMeta, setProfileMeta] = useState<ProfileMeta | null>(null);
+    useEffect(() => {
+        let alive = true;
+        void ensureProfile(user.id, user.name)
+            .then(() => fetchProfileMeta(user.id))
+            .then(m => { if (alive) setProfileMeta(m); });
+        return () => { alive = false; };
+    }, [user.id, user.name]);
 
     const memorySheets = useMemo(() => buildMemorySheets(trips), [trips]);
     const labels = useMemo(() => ([
@@ -152,7 +159,7 @@ export const ProfileView: React.FC<{
                     onPageChange={setPageIdx}
                     backCoverIndex={3 + memorySheets.length}
                     pages={[
-                        <DataPage key="data" user={user} trips={trips} active={pageIdx === 1} onAvatarChange={onAvatarChange} />,
+                        <DataPage key="data" user={user} trips={trips} active={pageIdx === 1} meta={profileMeta} onAvatarChange={onAvatarChange} />,
                         ...memorySheets.map((sh, i) => (
                             <MemoryPage key={`mem-${sh.year}-${i}`} year={sh.year} trips={sh.trips} pageNo={pad2(i + 1)} onOpenTrip={onOpenTrip} onUpdateTrip={onUpdateTrip} ceremonyTripId={ceremonyTripId} />
                         )),
@@ -209,6 +216,7 @@ export const ProfileView: React.FC<{
             <AccountCenter
                 open={accountOpen}
                 user={user}
+                friendCode={profileMeta?.friendCode || undefined}
                 onClose={() => setAccountOpen(false)}
                 onLogout={onLogout}
                 onGoVault={() => { setAccountOpen(false); onGoVault(); }}

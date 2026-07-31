@@ -11,6 +11,7 @@ import { animate } from 'framer-motion';
 import type { Trip, User } from '../../types';
 import { toast } from '../Toast';
 import { EditProfileModal } from './EditProfileModal';
+import { toYmd, type ProfileMeta } from '../../services/profile';
 import {
     passportStats, travelStyle, companionType, mostVisited, friendCodeOf, mrzLines,
 } from '../../services/passportStats';
@@ -34,38 +35,41 @@ const FieldLabel: React.FC<{ zh: string; en: string }> = ({ zh, en }) => (
     </div>
 );
 
-// 統計數字：首次「翻到本頁」時 0 → 實值滾動（active 才觸發；0 值直接顯示不演）
+// 統計數字：首次「翻到本頁」時 0 → 實值滾動（active 才觸發；0 值直接顯示不演）。
+// shown＝null 表示「顯示實值」，只在演出期間接管——effect 內不做同步 setState
+// （react-hooks/set-state-in-effect；動畫 onUpdate/onComplete 是非同步回呼，合規）。
 const CountUp: React.FC<{ value: number; active: boolean }> = ({ value, active }) => {
-    const [display, setDisplay] = useState(active ? 0 : value);
+    const [shown, setShown] = useState<number | null>(() => (active && value > 0 ? 0 : null));
     const played = useRef(false);
     useEffect(() => {
-        if (!active || played.current) { setDisplay(value); return; }
+        if (!active || played.current || value <= 0) return;
         played.current = true;
-        if (value <= 0) { setDisplay(0); return; }
         const controls = animate(0, value, {
             duration: 0.7, ease: 'easeOut',
-            onUpdate: v => setDisplay(Math.round(v)),
+            onUpdate: v => setShown(Math.round(v)),
+            onComplete: () => setShown(null),
         });
         return () => controls.stop();
     }, [active, value]);
-    return <>{display}</>;
+    return <>{shown ?? value}</>;
 };
 
 export const DataPage: React.FC<{
     user: User;
     trips: Trip[];
     active: boolean;               // 目前翻到本頁（count-up 觸發用）
+    meta?: ProfileMeta | null;     // DB meta（會員碼覆寫/role/加入年）；null＝載入中或離線，各欄有退位
     onAvatarChange: (url: string) => void;   // 換頭貼成功 → App 更新 user.avatar（全站同步）
-}> = ({ user, trips, active, onAvatarChange }) => {
+}> = ({ user, trips, active, meta, onAvatarChange }) => {
     const [editOpen, setEditOpen] = useState(false);
 
     const stats = passportStats(trips);
     const style = travelStyle(trips);
     const companion = companionType(trips);
     const visited = mostVisited(trips);
-    const code = friendCodeOf(user.id);
-    const estYear = String(new Date().getFullYear());   // v1：無註冊時間欄位，以當年顯示；profiles.created_at 建立後改讀真值
-    const [mrz1, mrz2] = mrzLines(user.name, code, stats, estYear);
+    const code = meta?.friendCode || friendCodeOf(user.id);          // DB 覆寫（Founder 序號碼）優先
+    const joinDate = meta?.joinDate || toYmd(new Date()) || '';      // 退位：今天（表未建/離線）
+    const [mrz1, mrz2] = mrzLines(user.name, code, stats, joinDate);
     const fresh = stats.trips === 0;
 
     const copyCode = async () => {
@@ -115,11 +119,21 @@ export const DataPage: React.FC<{
                         <FieldLabel zh="姓名" en="NAME" />
                         <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, color: INK }}>{user.name}</div>
                     </div>
-                    <div>
-                        <FieldLabel zh="會員碼" en="NO" />
-                        <button onClick={copyCode} className="font-mono flex items-center gap-1.5 py-1 -my-1" style={VALUE_STYLE} aria-label="複製會員碼">
-                            {code} <Copy className="w-[13px] h-[13px]" style={{ color: MUTE }} />
-                        </button>
+                    {/* 會員碼＋身份同列（Kelvin 定案）；身份 / TYPE 只有 DB role 有值才渲染
+                        （Founder/團隊職稱；一般使用者這欄不存在，版面零影響） */}
+                    <div className="flex items-start gap-4">
+                        <div>
+                            <FieldLabel zh="會員碼" en="NO" />
+                            <button onClick={copyCode} className="font-mono flex items-center gap-1.5 py-1 -my-1" style={VALUE_STYLE} aria-label="複製會員碼">
+                                {code} <Copy className="w-[13px] h-[13px]" style={{ color: MUTE }} />
+                            </button>
+                        </div>
+                        {meta?.role && (
+                            <div>
+                                <FieldLabel zh="身份" en="TYPE" />
+                                <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', color: '#3F6B52', paddingTop: 2 }}>{meta.role}</div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -142,10 +156,16 @@ export const DataPage: React.FC<{
                 </div>
             </div>
 
-            {/* 簽名欄（暱稱斜體；手寫簽名板＝未來批，docs 已記） */}
+            {/* 簽名欄——手寫變體（Kelvin 定案：拉開「印刷資料」與「本人筆跡」的視覺距離）：
+                iOS/macOS 用系統手寫體（Snell Roundhand→Savoye LET→Bradley Hand），Android 退 cursive/斜體 serif；
+                微傾 -2° ＝ 筆跡的不工整。真手寫簽名板＝未來批（docs 已記）。 */}
             <div className="px-4" style={{ paddingTop: 12 }}>
                 <FieldLabel zh="持照人簽名" en="SIGNATURE" />
-                <div className="font-serif" style={{ fontStyle: 'italic', fontSize: 18, color: '#3d3a33', padding: '1px 4px 4px', borderBottom: '1px solid #C9BFA6', display: 'inline-block', minWidth: 150 }}>
+                <div style={{
+                    fontFamily: "'Snell Roundhand', 'Savoye LET', 'Bradley Hand', 'Segoe Script', cursive, serif",
+                    fontStyle: 'italic', fontSize: 21, color: '#3d3a33', transform: 'rotate(-2deg)', transformOrigin: 'left bottom',
+                    padding: '1px 4px 4px', borderBottom: '1px solid #C9BFA6', display: 'inline-block', minWidth: 150,
+                }}>
                     {user.name}
                 </div>
             </div>
@@ -167,7 +187,7 @@ export const DataPage: React.FC<{
             {/* 編輯這本護照（鋼筆）：共用 EditProfileModal（會員中心同款） */}
             {editOpen && <EditProfileModal user={user} onAvatarChange={onAvatarChange} onClose={() => setEditOpen(false)} />}
 
-            {/* MRZ（TD3 44 字 ×2，淡到只是紙的一部分；彩蛋：姓名/會員碼/統計/EST） */}
+            {/* MRZ（TD3 44 字 ×2，淡到只是紙的一部分；彩蛋：姓名/會員碼/統計/JOINED 加入年） */}
             <div className="font-mono mt-auto" style={{ padding: '9px 12px', borderTop: `1px solid #E8E1D0`, background: 'rgba(241,235,221,0.6)', fontSize: 9, letterSpacing: '0.6px', color: 'rgba(95,94,90,0.55)', lineHeight: 1.7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                 {mrz1}<br />{mrz2}
             </div>

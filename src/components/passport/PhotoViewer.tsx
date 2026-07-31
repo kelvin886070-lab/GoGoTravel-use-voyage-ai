@@ -1,8 +1,11 @@
 // src/components/passport/PhotoViewer.tsx
-// 🛂 批⑤c（底片定稿）：回憶照片瀏覽器＝「一卷有重量的膠卷」。
+// 🛂 批⑤c（底片定稿）＋縮圖層（效能量測批）：回憶照片瀏覽器＝「一卷有重量的膠卷」。
 //   類比物件家族（護照/紙/票券/印章）的同族成員：上下齒孔帶、細白框、KT-格號（膠卷邊緣印字）。
 //   互動與護照一致（Kelvin 定案）：點左右緣換格、底部頁點可點跳；滑動不翻（手勢留給未來縮放）。
 //   電影感＝疊化 crossfade 450ms＋極輕縮放（慢即是重量）；不做刮痕濾鏡/轉盤音效（過度擬物）。
+//   🖼️ 漸進式載圖（真機量測定案：大圖首次上畫＝解碼 400~1100ms＝膠卷頓的真兇）：每格先秀縮圖
+//   （~480px，解碼 ~10ms＝翻格零頓），停留 400ms 才抓大圖、載好無感淡入——快速連翻不觸發
+//   大圖下載＝egress 護欄（§3.7）；縮圖 404/缺檔（舊照片）自動退回大圖。
 //   頂列＝關閉／KT-格號計數／加照片／刪除（confirmDialog）。data-no-flip：不觸發護照翻頁。
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,14 +21,46 @@ const Sprockets: React.FC = () => (
     }} />
 );
 
+// 相片樣式：縮圖底、大圖疊＝grid 同格堆疊、同 contain 同白框（同長寬比 → 兩框完全重合，看起來只有一組）
+const FRAME_IMG: React.CSSProperties = {
+    gridArea: '1 / 1', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+    border: '3px solid rgba(246,241,231,0.9)', borderRadius: 2, boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+};
+
+// 漸進式一格：縮圖立即上畫 → 停留 400ms 才要大圖 → onLoad 淡入 350ms。
+// 外層以照片為 key remount ＝ 換格時內部狀態自然歸零，不需手動 reset。
+const FilmFrame: React.FC<{ thumb: string; full: string; alt: string }> = ({ thumb, full, alt }) => {
+    const twoStage = thumb !== full;
+    const [thumbSrc, setThumbSrc] = useState(thumb);
+    const [wantFull, setWantFull] = useState(!twoStage);
+    const [fullReady, setFullReady] = useState(false);
+    useEffect(() => {
+        if (!twoStage) return;
+        const t = window.setTimeout(() => setWantFull(true), 400);   // egress 護欄：連翻不下載大圖
+        return () => window.clearTimeout(t);
+    }, [twoStage]);
+    return (
+        <div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%' }}>
+            <img src={thumbSrc} alt={alt} draggable={false} style={FRAME_IMG}
+                onError={() => { if (thumbSrc !== full) setThumbSrc(full); }} />
+            {twoStage && wantFull && (
+                <img src={full} alt="" draggable={false} aria-hidden
+                    style={{ ...FRAME_IMG, opacity: fullReady ? 1 : 0, transition: 'opacity .35s ease' }}
+                    onLoad={() => setFullReady(true)} />
+            )}
+        </div>
+    );
+};
+
 export const PhotoViewer: React.FC<{
-    photos: string[];            // signed URL（順序＝memoryPhotoPaths）
+    photos: string[];            // 大圖 signed URL（順序＝memoryPhotoPaths）
+    thumbs?: string[];           // 縮圖 signed URL（與 photos 同長同序；未提供/缺項＝退回大圖）
     start: number;
     adding: boolean;             // 上傳中（外部狀態）
     onClose: () => void;
     onDelete: (index: number) => Promise<void> | void;
     onAddFiles: (files: FileList) => void;
-}> = ({ photos, start, adding, onClose, onDelete, onAddFiles }) => {
+}> = ({ photos, thumbs, start, adding, onClose, onDelete, onAddFiles }) => {
     const [current, setCurrent] = useState(Math.min(Math.max(start, 0), Math.max(photos.length - 1, 0)));
     const fileRef = React.useRef<HTMLInputElement>(null);
 
@@ -70,23 +105,25 @@ export const PhotoViewer: React.FC<{
                 </div>
             </div>
 
-            {/* 膠卷格：齒孔帶｜相片（細白框＋疊化）｜齒孔帶 */}
+            {/* 膠卷格：齒孔帶｜相片（縮圖先、當前格大圖淡入）｜齒孔帶 */}
             <div className="flex-1 min-h-0 flex flex-col justify-center" onClick={onFrameTap}>
                 <Sprockets />
-                <div className="relative flex-1 min-h-0 flex items-center justify-center px-4 py-2" style={{ maxHeight: '72vh' }}>
+                <div className="relative flex-1 min-h-0" style={{ maxHeight: '72vh' }}>
                     <AnimatePresence mode="popLayout">
-                        <motion.img
+                        <motion.div
                             key={photos[current] || current}
-                            src={photos[current]}
-                            alt={`照片 ${current + 1}`}
-                            draggable={false}
                             initial={{ opacity: 0, scale: 1.03 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.45, ease: 'easeOut' }}
-                            className="max-w-full max-h-full object-contain"
-                            style={{ border: '3px solid rgba(246,241,231,0.9)', borderRadius: 2, boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
-                        />
+                            className="absolute inset-0 px-4 py-2"
+                        >
+                            <FilmFrame
+                                thumb={(thumbs && thumbs[current]) || photos[current]}
+                                full={photos[current]}
+                                alt={`照片 ${current + 1}`}
+                            />
+                        </motion.div>
                     </AnimatePresence>
                 </div>
                 <Sprockets />

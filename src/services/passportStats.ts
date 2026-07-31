@@ -128,11 +128,15 @@ export function friendCodeOf(userId: string): string {
 }
 
 // ── MRZ 機讀碼（兩行，各 44 字元＝真護照 TD3 規格，'<' 補滿）──────────────────
-// 彩蛋層：姓名（非 ASCII 以 TRAVELER 退位）、會員碼、統計、EST 加入年。敏感值（email/完整 uuid）永不進入。
-export function mrzLines(name: string, code: string, stats: PassportStats, estYear: string): [string, string] {
+// 彩蛋層：姓名（非 ASCII 以 TRAVELER 退位）、會員碼、JOINED 加入日（年月日，Kelvin 定案）、統計。
+// 語意切分：EST2025＝品牌創立、只住封面徽章；MRZ＝持有人自己的日期 → JOINED。
+// 44 字硬約束的取捨：JOINED＋YYYYMMDD（14 字）放不下 TRIPS/CITIES/DAYS 全稱 →
+// 統計縮寫為 T/C/D（真 MRZ 本來就是縮寫文化；最壞 3 位數統計仍 ≤44 不截斷）。
+// 敏感值（email/完整 uuid）永不進入。
+export function mrzLines(name: string, code: string, stats: PassportStats, joinDate: string): [string, string] {
     const pad = (s: string) => (s.length >= 44 ? s.slice(0, 44) : s + '<'.repeat(44 - s.length));
     const ascii = (name || '').replace(/[^A-Za-z]/g, '').toUpperCase() || 'TRAVELER';
     const l1 = pad(`P<KELVINTRIP<<${ascii}`);
-    const l2 = pad(`${code.replace('-', '')}<<${stats.trips}TRIPS<${stats.cities}CITIES<${stats.days}DAYS<<EST${estYear}`);
+    const l2 = pad(`${code.replace('-', '')}<<JOINED${joinDate}<<${stats.trips}T<${stats.cities}C<${stats.days}D`);
     return [l1, l2];
 }
