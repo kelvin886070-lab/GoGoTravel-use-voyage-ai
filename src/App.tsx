@@ -183,6 +183,9 @@ const App: React.FC = () => {
   // 🐘 冷啟雙抓去重（HAR 量測抓到：掛載 fetchUserData ＋ auth SIGNED_IN 各跑一次 → trips 4.7MB 搬兩遍）
   //   同一使用者本 App 生命週期只完整抓一次；SIGNED_OUT 歸零（換帳號登入要重抓）。
   const fetchedForUserRef = useRef<string | null>(null);
+  // 🔄 前景對帳（resume-stale 修復）：上次抓 trips 的時刻——iOS PWA resume 是凍結復原不重抓，
+  //   回前景且資料超齡（>5 分鐘）就背景重抓（瘦身後一次僅 ~45KB，使用者無感）
+  const lastTripsFetchRef = useRef(0);
 
   const allDocuments = useMemo<Document[]>(() => {
       return vaultFiles.map(f => ({
@@ -278,6 +281,7 @@ const App: React.FC = () => {
       if (!currentUserId) return;
       
       setIsSyncing(true);
+      lastTripsFetchRef.current = Date.now();
       // 🐘 垃圾桶 lazy-load：冷啟只抓「未刪除」全量（HAR 實測垃圾桶佔 99% 重量）；
       //   垃圾桶另抓輕量投影（平行、不阻塞主載入）。JSON 過濾失敗＝防禦性退回全抓（寧慢勿空）。
       let { data } = await supabase.from('trips').select('*')
@@ -440,6 +444,23 @@ const App: React.FC = () => {
       if (error) console.error("上傳失敗", error);
       setIsSyncing(false);
   };
+
+  // 🔄 前景對帳：App 回前景（PWA resume/切分頁回來）→ 資料超過 5 分鐘沒抓就背景重抓。
+  //   有待寫出的編輯（pendingTripRef）＝這輪跳過——先讓防抖存檔落地，避免「refetch 比 save 先回來」
+  //   把畫面倒回舊版（下次回前景再對）。photos/封面/手記都住在 trips 裡，一次對帳全更新。
+  useEffect(() => {
+      const REVALIDATE_MS = 5 * 60 * 1000;
+      const onVisible = () => {
+          if (document.visibilityState !== 'visible') return;
+          if (!user?.id) return;
+          if (pendingTripRef.current) return;
+          if (Date.now() - lastTripsFetchRef.current < REVALIDATE_MS) return;
+          void fetchTrips(user.id);
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => document.removeEventListener('visibilitychange', onVisible);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // 取消尚未寫出的排程（用於刪除等「不該被舊版覆蓋」的情境）
   const cancelPendingSave = () => {
