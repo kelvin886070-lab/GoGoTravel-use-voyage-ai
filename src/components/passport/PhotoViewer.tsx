@@ -27,26 +27,38 @@ const FRAME_IMG: React.CSSProperties = {
     border: '3px solid rgba(246,241,231,0.9)', borderRadius: 2, boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
 };
 
-// 漸進式一格：縮圖立即上畫 → 停留 400ms 才要大圖 → onLoad 淡入 350ms。
+// 漸進式一格：縮圖立即上畫 → 停留 400ms 才要大圖 → 解碼完成才淡入 350ms。
+// ⚠️ 淡入用 img.decode() 不用 onLoad（真機 test-04 抓到的漏網之魚）：onLoad＝下載完，
+// 解碼仍在 opacity 翻開的首次上畫「同步」發生＝600~1400ms 慢幀；decode() 先在背景把
+// 點陣圖解好、解完才翻 opacity＝淡入零成本。decode 失敗（極舊瀏覽器/取消）退回直接顯示。
 // 外層以照片為 key remount ＝ 換格時內部狀態自然歸零，不需手動 reset。
 const FilmFrame: React.FC<{ thumb: string; full: string; alt: string }> = ({ thumb, full, alt }) => {
     const twoStage = thumb !== full;
     const [thumbSrc, setThumbSrc] = useState(thumb);
     const [wantFull, setWantFull] = useState(!twoStage);
     const [fullReady, setFullReady] = useState(false);
+    const fullRef = React.useRef<HTMLImageElement>(null);
     useEffect(() => {
         if (!twoStage) return;
         const t = window.setTimeout(() => setWantFull(true), 400);   // egress 護欄：連翻不下載大圖
         return () => window.clearTimeout(t);
     }, [twoStage]);
+    const revealFull = () => {
+        const el = fullRef.current;
+        if (el && typeof el.decode === 'function') {
+            el.decode().then(() => setFullReady(true)).catch(() => setFullReady(true));
+        } else {
+            setFullReady(true);
+        }
+    };
     return (
         <div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%' }}>
             <img src={thumbSrc} alt={alt} draggable={false} style={FRAME_IMG}
                 onError={() => { if (thumbSrc !== full) setThumbSrc(full); }} />
             {twoStage && wantFull && (
-                <img src={full} alt="" draggable={false} aria-hidden
+                <img ref={fullRef} src={full} alt="" draggable={false} aria-hidden decoding="async"
                     style={{ ...FRAME_IMG, opacity: fullReady ? 1 : 0, transition: 'opacity .35s ease' }}
-                    onLoad={() => setFullReady(true)} />
+                    onLoad={revealFull} />
             )}
         </div>
     );
