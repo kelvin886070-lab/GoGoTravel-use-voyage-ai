@@ -13,6 +13,9 @@ create table if not exists public.profiles (
   created_at   timestamptz not null default now()
 );
 
+-- 批③微調：頭貼（Storage 路徑，trip-media 私有桶；顯示端簽名 URL）
+alter table public.profiles add column if not exists avatar_path text;
+
 alter table public.profiles enable row level security;
 
 -- 自己的列自己管；跨使用者查詢（好友搜尋）＝未來社交批再開專用 policy／RPC，現在不開。

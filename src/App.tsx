@@ -8,6 +8,7 @@ import { confirmDialog } from './components/ConfirmDialog';
 import { toast } from './components/Toast';
 import { resolvePlace, resolvePlaces, coordsFromMapsUrl, fetchPlaceDetails, lookupPlaceByText } from './services/geo';
 import { enrichTripCover } from './services/coverPhoto';
+import { fetchProfileAvatarUrl } from './services/profile';
 import { haversineKm } from './hooks/useNearby';
 import { looksLikeMapsUrl } from './utils/mapsUrl';
 import { ensureTripActivityIds } from './utils/activityId';
@@ -141,6 +142,19 @@ const rowToWishList = (r: WishListRow): WishList => ({
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<AppView>(AppView.TRIPS);
+
+  // 🛂 自訂頭貼：登入後讀 profiles.avatar_path（簽名 URL）覆蓋預設頭像；沒設定/表未建＝維持現狀（靜默）
+  const avatarLoadedFor = useRef<string | null>(null);
+  useEffect(() => {
+      const uid = user?.id;
+      if (!uid || avatarLoadedFor.current === uid) return;
+      avatarLoadedFor.current = uid;
+      let alive = true;
+      void fetchProfileAvatarUrl(uid).then(url => {
+          if (alive && url) setUser(prev => (prev && prev.id === uid ? { ...prev, avatar: url } : prev));
+      });
+      return () => { alive = false; };
+  }, [user?.id]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [bgImage, setBgImage] = useState<string>('');
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -1037,6 +1051,8 @@ const App: React.FC = () => {
                     onPlanNew={() => setCurrentView(AppView.TRIPS)}
                     onGoWishbox={() => setCurrentView(AppView.WISHBOX)}
                     onGoVault={() => setCurrentView(AppView.VAULT)}
+                    onAvatarChange={(url) => setUser(prev => (prev ? { ...prev, avatar: url } : prev))}
+                    onOpenTrip={handleTripSelect}
                 />
             )}
         </div>

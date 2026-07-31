@@ -80,15 +80,18 @@ export const PassportBook: React.FC<{
 
     const settle = (target: number) => {
         const t = Math.min(Math.max(Math.round(target), 0), maxP);
+        // 頁碼指示「翻頁一開始」就同步（不等彈簧收尾——Kelvin 反饋延遲/慢半拍）；
+        // idx（pointerEvents 用）仍等動畫完成才切，避免翻到一半頁面互動錯亂。
+        if (t !== idx) onPageChange?.(t);
+        try {
+            sessionStorage.setItem(PAGE_KEY, String(t));
+            if (t >= 1) sessionStorage.setItem(OPENED_KEY, '1');
+        } catch { /* ignore */ }
         animate(p, t, FLIP_SPRING).then(() => {
             setIdx(t);
-            if (t !== idx) { playFlipSound(); onPageChange?.(t); }
+            if (t !== idx) playFlipSound();
             try {
-                sessionStorage.setItem(PAGE_KEY, String(t));
-                if (t >= 1) {
-                    sessionStorage.setItem(OPENED_KEY, '1');
-                    if (!localStorage.getItem(HINT_KEY)) { setHint(true); localStorage.setItem(HINT_KEY, '1'); }
-                }
+                if (t >= 1 && !localStorage.getItem(HINT_KEY)) { setHint(true); localStorage.setItem(HINT_KEY, '1'); }
             } catch { /* ignore */ }
         });
     };

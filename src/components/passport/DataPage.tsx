@@ -5,17 +5,19 @@
 //   統計三格（只算已完成；首次翻到本頁 count-up）｜MRZ 44 字 TD3（更淡；含彩蛋 EST）｜
 //   全新簽發態橫幅（0 趟時）｜右上 setting 選單（旅行證件→保管箱／登出——無假按鈕）。
 import React, { useEffect, useRef, useState } from 'react';
-import { Settings, Copy, LogOut, FileText } from 'lucide-react';
+import { Settings, Copy, LogOut, FileText, UserPen, Mail, Loader2 } from 'lucide-react';
 import { animate } from 'framer-motion';
 import type { Trip, User } from '../../types';
 import { toast } from '../Toast';
+import { uploadTripImage } from '../../services/storage';
+import { updateAvatarPath } from '../../services/profile';
 import {
     passportStats, travelStyle, companionType, mostVisited, friendCodeOf, mrzLines,
 } from '../../services/passportStats';
 
 const INK = '#232320', MUTE = '#8A8266', PAPER_EDGE = '#E0D8C6';
-const EMPTY_STYLE: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: '#A89F8A', fontStyle: 'italic' };
-const VALUE_STYLE: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: INK };
+const EMPTY_STYLE: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: '#A89F8A', fontStyle: 'italic' };
+const VALUE_STYLE: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: INK };
 
 const PAPER_TEXTURE: React.CSSProperties = {
     background: '#F6F1E7',
@@ -24,8 +26,12 @@ const PAPER_TEXTURE: React.CSSProperties = {
         'repeating-radial-gradient(circle at 75% 80%, rgba(201,185,143,.05) 0 2px, transparent 2px 11px)',
 };
 
-const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.16em', color: MUTE, marginBottom: 2 }}>{children}</div>
+// 欄位標籤：中文＝serif（與 hero 卡同字體）、英文＝mono——全 App 中文統一規則（Kelvin 定案）
+const FieldLabel: React.FC<{ zh: string; en: string }> = ({ zh, en }) => (
+    <div style={{ marginBottom: 2 }}>
+        <span className="font-serif" style={{ fontSize: 10, color: MUTE }}>{zh}</span>
+        <span className="font-mono" style={{ fontSize: 8, letterSpacing: '0.14em', color: MUTE }}> / {en}</span>
+    </div>
 );
 
 // 統計數字：首次「翻到本頁」時 0 → 實值滾動（active 才觸發；0 值直接顯示不演）
@@ -51,8 +57,29 @@ export const DataPage: React.FC<{
     active: boolean;               // 目前翻到本頁（count-up 觸發用）
     onLogout: () => void;
     onGoVault: () => void;
-}> = ({ user, trips, active, onLogout, onGoVault }) => {
+    onAvatarChange: (url: string) => void;   // 換頭貼成功 → App 更新 user.avatar（全站同步）
+}> = ({ user, trips, active, onLogout, onGoVault, onAvatarChange }) => {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    // 換頭貼：沿用既有壓縮上傳管線（trip-media 私有桶）→ 寫 profiles.avatar_path → 簽名 URL 回拋
+    const onPickAvatar = async (f: File | undefined) => {
+        if (!f || uploading) return;
+        setUploading(true);
+        try {
+            const path = await uploadTripImage(f);
+            await updateAvatarPath(user.id, path);
+            const { signPaths } = await import('../../services/storage');
+            const url = (await signPaths([path]))[path];
+            if (url) { onAvatarChange(url); toast('頭貼已更新', 'success'); }
+        } catch {
+            toast('頭貼上傳失敗，稍後再試', 'error');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     const stats = passportStats(trips);
     const style = travelStyle(trips);
@@ -81,7 +108,7 @@ export const DataPage: React.FC<{
         <div className="w-full h-full relative flex flex-col overflow-hidden" style={{ ...PAPER_TEXTURE, border: `1px solid ${PAPER_EDGE}`, borderRadius: 16 }}>
             {/* 頂列 */}
             <div className="flex items-center justify-between px-4 pt-3.5">
-                <span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.26em', color: MUTE }}>旅人護照 · PASSPORT</span>
+                <span><span className="font-serif" style={{ fontSize: 11, color: MUTE }}>旅人護照</span><span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.26em', color: MUTE }}> · PASSPORT</span></span>
                 <button onClick={() => setMenuOpen(v => !v)} aria-label="設定" className="p-1 -m-1">
                     <Settings className="w-[18px] h-[18px]" style={{ color: '#5F5E5A' }} />
                 </button>
@@ -89,41 +116,48 @@ export const DataPage: React.FC<{
 
             {/* setting 選單：只放真功能（旅行證件→保管箱／登出），無假按鈕 */}
             {menuOpen && (
-                <div className="absolute right-3 top-10 z-20 rounded-xl bg-white shadow-lg border border-black/5 py-1 w-44">
-                    <button onClick={() => { setMenuOpen(false); onGoVault(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left">
+                <div className="absolute right-3 top-10 z-20 rounded-xl bg-white shadow-lg border border-black/5 py-1 w-48">
+                    <button onClick={() => { setMenuOpen(false); setEditOpen(true); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
+                        <UserPen className="w-4 h-4" style={{ color: MUTE }} /> 編輯個人檔案
+                    </button>
+                    <button onClick={() => { setMenuOpen(false); onGoVault(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
                         <FileText className="w-4 h-4" style={{ color: MUTE }} /> 旅行證件 · 保管箱
                     </button>
-                    <button onClick={() => { setMenuOpen(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#A23B2E] active:bg-black/5 text-left">
+                    <a href="mailto:kelvin886070@gmail.com?subject=Kelvin%20Trip%20%E5%95%8F%E9%A1%8C%E5%9B%9E%E5%A0%B1" className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
+                        <Mail className="w-4 h-4" style={{ color: MUTE }} /> 回報問題
+                    </a>
+                    <button onClick={() => { setMenuOpen(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#A23B2E] active:bg-black/5 text-left font-serif">
                         <LogOut className="w-4 h-4" /> 登出
                     </button>
+                    <div className="font-mono text-center" style={{ fontSize: 9, letterSpacing: '0.14em', color: '#B4B2A9', padding: '6px 0 5px', borderTop: '1px solid #F1EFE8' }}>KELVIN TRIP · v1.0</div>
                 </div>
             )}
 
             {/* 全新簽發態橫幅（0 完成趟；有第一枚章後永久消失） */}
             {fresh && (
-                <div className="mx-4 mt-2.5 font-mono text-center" style={{ padding: '6px 10px', border: '1px dashed #C9BFA6', borderRadius: 8, fontSize: 9.5, letterSpacing: '0.12em', color: MUTE }}>
+                <div className="mx-4 mt-2.5 font-serif text-center" style={{ padding: '6px 10px', border: '1px dashed #C9BFA6', borderRadius: 8, fontSize: 11, letterSpacing: '0.12em', color: MUTE }}>
                     護照已簽發 · 等待第一枚章
                 </div>
             )}
 
             {/* 證件照＋姓名/會員碼 */}
             <div className="flex gap-3.5 px-4" style={{ paddingTop: fresh ? 12 : 16 }}>
-                <div className="relative shrink-0">
-                    <div style={{ width: 80, height: 98, borderRadius: 5, background: '#fff', padding: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+                <button className="relative shrink-0 text-left" onClick={() => setEditOpen(true)} aria-label="編輯頭貼">
+                    <div style={{ width: 108, height: 132, borderRadius: 5, background: '#fff', padding: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
                         <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" style={{ borderRadius: 3 }} />
                     </div>
                     {/* 鋼印壓角（防偽膜） */}
-                    <div style={{ position: 'absolute', right: -9, bottom: -9, width: 38, height: 38, borderRadius: '50%', border: '1.5px solid rgba(63,107,82,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-14deg)', pointerEvents: 'none' }}>
-                        <span className="font-mono" style={{ fontSize: 5.5, letterSpacing: '0.1em', color: 'rgba(63,107,82,0.45)', textAlign: 'center', lineHeight: 1.5 }}>KELVIN<br />TRIP</span>
-                    </div>
-                </div>
+                    {/* 鋼印：舊款細圈字樣（Kelvin 定案；原始檔存 brand-assets/kt-seal-emboss.svg） */}
+                    <img src="/brand/kt-seal.svg" alt="" width={56} height={56} draggable={false}
+                        style={{ position: 'absolute', right: -13, bottom: -13, transform: 'rotate(-14deg)', pointerEvents: 'none' }} />
+                </button>
                 <div className="flex-1 min-w-0 pt-0.5">
                     <div className="mb-2.5">
-                        <FieldLabel>姓名 / NAME</FieldLabel>
+                        <FieldLabel zh="姓名" en="NAME" />
                         <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, color: INK }}>{user.name}</div>
                     </div>
                     <div>
-                        <FieldLabel>會員碼 / NO</FieldLabel>
+                        <FieldLabel zh="會員碼" en="NO" />
                         <button onClick={copyCode} className="font-mono flex items-center gap-1.5 py-1 -my-1" style={VALUE_STYLE} aria-label="複製會員碼">
                             {code} <Copy className="w-[13px] h-[13px]" style={{ color: MUTE }} />
                         </button>
@@ -134,24 +168,24 @@ export const DataPage: React.FC<{
             {/* 旅風／旅伴／最常去（三欄，同深色；空值＝設計過的退位） */}
             <div className="flex px-4 font-mono" style={{ paddingTop: 12 }}>
                 <button onClick={explainStyle} className="flex-1 text-left" aria-label="旅風說明">
-                    <FieldLabel>旅風 / STYLE</FieldLabel>
+                    <FieldLabel zh="旅風" en="STYLE" />
                     {style.ready
-                        ? <div style={VALUE_STYLE}>{style.label}</div>
-                        : <div style={EMPTY_STYLE}>養成中 {style.progress}/{style.threshold}</div>}
+                        ? <div className="font-serif" style={VALUE_STYLE}>{style.label}</div>
+                        : <div className="font-serif" style={EMPTY_STYLE}>養成中 {style.progress}/{style.threshold}</div>}
                 </button>
                 <div className="flex-1">
-                    <FieldLabel>旅伴 / COMPANION</FieldLabel>
-                    {companion ? <div style={VALUE_STYLE}>{companion}</div> : <div style={EMPTY_STYLE}>首趟後揭曉</div>}
+                    <FieldLabel zh="旅伴" en="COMPANION" />
+                    {companion ? <div className="font-serif" style={VALUE_STYLE}>{companion}</div> : <div className="font-serif" style={EMPTY_STYLE}>首趟後揭曉</div>}
                 </div>
                 <div className="flex-1">
-                    <FieldLabel>最常去 / VISITED</FieldLabel>
-                    {visited ? <div style={VALUE_STYLE}>{visited}</div> : <div style={EMPTY_STYLE}>首趟後揭曉</div>}
+                    <FieldLabel zh="最常去" en="VISITED" />
+                    {visited ? <div className="font-serif" style={VALUE_STYLE}>{visited}</div> : <div className="font-serif" style={EMPTY_STYLE}>首趟後揭曉</div>}
                 </div>
             </div>
 
             {/* 簽名欄（暱稱斜體；手寫簽名板＝未來批，docs 已記） */}
             <div className="px-4" style={{ paddingTop: 12 }}>
-                <FieldLabel>持照人簽名 / SIGNATURE</FieldLabel>
+                <FieldLabel zh="持照人簽名" en="SIGNATURE" />
                 <div className="font-serif" style={{ fontStyle: 'italic', fontSize: 18, color: '#3d3a33', padding: '1px 4px 4px', borderBottom: '1px solid #C9BFA6', display: 'inline-block', minWidth: 150 }}>
                     {user.name}
                 </div>
@@ -166,10 +200,37 @@ export const DataPage: React.FC<{
                 ].map((it, i) => (
                     <div key={it.label} className="flex-1 text-center" style={i > 0 ? { borderLeft: '1px solid #EAE3D2' } : undefined}>
                         <div style={{ fontSize: 18, fontWeight: 700, color: fresh ? MUTE : INK }}><CountUp value={it.v} active={active} /></div>
-                        <div style={{ fontSize: 9, color: MUTE, marginTop: 1 }}>{it.label}</div>
+                        <div className="font-serif" style={{ fontSize: 10, color: MUTE, marginTop: 1 }}>{it.label}</div>
                     </div>
                 ))}
             </div>
+
+            {/* 編輯個人檔案：v1 只開放換頭貼；暱稱鎖定（改名將隨帳號系統升級＝登入頁 2-2 一起開放，docs 已記） */}
+            {editOpen && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: 'rgba(35,35,32,0.35)' }} onClick={() => setEditOpen(false)}>
+                    <div className="w-[82%] rounded-2xl bg-white p-5" onClick={e => e.stopPropagation()}>
+                        <div className="font-serif text-[16px] font-bold text-[#232320] mb-4">編輯個人檔案</div>
+                        <div className="flex flex-col items-center gap-3">
+                            <div style={{ width: 108, height: 132, borderRadius: 5, background: '#F5F5F4', padding: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+                                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" style={{ borderRadius: 3 }} />
+                            </div>
+                            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                                className="h-9 px-4 rounded-full text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-60"
+                                style={{ border: '1.5px solid #3F6B52', color: '#3F6B52' }}>
+                                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                                <span className="font-serif">{uploading ? '上傳中…' : '更換照片'}</span>
+                            </button>
+                            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { void onPickAvatar(e.target.files?.[0]); e.target.value = ''; }} />
+                        </div>
+                        <div className="mt-4">
+                            <div style={{ marginBottom: 3 }}><span className="font-serif" style={{ fontSize: 10, color: MUTE }}>暱稱</span><span className="font-mono" style={{ fontSize: 8, letterSpacing: '0.14em', color: MUTE }}> / NAME</span></div>
+                            <div className="rounded-xl px-3 py-2.5 text-[14px] font-bold" style={{ background: '#F5F5F4', color: '#B4B2A9' }}>{user.name}</div>
+                            <div className="font-serif text-[11px] mt-1.5" style={{ color: MUTE }}>暱稱修改將隨帳號系統升級開放</div>
+                        </div>
+                        <button onClick={() => setEditOpen(false)} className="w-full mt-5 h-10 rounded-full bg-[#232320] text-white text-[13px] font-bold font-serif">完成</button>
+                    </div>
+                </div>
+            )}
 
             {/* MRZ（TD3 44 字 ×2，淡到只是紙的一部分；彩蛋：姓名/會員碼/統計/EST） */}
             <div className="font-mono mt-auto" style={{ padding: '9px 12px', borderTop: `1px solid #E8E1D0`, background: 'rgba(241,235,221,0.6)', fontSize: 9, letterSpacing: '0.6px', color: 'rgba(95,94,90,0.55)', lineHeight: 1.7, whiteSpace: 'nowrap', overflow: 'hidden' }}>

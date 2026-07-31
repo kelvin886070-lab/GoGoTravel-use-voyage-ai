@@ -1,0 +1,6 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 鋼印（防偽膜壓角）：細圈＋KELVIN TRIP 兩行小字；低透明綠、使用端旋轉 -14° 壓在證件照右下角 -->
+  <circle cx="60" cy="60" r="55" stroke="#3F6B52" stroke-opacity="0.38" stroke-width="4"/>
+  <text x="60" y="55" text-anchor="middle" font-family="ui-monospace, 'Roboto Mono', monospace" font-size="15" letter-spacing="3" fill="#3F6B52" fill-opacity="0.5">KELVIN</text>
+  <text x="60" y="76" text-anchor="middle" font-family="ui-monospace, 'Roboto Mono', monospace" font-size="15" letter-spacing="3" fill="#3F6B52" fill-opacity="0.5">TRIP</text>
+</svg>

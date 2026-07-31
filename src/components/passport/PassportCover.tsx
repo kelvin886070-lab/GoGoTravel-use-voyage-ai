@@ -22,7 +22,7 @@ export const PassportCover: React.FC = () => (
         <div className="font-serif" style={{ marginTop: '10%', fontSize: 26, fontWeight: 700, color: '#E7DDC4', letterSpacing: '0.08em' }}>旅人護照</div>
         <div className="font-mono" style={{ marginTop: 8, fontSize: 11, letterSpacing: '0.32em', color: 'rgba(201,185,143,0.75)' }}>TRAVELER&nbsp;DOCUMENT</div>
 
-        <div className="font-mono" style={{ position: 'absolute', bottom: 20, fontSize: 10, letterSpacing: '0.24em', color: 'rgba(201,185,143,0.5)' }}>輕觸翻開</div>
+        <div className="font-serif" style={{ position: 'absolute', bottom: 20, fontSize: 11, letterSpacing: '0.24em', color: 'rgba(201,185,143,0.55)' }}>輕觸翻開</div>
 
         {/* 書口（右緣頁緣感） */}
         <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, borderRadius: '0 16px 16px 0', background: 'linear-gradient(90deg, rgba(0,0,0,0.18), rgba(255,255,255,0.06))', pointerEvents: 'none' }} />
