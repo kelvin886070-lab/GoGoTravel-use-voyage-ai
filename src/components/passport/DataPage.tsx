@@ -3,14 +3,14 @@
 //   防偽底紋｜證件照白框＋鋼印壓角｜NAME｜會員碼（複製→toast 教學文案）｜
 //   旅風/旅伴/最常去（三欄，深色一致；空狀態＝首趟後揭曉/養成中 N/3）｜簽名（暱稱斜體）｜
 //   統計三格（只算已完成；首次翻到本頁 count-up）｜MRZ 44 字 TD3（更淡；含彩蛋 EST）｜
-//   全新簽發態橫幅（0 趟時）｜右上 setting 選單（旅行證件→保管箱／登出——無假按鈕）。
+//   全新簽發態橫幅（0 趟時）｜右上「鋼筆」＝編輯這本護照（換頭貼；批⑤a 定案——
+//   保管箱/回報問題/登出已遷居會員中心，護照回歸純情感物件）。
 import React, { useEffect, useRef, useState } from 'react';
-import { Settings, Copy, LogOut, FileText, UserPen, Mail, Loader2 } from 'lucide-react';
+import { PenLine, Copy } from 'lucide-react';
 import { animate } from 'framer-motion';
 import type { Trip, User } from '../../types';
 import { toast } from '../Toast';
-import { uploadTripImage } from '../../services/storage';
-import { updateAvatarPath } from '../../services/profile';
+import { EditProfileModal } from './EditProfileModal';
 import {
     passportStats, travelStyle, companionType, mostVisited, friendCodeOf, mrzLines,
 } from '../../services/passportStats';
@@ -55,31 +55,9 @@ export const DataPage: React.FC<{
     user: User;
     trips: Trip[];
     active: boolean;               // 目前翻到本頁（count-up 觸發用）
-    onLogout: () => void;
-    onGoVault: () => void;
     onAvatarChange: (url: string) => void;   // 換頭貼成功 → App 更新 user.avatar（全站同步）
-}> = ({ user, trips, active, onLogout, onGoVault, onAvatarChange }) => {
-    const [menuOpen, setMenuOpen] = useState(false);
+}> = ({ user, trips, active, onAvatarChange }) => {
     const [editOpen, setEditOpen] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const fileRef = useRef<HTMLInputElement>(null);
-
-    // 換頭貼：沿用既有壓縮上傳管線（trip-media 私有桶）→ 寫 profiles.avatar_path → 簽名 URL 回拋
-    const onPickAvatar = async (f: File | undefined) => {
-        if (!f || uploading) return;
-        setUploading(true);
-        try {
-            const path = await uploadTripImage(f);
-            await updateAvatarPath(user.id, path);
-            const { signPaths } = await import('../../services/storage');
-            const url = (await signPaths([path]))[path];
-            if (url) { onAvatarChange(url); toast('頭貼已更新', 'success'); }
-        } catch {
-            toast('頭貼上傳失敗，稍後再試', 'error');
-        } finally {
-            setUploading(false);
-        }
-    };
 
     const stats = passportStats(trips);
     const style = travelStyle(trips);
@@ -109,29 +87,10 @@ export const DataPage: React.FC<{
             {/* 頂列 */}
             <div className="flex items-center justify-between px-4 pt-3.5">
                 <span><span className="font-serif" style={{ fontSize: 11, color: MUTE }}>旅人護照</span><span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.26em', color: MUTE }}> · PASSPORT</span></span>
-                <button onClick={() => setMenuOpen(v => !v)} aria-label="設定" className="p-1 -m-1">
-                    <Settings className="w-[18px] h-[18px]" style={{ color: '#5F5E5A' }} />
+                <button onClick={() => setEditOpen(true)} aria-label="編輯這本護照" className="p-1 -m-1">
+                    <PenLine className="w-[18px] h-[18px]" style={{ color: '#5F5E5A' }} />
                 </button>
             </div>
-
-            {/* setting 選單：只放真功能（旅行證件→保管箱／登出），無假按鈕 */}
-            {menuOpen && (
-                <div className="absolute right-3 top-10 z-20 rounded-xl bg-white shadow-lg border border-black/5 py-1 w-48">
-                    <button onClick={() => { setMenuOpen(false); setEditOpen(true); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
-                        <UserPen className="w-4 h-4" style={{ color: MUTE }} /> 編輯個人檔案
-                    </button>
-                    <button onClick={() => { setMenuOpen(false); onGoVault(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
-                        <FileText className="w-4 h-4" style={{ color: MUTE }} /> 旅行證件 · 保管箱
-                    </button>
-                    <a href="mailto:kelvin886070@gmail.com?subject=Kelvin%20Trip%20%E5%95%8F%E9%A1%8C%E5%9B%9E%E5%A0%B1" className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#232320] active:bg-black/5 text-left font-serif">
-                        <Mail className="w-4 h-4" style={{ color: MUTE }} /> 回報問題
-                    </a>
-                    <button onClick={() => { setMenuOpen(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-bold text-[#A23B2E] active:bg-black/5 text-left font-serif">
-                        <LogOut className="w-4 h-4" /> 登出
-                    </button>
-                    <div className="font-mono text-center" style={{ fontSize: 9, letterSpacing: '0.14em', color: '#B4B2A9', padding: '6px 0 5px', borderTop: '1px solid #F1EFE8' }}>KELVIN TRIP · v1.0</div>
-                </div>
-            )}
 
             {/* 全新簽發態橫幅（0 完成趟；有第一枚章後永久消失） */}
             {fresh && (
@@ -205,32 +164,8 @@ export const DataPage: React.FC<{
                 ))}
             </div>
 
-            {/* 編輯個人檔案：v1 只開放換頭貼；暱稱鎖定（改名將隨帳號系統升級＝登入頁 2-2 一起開放，docs 已記） */}
-            {editOpen && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: 'rgba(35,35,32,0.35)' }} onClick={() => setEditOpen(false)}>
-                    <div className="w-[82%] rounded-2xl bg-white p-5" onClick={e => e.stopPropagation()}>
-                        <div className="font-serif text-[16px] font-bold text-[#232320] mb-4">編輯個人檔案</div>
-                        <div className="flex flex-col items-center gap-3">
-                            <div style={{ width: 108, height: 132, borderRadius: 5, background: '#F5F5F4', padding: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
-                                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" style={{ borderRadius: 3 }} />
-                            </div>
-                            <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                                className="h-9 px-4 rounded-full text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-60"
-                                style={{ border: '1.5px solid #3F6B52', color: '#3F6B52' }}>
-                                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                                <span className="font-serif">{uploading ? '上傳中…' : '更換照片'}</span>
-                            </button>
-                            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { void onPickAvatar(e.target.files?.[0]); e.target.value = ''; }} />
-                        </div>
-                        <div className="mt-4">
-                            <div style={{ marginBottom: 3 }}><span className="font-serif" style={{ fontSize: 10, color: MUTE }}>暱稱</span><span className="font-mono" style={{ fontSize: 8, letterSpacing: '0.14em', color: MUTE }}> / NAME</span></div>
-                            <div className="rounded-xl px-3 py-2.5 text-[14px] font-bold" style={{ background: '#F5F5F4', color: '#B4B2A9' }}>{user.name}</div>
-                            <div className="font-serif text-[11px] mt-1.5" style={{ color: MUTE }}>暱稱修改將隨帳號系統升級開放</div>
-                        </div>
-                        <button onClick={() => setEditOpen(false)} className="w-full mt-5 h-10 rounded-full bg-[#232320] text-white text-[13px] font-bold font-serif">完成</button>
-                    </div>
-                </div>
-            )}
+            {/* 編輯這本護照（鋼筆）：共用 EditProfileModal（會員中心同款） */}
+            {editOpen && <EditProfileModal user={user} onAvatarChange={onAvatarChange} onClose={() => setEditOpen(false)} />}
 
             {/* MRZ（TD3 44 字 ×2，淡到只是紙的一部分；彩蛋：姓名/會員碼/統計/EST） */}
             <div className="font-mono mt-auto" style={{ padding: '9px 12px', borderTop: `1px solid #E8E1D0`, background: 'rgba(241,235,221,0.6)', fontSize: 9, letterSpacing: '0.6px', color: 'rgba(95,94,90,0.55)', lineHeight: 1.7, whiteSpace: 'nowrap', overflow: 'hidden' }}>

@@ -1,14 +1,16 @@
 // src/components/passport/MemoryPage.tsx
-// 🛂 批④：護照內頁——回憶卡（混血定稿：護照紙頁骨架 × 照片回憶卡內容）。
+// 🛂 批④＋⑤b：護照內頁——回憶卡＋旅程手記。
 //   一年一組內頁、一頁一張卡（照片與旅途中 hero 同高 208，一頁一段回憶——Kelvin 定案）；
-//   卡＝封面照＋白色 PASS 章（蓋「回國日」，PASS=通關完成的定案語意）
-//   ＋serif 名＋日期區間＋輕統計（N 天 · M 個地方）。點卡→該趟行程頁（computeStage=4 自動落回憶臉）。
-//   無催促元素（沒有進度/倒數/警示色）——回憶卡的工作是「帶我回去一下」，不是叫我做事。
-//   照片集播放/新增照片＝批⑤（memoryPhotoPaths），本批不放假按鈕。
-import React from 'react';
+//   卡＝封面照＋白色 PASS 章（蓋「回國日」）＋serif 名＋日期區間＋輕統計。點照片→回憶臉。
+//   ⑤b 旅程手記：卡下 serif 斜體一段話（空＝淡色邀請句）；點→小視窗編輯（不做頁內輸入，
+//   避開鍵盤與翻頁衝突）；存 trip.memoryNote（App 安靜更新路徑，不誤開行程頁）。
+//   無催促元素——回憶卡的工作是「帶我回去一下」。照片集播放/新增＝批⑤c。
+import React, { useState } from 'react';
 import type { Trip } from '../../types';
+import { toast } from '../Toast';
 
 const MUTE = '#8A8266';
+const NOTE_MAX = 500;
 
 const PAPER_TEXTURE: React.CSSProperties = {
     background: '#F6F1E7',
@@ -39,42 +41,113 @@ const MiniPass: React.FC<{ date: string }> = ({ date }) => (
     </div>
 );
 
-const MemoryCard: React.FC<{ trip: Trip; onOpen: () => void }> = ({ trip, onOpen }) => (
-    <button onClick={onOpen} className="w-full text-left rounded-[14px] overflow-hidden bg-white active:scale-[0.99] transition-transform" style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
-        <div className="relative" style={{ height: 208 }}>
-            {trip.coverImage ? (
-                <img src={trip.coverImage} alt={trip.destination} className="absolute inset-0 w-full h-full object-cover"
-                    style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }} />
-            ) : (
-                <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#3a4a44,#232320)' }} />
-            )}
-            <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: 84, background: 'linear-gradient(transparent, rgba(20,22,26,0.78))' }} />
-            <MiniPass date={stampDate(trip.endDate)} />
-            <div className="absolute left-3 bottom-2 text-white">
-                <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2 }}>{trip.destination}</div>
-                <div className="font-mono" style={{ fontSize: 10, opacity: 0.85, marginTop: 2 }}>{rangeLabel(trip.startDate, trip.endDate)}</div>
+// 手記編輯小視窗（data-no-flip：背景點擊不觸發翻頁）
+const NoteEditModal: React.FC<{ initial: string; tripName: string; onSave: (text: string) => void; onClose: () => void }> =
+    ({ initial, tripName, onSave, onClose }) => {
+        const [text, setText] = useState(initial);
+        return (
+            <div data-no-flip className="fixed inset-0 z-[120] flex items-center justify-center px-8" style={{ background: 'rgba(35,35,32,0.35)' }} onClick={e => { e.stopPropagation(); onClose(); }}>
+                <div className="w-full max-w-sm rounded-2xl bg-white p-5" onClick={e => e.stopPropagation()}>
+                    <div className="font-serif text-[16px] font-bold text-[#232320]">旅程手記</div>
+                    <div className="font-mono text-[9px] tracking-[0.14em] mt-0.5" style={{ color: MUTE }}>{tripName}</div>
+                    <textarea
+                        value={text}
+                        onChange={e => setText(e.target.value.slice(0, NOTE_MAX))}
+                        placeholder="為這段旅程寫下一句話…"
+                        rows={6}
+                        autoFocus
+                        className="w-full mt-3 rounded-xl p-3 text-[14px] leading-relaxed outline-none font-serif"
+                        style={{ background: '#F5F5F4', color: '#232320', resize: 'none' }}
+                    />
+                    <div className="font-mono text-right text-[10px] mt-1" style={{ color: '#B4B2A9' }}>{text.length}/{NOTE_MAX}</div>
+                    <div className="flex gap-3 mt-3">
+                        <button onClick={onClose} className="flex-1 h-10 rounded-full text-[13px] font-bold font-serif bg-white" style={{ color: MUTE, border: '1px solid rgba(0,0,0,0.08)' }}>取消</button>
+                        <button onClick={() => { onSave(text.trim()); onClose(); }} className="flex-1 h-10 rounded-full bg-[#232320] text-white text-[13px] font-bold font-serif">儲存</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+const MemoryCard: React.FC<{ trip: Trip; onOpen: () => void }> = ({ trip, onOpen }) => {
+    return (
+        <div className="w-full rounded-[14px] overflow-hidden bg-white" style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
+            {/* 照片＝進回憶臉的入口 */}
+            <button onClick={onOpen} className="relative block w-full text-left active:opacity-95" style={{ height: 208 }}>
+                {trip.coverImage ? (
+                    <img src={trip.coverImage} alt={trip.destination} className="absolute inset-0 w-full h-full object-cover"
+                        style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }} />
+                ) : (
+                    <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#3a4a44,#232320)' }} />
+                )}
+                <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: 84, background: 'linear-gradient(transparent, rgba(20,22,26,0.78))' }} />
+                <MiniPass date={stampDate(trip.endDate)} />
+                <div className="absolute left-3 bottom-2 text-white">
+                    <div className="font-serif" style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2 }}>{trip.destination}</div>
+                    <div className="font-mono" style={{ fontSize: 10, opacity: 0.85, marginTop: 2 }}>{rangeLabel(trip.startDate, trip.endDate)}</div>
+                </div>
+            </button>
+            {/* 輕統計 */}
+            <div className="px-3 pt-2 pb-3">
+                <span className="font-mono" style={{ fontSize: 10, color: MUTE }}>{(trip.days || []).length} 天 · {stopsOf(trip)} 個地方</span>
             </div>
         </div>
-        <div className="flex items-center px-3 py-2">
-            <span className="font-mono" style={{ fontSize: 10, color: MUTE }}>{(trip.days || []).length} 天 · {stopsOf(trip)} 個地方</span>
-        </div>
-    </button>
-);
+    );
+};
 
-/** 一頁回憶內頁：年份抬頭＋最多 2 張卡＋頁碼。 */
+// 🛂 ⑤b 旅程手記——寫在「護照紙面」上（不在白卡內：卡片像卡片、紀錄像紀錄，Kelvin 定案）。
+//   顯示保留換行（pre-wrap）、最多 5 行淡出截斷（500 字紙面不爆版）；點→編輯視窗看/改全文。
+const PaperNote: React.FC<{ trip: Trip; onSaveNote: (text: string) => void }> = ({ trip, onSaveNote }) => {
+    const [noteOpen, setNoteOpen] = useState(false);
+    const note = (trip.memoryNote || '').trim();
+    return (
+        <>
+            <button onClick={() => setNoteOpen(true)} className="w-full text-left px-2 pt-3 active:opacity-70" aria-label="編輯旅程手記">
+                <div style={{ marginBottom: 3 }}>
+                    <span className="font-serif" style={{ fontSize: 10, color: MUTE }}>旅程手記</span>
+                    <span className="font-mono" style={{ fontSize: 8, letterSpacing: '0.14em', color: MUTE }}> / NOTE</span>
+                </div>
+                <div className="font-serif" style={{
+                    fontStyle: 'italic', fontSize: 14, lineHeight: 1.7,
+                    color: note ? '#3d3a33' : '#A89F8A',
+                    whiteSpace: 'pre-wrap',
+                    display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                }}>
+                    {note || '為這段旅程寫下一句話…'}
+                </div>
+            </button>
+            {noteOpen && (
+                <NoteEditModal
+                    initial={note}
+                    tripName={trip.destination}
+                    onClose={() => setNoteOpen(false)}
+                    onSave={(text) => { onSaveNote(text); toast(text ? '手記已寫進護照' : '手記已清除', 'success'); }}
+                />
+            )}
+        </>
+    );
+};
+
+/** 一頁回憶內頁：年份抬頭＋一張卡＋頁碼。 */
 export const MemoryPage: React.FC<{
     year: number;
     trips: Trip[];               // 本頁的趟（一頁一張）
     pageNo: string;              // 內頁編號（01 起；封面/個資頁不編號）
     onOpenTrip: (t: Trip) => void;
-}> = ({ year, trips, pageNo, onOpenTrip }) => (
+    onUpdateTrip: (t: Trip) => void;   // 安靜更新（存手記；不誤開行程頁）
+}> = ({ year, trips, pageNo, onOpenTrip, onUpdateTrip }) => (
     <div className="w-full h-full relative flex flex-col" style={{ ...PAPER_TEXTURE, border: '1px solid #E0D8C6', borderRadius: 16 }}>
         <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2">
             <span className="font-serif" style={{ fontSize: 17, fontWeight: 700, color: '#232320' }}>回憶</span>
             <span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.18em', color: MUTE }}>MEMORIES · {year}</span>
         </div>
-        <div className="flex-1 min-h-0 px-3 space-y-3 overflow-hidden">
-            {trips.map(t => <MemoryCard key={t.id} trip={t} onOpen={() => onOpenTrip(t)} />)}
+        <div className="flex-1 min-h-0 px-3 overflow-hidden">
+            {trips.map(t => (
+                <React.Fragment key={t.id}>
+                    <MemoryCard trip={t} onOpen={() => onOpenTrip(t)} />
+                    <PaperNote trip={t} onSaveNote={(text) => onUpdateTrip({ ...t, memoryNote: text || undefined })} />
+                </React.Fragment>
+            ))}
         </div>
         <span className="font-mono text-center" style={{ fontSize: 10, letterSpacing: '0.3em', color: '#B4B2A9', padding: '8px 0 10px' }}>{pageNo}</span>
     </div>

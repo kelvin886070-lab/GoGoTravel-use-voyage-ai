@@ -224,6 +224,7 @@ export interface Trip {
   todos?: TripTodoItem[];        // 🧱 3.2 行前待辦（原本以 (trip as any).todos 存取，改為正式欄位）
 
   stagedWishes?: WishItem[];
+  memoryNote?: string;           // 🛂 批⑤b 旅程手記：回憶頁上寫給自己的一段話（隨 trip_data 持久化；未來餵旅風 v2/生成個人化）
 }
 
 // 🧱 3.2 行前待辦清單項目（原本重複定義於 ItineraryView / TripRemindersModal，統一收斂於此）

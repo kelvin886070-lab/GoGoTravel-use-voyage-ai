@@ -451,6 +451,12 @@ const App: React.FC = () => {
     scheduleTripSave(updatedTrip); // 🚀 2.3 改為防抖儲存
   };
 
+  // 🛂 安靜更新：不動 selectedTrip（護照存手記等場景——用 handleUpdateTrip 會誤開行程頁）
+  const handleUpdateTripQuiet = (updatedTrip: Trip) => {
+    setTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+    scheduleTripSave(updatedTrip);
+  };
+
   const handleSoftDeleteTrip = async (id: string) => {
     const ok = await confirmDialog({ title: '移至保管箱？', message: '行程會移到保管箱，之後可再還原。', confirmText: '移至保管箱' });
     if (ok) {
@@ -1053,6 +1059,7 @@ const App: React.FC = () => {
                     onGoVault={() => setCurrentView(AppView.VAULT)}
                     onAvatarChange={(url) => setUser(prev => (prev ? { ...prev, avatar: url } : prev))}
                     onOpenTrip={handleTripSelect}
+                    onUpdateTrip={handleUpdateTripQuiet}
                 />
             )}
         </div>
