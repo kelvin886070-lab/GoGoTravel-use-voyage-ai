@@ -19,7 +19,7 @@ import { locationWarnings, type LatLng } from '../../services/geoCheck';
 import { TimePickerWheel } from '../../components/common/TimePickerWheel';
 import { useNearby, haversineKm, fmtDist } from '../../hooks/useNearby';
 
-import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
+import { uploadTripImageWithThumb, signPaths, deleteTripImage } from '../../services/storage';
 
 import { GlassCapsule } from '../../components/common/GlassCapsule';
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
@@ -657,7 +657,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         if (file) { 
             try {
                 const oldPath = trip.coverImagePath;                 // 記住舊路徑，稍後清除
-                const path = await uploadTripImage(file);             // 壓縮並上傳到 Storage
+                const path = await uploadTripImageWithThumb(file);    // 壓縮並上傳到 Storage（含封面影子縮圖）
                 const urlMap = await signPaths([path]);               // 立刻換 signed URL 供顯示
                 onUpdateTrip({ ...trip, coverImage: urlMap[path] || '', coverImagePath: path, coverImagePositionY: 50 });
                 deleteTripImage(oldPath);                             // 清掉舊封面，避免孤兒檔（fire-and-forget）

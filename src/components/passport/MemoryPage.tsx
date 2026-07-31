@@ -12,6 +12,7 @@ import { Play, Plus, Loader2 } from 'lucide-react';
 import type { Trip } from '../../types';
 import { toast } from '../Toast';
 import { uploadTripImageWithThumb, signPaths, deleteTripImage, thumbPathOf } from '../../services/storage';
+import { smallCoverUrl } from '../../services/coverPhoto';
 import { PhotoViewer } from './PhotoViewer';
 
 // 相簿上限＝一律 150 張/趟（Kelvin 定案：上限的本質是每趟成本天花板，規則越簡單越好溝通；§3.7）
@@ -114,7 +115,10 @@ const MemoryCard: React.FC<{
             {/* 照片＝進回憶臉的入口 */}
             <button onClick={onOpen} className="relative block w-full text-left active:opacity-95" style={{ height: 208 }}>
                 {trip.coverImage ? (
-                    <img src={trip.coverImage} alt={trip.destination} className="absolute inset-0 w-full h-full object-cover"
+                    // 封面縮圖小批：208px 卡用小圖（自家封面走影子縮圖、Pexels 走 URL 縮放；舊封面退回大圖）
+                    // ——真機量測：翻到回憶頁首次解碼 1200px 封面＝390~580ms 慢幀的來源
+                    <img src={trip.coverImageThumb || smallCoverUrl(trip.coverImage)} alt={trip.destination} decoding="async"
+                        className="absolute inset-0 w-full h-full object-cover"
                         style={{ objectPosition: `center ${trip.coverImagePositionY ?? 50}%` }} />
                 ) : (
                     <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg,#3a4a44,#232320)' }} />

@@ -228,6 +228,7 @@ export interface Trip {
   memoryPhotoPaths?: string[];   // 🛂 批⑤c 回憶照片：Storage 路徑（trip-media 私有桶；DB 真正保存的來源）
   memoryPhotos?: string[];       // 顯示用：載入時換成 signed URL（不持久化，serializeTripForDb 會清空）
   memoryPhotoThumbs?: string[];  // 顯示用：縮圖 signed URL（縮圖層；與 memoryPhotos 同長同序，缺縮圖＝同大圖 URL；不持久化）
+  coverImageThumb?: string;      // 顯示用：封面縮圖 signed URL（封面縮圖小批；舊封面無影子檔＝undefined 退回大圖；不持久化）
 }
 
 // 🧱 3.2 行前待辦清單項目（原本重複定義於 ItineraryView / TripRemindersModal，統一收斂於此）

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import type { Trip, Member, User } from '../../../types';
 // 🖼️ 2.2 改走 Storage：上傳→存路徑，不再存 base64
-import { uploadTripImage, signPaths, deleteTripImage } from '../../../services/storage';
+import { uploadTripImageWithThumb, signPaths, deleteTripImage } from '../../../services/storage';
 import { toast } from '../../../components/Toast';
 
 interface TripSettingsModalProps {
@@ -79,7 +79,7 @@ export const TripSettingsModal: React.FC<TripSettingsModalProps> = ({ trip, user
             try {
                 // 🖼️ 2.2 壓縮後上傳到 Storage，取得路徑與顯示用 signed URL
                 const prev = coverImagePath;
-                const path = await uploadTripImage(file);
+                const path = await uploadTripImageWithThumb(file);   // 封面含影子縮圖（封面縮圖小批）
                 const urlMap = await signPaths([path]);
                 // 若 prev 是「本次開窗內先前上傳、尚未存檔」的圖，先清掉避免堆積（不動原始已存檔的）
                 if (prev && prev !== originalPathRef.current) deleteTripImage(prev);

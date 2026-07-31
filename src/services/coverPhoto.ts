@@ -7,6 +7,25 @@ import { supabase } from './supabase';
 import { cityToEn } from './cityEn';
 import type { Trip } from '../types';
 
+/** 小尺寸封面 URL（封面縮圖小批）：Pexels 圖床支援 URL 參數即時縮放——把 w/h 換成小版
+ *  （208px 高的回憶卡 ×3 DPR ≈ 640×350 綽綽有餘），CDN 直接回小圖＝零額外 API、解碼成本砍 ~70%。
+ *  非 Pexels 的 http 圖（未知圖床）原樣返回，寧原圖勿破圖。 */
+export function smallCoverUrl(url?: string): string | undefined {
+    if (!url || !url.startsWith('http')) return url;
+    try {
+        const u = new URL(url);
+        if (!u.hostname.endsWith('images.pexels.com')) return url;
+        u.searchParams.set('auto', 'compress');
+        u.searchParams.set('cs', 'tinysrgb');
+        u.searchParams.set('w', '640');
+        u.searchParams.set('h', '350');
+        u.searchParams.set('fit', 'crop');
+        return u.toString();
+    } catch {
+        return url;
+    }
+}
+
 /** 呼叫 ai-proxy 抓一張目的地橫幅照；任何失敗回 null（呼叫端不需 try/catch）。 */
 export async function fetchCoverPhoto(query: string): Promise<string | null> {
     try {

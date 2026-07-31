@@ -68,9 +68,10 @@ export async function signPaths(paths: (string | undefined)[]): Promise<Record<s
     return map;
 }
 
-// 蒐集一個行程裡所有「Storage 路徑」型的圖片（封面 + 記帳照片 + 回憶照片＋回憶縮圖影子檔）
+// 蒐集一個行程裡所有「Storage 路徑」型的圖片（封面＋封面縮圖 + 記帳照片 + 回憶照片＋回憶縮圖影子檔）
 export function collectTripImagePaths(trip: Trip): string[] {
     const paths: (string | undefined)[] = [trip.coverImagePath, ...(trip.memoryPhotoPaths || [])];
+    if (isStoragePath(trip.coverImagePath)) paths.push(thumbPathOf(trip.coverImagePath as string));
     (trip.memoryPhotoPaths || []).forEach(p => { if (isStoragePath(p)) paths.push(thumbPathOf(p)); });
     trip.days?.forEach(d => d.activities?.forEach(a => paths.push(a.expenseImagePath)));
     return Array.from(new Set(paths.filter(isStoragePath))) as string[];
@@ -89,6 +90,9 @@ export function resolveTripImages(trip: Trip, urlMap: Record<string, string>): T
     const next: Trip = { ...trip };
     if (trip.coverImagePath && urlMap[trip.coverImagePath]) {
         next.coverImage = urlMap[trip.coverImagePath];
+        // 封面縮圖（封面縮圖小批）：影子檔有簽到才給；舊封面沒有＝undefined → 顯示端退回大圖
+        const ct = urlMap[thumbPathOf(trip.coverImagePath)];
+        if (ct) next.coverImageThumb = ct;
     }
     // 🛂 批⑤c 回憶照片：路徑 → signed URL（順序保留；換不到的略過，不塞破圖）。
     // 縮圖層：memoryPhotoThumbs 與 memoryPhotos「同長同序」（同一過濾基準），缺縮圖＝退回大圖 URL。
@@ -118,6 +122,7 @@ export function serializeTripForDb(trip: Trip): Trip {
     if (trip.coverImagePath) next.coverImage = '';
     delete next.memoryPhotos;        // 顯示用 signed URL 永不入庫（批⑤c）
     delete next.memoryPhotoThumbs;   // 縮圖 signed URL 同規則（縮圖層）
+    delete next.coverImageThumb;     // 封面縮圖 signed URL 同規則（封面縮圖小批）
     if (trip.days) {
         next.days = trip.days.map(d => ({
             ...d,
