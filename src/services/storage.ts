@@ -73,7 +73,7 @@ export function collectTripImagePaths(trip: Trip): string[] {
     const paths: (string | undefined)[] = [trip.coverImagePath, ...(trip.memoryPhotoPaths || [])];
     if (isStoragePath(trip.coverImagePath)) paths.push(thumbPathOf(trip.coverImagePath as string));
     (trip.memoryPhotoPaths || []).forEach(p => { if (isStoragePath(p)) paths.push(thumbPathOf(p)); });
-    trip.days?.forEach(d => d.activities?.forEach(a => paths.push(a.expenseImagePath)));
+    trip.days?.forEach(d => d.activities?.forEach(a => { paths.push(a.expenseImagePath); paths.push(a.imagePath); }));
     return Array.from(new Set(paths.filter(isStoragePath))) as string[];
 }
 
@@ -106,11 +106,12 @@ export function resolveTripImages(trip: Trip, urlMap: Record<string, string>): T
     if (trip.days) {
         next.days = trip.days.map(d => ({
             ...d,
-            activities: (d.activities || []).map(a =>
-                a.expenseImagePath && urlMap[a.expenseImagePath]
-                    ? { ...a, expenseImage: urlMap[a.expenseImagePath] }
-                    : a
-            ),
+            activities: (d.activities || []).map(a => {
+                let out = a;
+                if (a.expenseImagePath && urlMap[a.expenseImagePath]) out = { ...out, expenseImage: urlMap[a.expenseImagePath] };
+                if (a.imagePath && urlMap[a.imagePath]) out = { ...out, image: urlMap[a.imagePath] };   // 瘦身①b
+                return out;
+            }),
         }));
     }
     return next;
@@ -126,9 +127,12 @@ export function serializeTripForDb(trip: Trip): Trip {
     if (trip.days) {
         next.days = trip.days.map(d => ({
             ...d,
-            activities: (d.activities || []).map(a =>
-                a.expenseImagePath ? { ...a, expenseImage: '' } : a
-            ),
+            activities: (d.activities || []).map(a => {
+                let out = a;
+                if (a.expenseImagePath) out = { ...out, expenseImage: '' };
+                if (a.imagePath) out = { ...out, image: '' };   // 瘦身①b：有路徑就不讓顯示值入庫
+                return out;
+            }),
         }));
     }
     return next;

@@ -91,7 +91,8 @@ export interface Activity {
   imagePositionY?: number;
   items?: ExpenseItem[]; 
   
-  image?: string;
+  image?: string;                // 顯示用：活動縮圖（載入時填 signed URL；舊資料為 base64/http）
+  imagePath?: string;            // 🐘 瘦身①b：活動縮圖的 Storage 路徑（DB 真正保存的來源；與 expenseImagePath 同制）
   wishItemId?: string;
 
   // 🗺️ Phase D：geocoding 後填入的座標（供地圖使用；沒有座標的活動地圖略過）

@@ -19,6 +19,7 @@ import { ProfileView } from './views/ProfileView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
 import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath } from './services/storage';
+import { tripNeedsSlimming, buildSlimPatch, applySlimPatch } from './services/tripSlimming';
 import ItineraryView from './views/ItineraryView/ItineraryView';
 import { WishBoxView } from './views/WishBoxView';
 import { PasteImportModal } from './views/PasteImportModal';
@@ -176,6 +177,9 @@ const App: React.FC = () => {
   }, [trips]);
   const [isSyncing, setIsSyncing] = useState(false);
   const isInitializingVaultRef = useRef(false);
+  // 🐘 冷啟雙抓去重（HAR 量測抓到：掛載 fetchUserData ＋ auth SIGNED_IN 各跑一次 → trips 4.7MB 搬兩遍）
+  //   同一使用者本 App 生命週期只完整抓一次；SIGNED_OUT 歸零（換帳號登入要重抓）。
+  const fetchedForUserRef = useRef<string | null>(null);
 
   const allDocuments = useMemo<Document[]>(() => {
       return vaultFiles.map(f => ({
@@ -204,7 +208,11 @@ const App: React.FC = () => {
           });
           const savedBg = localStorage.getItem(`voyage_${session.user.id}_bg_image`);
           if (savedBg) setBgImage(savedBg);
-          
+
+          // 雙抓去重：同一使用者已抓過＝跳過整批 fetch（setUser 等輕量狀態照設，冪等無害）
+          if (fetchedForUserRef.current === session.user.id) return;
+          fetchedForUserRef.current = session.user.id;
+
           fetchTrips(session.user.id);
           fetchVaultData(session.user.id);
           fetchWishItems(session.user.id);
@@ -228,6 +236,7 @@ const App: React.FC = () => {
           if (event === 'SIGNED_IN') {
               fetchUserData(); 
           } else if (event === 'SIGNED_OUT') {
+              fetchedForUserRef.current = null;   // 換帳號重登要重抓
               setUser(null);
               setCurrentView(AppView.TRIPS);
               setSelectedTrip(null);
@@ -284,8 +293,28 @@ const App: React.FC = () => {
               .filter(t => !t.isDeleted && !(t.coverImage || '').trim() && !(t.coverImagePath || '').trim())
               .slice(0, 3)
               .forEach(t => enrichCoverInBackground(t));
+          // 🐘 trips 瘦身（一次性遷移，見 services/tripSlimming）：base64 殘留 → Storage 路徑。
+          //   背景逐趟序跑（不搶冷啟頻寬）；patch 以當下 state 合併＋逐欄位再驗（不覆蓋使用者期間的編輯）；
+          //   冪等：換完路徑下次載入不再命中；單圖失敗＝下次冷啟續跑。
+          void slimTripsInBackground(resolved.filter(tripNeedsSlimming));
       }
       setIsSyncing(false);
+  };
+
+  // 🐘 trips 瘦身背景執行器（fire-and-forget；一次一趟，避免同時大量上傳）
+  const slimTripsInBackground = async (list: Trip[]) => {
+      for (const snapshot of list) {
+          try {
+              const patch = await buildSlimPatch(snapshot);
+              if (!patch) continue;
+              setTrips(prev => prev.map(t => {
+                  if (t.id !== patch.tripId) return t;
+                  const next = applySlimPatch(t, patch);
+                  if (next !== t) saveTripToCloud(next);   // 有真變更才存雲（serializeTripForDb 會把 base64 顯示值清掉）
+                  return next;
+              }));
+          } catch { /* 靜默：遷移是背景福利，任何失敗不影響使用 */ }
+      }
   };
 
   const fetchVaultData = async (userId?: string) => {
