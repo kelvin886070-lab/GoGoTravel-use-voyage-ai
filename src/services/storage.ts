@@ -46,9 +46,9 @@ export async function signPaths(paths: (string | undefined)[]): Promise<Record<s
     return map;
 }
 
-// 蒐集一個行程裡所有「Storage 路徑」型的圖片（封面 + 所有記帳照片）
+// 蒐集一個行程裡所有「Storage 路徑」型的圖片（封面 + 記帳照片 + 回憶照片）
 export function collectTripImagePaths(trip: Trip): string[] {
-    const paths: (string | undefined)[] = [trip.coverImagePath];
+    const paths: (string | undefined)[] = [trip.coverImagePath, ...(trip.memoryPhotoPaths || [])];
     trip.days?.forEach(d => d.activities?.forEach(a => paths.push(a.expenseImagePath)));
     return Array.from(new Set(paths.filter(isStoragePath))) as string[];
 }
@@ -65,6 +65,10 @@ export function resolveTripImages(trip: Trip, urlMap: Record<string, string>): T
     const next: Trip = { ...trip };
     if (trip.coverImagePath && urlMap[trip.coverImagePath]) {
         next.coverImage = urlMap[trip.coverImagePath];
+    }
+    // 🛂 批⑤c 回憶照片：路徑 → signed URL（順序保留；換不到的略過，不塞破圖）
+    if (trip.memoryPhotoPaths?.length) {
+        next.memoryPhotos = trip.memoryPhotoPaths.map(pp => urlMap[pp]).filter((u): u is string => !!u);
     }
     if (trip.days) {
         next.days = trip.days.map(d => ({
@@ -83,6 +87,7 @@ export function resolveTripImages(trip: Trip, urlMap: Record<string, string>): T
 export function serializeTripForDb(trip: Trip): Trip {
     const next: Trip = { ...trip };
     if (trip.coverImagePath) next.coverImage = '';
+    delete next.memoryPhotos;   // 顯示用 signed URL 永不入庫（批⑤c）
     if (trip.days) {
         next.days = trip.days.map(d => ({
             ...d,

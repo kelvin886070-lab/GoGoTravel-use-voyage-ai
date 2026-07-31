@@ -4,10 +4,17 @@
 //   卡＝封面照＋白色 PASS 章（蓋「回國日」）＋serif 名＋日期區間＋輕統計。點照片→回憶臉。
 //   ⑤b 旅程手記：卡下 serif 斜體一段話（空＝淡色邀請句）；點→小視窗編輯（不做頁內輸入，
 //   避開鍵盤與翻頁衝突）；存 trip.memoryNote（App 安靜更新路徑，不誤開行程頁）。
-//   無催促元素——回憶卡的工作是「帶我回去一下」。照片集播放/新增＝批⑤c。
-import React, { useState } from 'react';
+//   ⑤c 照片集：卡尾列 播放（有照片）/＋照片（沒照片）；全螢幕 PhotoViewer（滑動/刪除/加照）；
+//   相簿上限＝一律 150 張/趟；路徑存 trip.memoryPhotoPaths（私有桶），顯示走 signed URL（載入管線擴充）。
+import React, { useRef, useState } from 'react';
+import { Play, Plus, Loader2 } from 'lucide-react';
 import type { Trip } from '../../types';
 import { toast } from '../Toast';
+import { uploadTripImage, signPaths, deleteTripImage } from '../../services/storage';
+import { PhotoViewer } from './PhotoViewer';
+
+// 相簿上限＝一律 150 張/趟（Kelvin 定案：上限的本質是每趟成本天花板，規則越簡單越好溝通；§3.7）
+const photoCap = (_t: Trip): number => 150;
 
 const MUTE = '#8A8266';
 const NOTE_MAX = 500;
@@ -69,7 +76,15 @@ const NoteEditModal: React.FC<{ initial: string; tripName: string; onSave: (text
         );
     };
 
-const MemoryCard: React.FC<{ trip: Trip; onOpen: () => void }> = ({ trip, onOpen }) => {
+const MemoryCard: React.FC<{
+    trip: Trip;
+    onOpen: () => void;
+    photoCount: number;
+    adding: boolean;
+    onPlay: () => void;
+    onPickFiles: (files: FileList) => void;
+}> = ({ trip, onOpen, photoCount, adding, onPlay, onPickFiles }) => {
+    const fileRef = useRef<HTMLInputElement>(null);
     return (
         <div className="w-full rounded-[14px] overflow-hidden bg-white" style={{ border: '1px solid rgba(0,0,0,0.06)' }}>
             {/* 照片＝進回憶臉的入口 */}
@@ -87,12 +102,67 @@ const MemoryCard: React.FC<{ trip: Trip; onOpen: () => void }> = ({ trip, onOpen
                     <div className="font-mono" style={{ fontSize: 10, opacity: 0.85, marginTop: 2 }}>{rangeLabel(trip.startDate, trip.endDate)}</div>
                 </div>
             </button>
-            {/* 輕統計 */}
-            <div className="px-3 pt-2 pb-3">
-                <span className="font-mono" style={{ fontSize: 10, color: MUTE }}>{(trip.days || []).length} 天 · {stopsOf(trip)} 個地方</span>
+            {/* 輕統計＋照片控制（⑤c）：有照片＝張數＋播放；沒照片＝虛線「＋照片」邀請 */}
+            <div className="px-3 py-2 flex items-center justify-between">
+                <span className="font-mono" style={{ fontSize: 10, color: MUTE }}>
+                    {(trip.days || []).length} 天 · {stopsOf(trip)} 個地方{photoCount > 0 ? ` · ${photoCount} 張照片` : ''}
+                </span>
+                {photoCount > 0 ? (
+                    <button onClick={onPlay} aria-label="播放照片集"
+                        className="w-9 h-9 rounded-full bg-[#232320] text-white flex items-center justify-center shrink-0 active:scale-95 transition-transform">
+                        <Play className="w-4 h-4 ml-0.5" />
+                    </button>
+                ) : (
+                    <button onClick={() => fileRef.current?.click()} disabled={adding} aria-label="新增照片"
+                        className="h-8 px-3 rounded-full flex items-center gap-1 text-[11px] font-bold disabled:opacity-60 shrink-0"
+                        style={{ border: '1.5px dashed #8A8266', color: '#5F5E5A' }}>
+                        {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                        <span className="font-serif">{adding ? '上傳中' : '照片'}</span>
+                    </button>
+                )}
+                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+                    onChange={e => { if (e.target.files?.length) onPickFiles(e.target.files); e.target.value = ''; }} />
             </div>
         </div>
     );
+};
+
+// ⑤c：單趟的照片集控制器（上傳/刪除/瀏覽；安靜更新持久化）
+const useTripPhotos = (trip: Trip, onUpdateTrip: (t: Trip) => void) => {
+    const [adding, setAdding] = useState(false);
+    const [viewerOpen, setViewerOpen] = useState(false);
+    const photos = trip.memoryPhotos || [];
+    const paths = trip.memoryPhotoPaths || [];
+
+    const addFiles = async (files: FileList) => {
+        if (adding) return;
+        const cap = photoCap(trip);
+        const remain = cap - paths.length;
+        if (remain <= 0) { toast(`這段回憶最多 ${cap} 張照片`, 'info'); return; }
+        const list = Array.from(files).slice(0, remain);
+        if (files.length > remain) toast(`最多 ${cap} 張，已取前 ${remain} 張`, 'info');
+        setAdding(true);
+        try {
+            const newPaths: string[] = [];
+            for (const f of list) newPaths.push(await uploadTripImage(f));   // 逐張（壓縮管線；私有桶）
+            const map = await signPaths(newPaths);
+            const newUrls = newPaths.map(pp => map[pp]).filter((u): u is string => !!u);
+            onUpdateTrip({ ...trip, memoryPhotoPaths: [...paths, ...newPaths], memoryPhotos: [...photos, ...newUrls] });
+            toast(`已加入 ${list.length} 張照片`, 'success');
+        } catch {
+            toast('照片上傳失敗，稍後再試', 'error');
+        } finally {
+            setAdding(false);
+        }
+    };
+
+    const deletePhoto = (i: number) => {
+        const path = paths[i];
+        onUpdateTrip({ ...trip, memoryPhotoPaths: paths.filter((_, x) => x !== i), memoryPhotos: photos.filter((_, x) => x !== i) });
+        void deleteTripImage(path);   // best-effort：清 Storage（失敗不影響資料一致性）
+    };
+
+    return { adding, viewerOpen, setViewerOpen, photos, addFiles, deletePhoto };
 };
 
 // 🛂 ⑤b 旅程手記——寫在「護照紙面」上（不在白卡內：卡片像卡片、紀錄像紀錄，Kelvin 定案）。
@@ -128,6 +198,29 @@ const PaperNote: React.FC<{ trip: Trip; onSaveNote: (text: string) => void }> = 
     );
 };
 
+// 卡＋紙面手記＋照片集 viewer（一趟一組）
+const TripMemoryBlock: React.FC<{ trip: Trip; onOpen: () => void; onUpdateTrip: (t: Trip) => void }> = ({ trip, onOpen, onUpdateTrip }) => {
+    const { adding, viewerOpen, setViewerOpen, photos, addFiles, deletePhoto } = useTripPhotos(trip, onUpdateTrip);
+    return (
+        <>
+            <MemoryCard trip={trip} onOpen={onOpen}
+                photoCount={photos.length} adding={adding}
+                onPlay={() => setViewerOpen(true)} onPickFiles={f => { void addFiles(f); }} />
+            <PaperNote trip={trip} onSaveNote={(text) => onUpdateTrip({ ...trip, memoryNote: text || undefined })} />
+            {viewerOpen && (
+                <PhotoViewer
+                    photos={photos}
+                    start={0}
+                    adding={adding}
+                    onClose={() => setViewerOpen(false)}
+                    onDelete={deletePhoto}
+                    onAddFiles={f => { void addFiles(f); }}
+                />
+            )}
+        </>
+    );
+};
+
 /** 一頁回憶內頁：年份抬頭＋一張卡＋頁碼。 */
 export const MemoryPage: React.FC<{
     year: number;
@@ -143,10 +236,7 @@ export const MemoryPage: React.FC<{
         </div>
         <div className="flex-1 min-h-0 px-3 overflow-hidden">
             {trips.map(t => (
-                <React.Fragment key={t.id}>
-                    <MemoryCard trip={t} onOpen={() => onOpenTrip(t)} />
-                    <PaperNote trip={t} onSaveNote={(text) => onUpdateTrip({ ...t, memoryNote: text || undefined })} />
-                </React.Fragment>
+                <TripMemoryBlock key={t.id} trip={t} onOpen={() => onOpenTrip(t)} onUpdateTrip={onUpdateTrip} />
             ))}
         </div>
         <span className="font-mono text-center" style={{ fontSize: 10, letterSpacing: '0.3em', color: '#B4B2A9', padding: '8px 0 10px' }}>{pageNo}</span>

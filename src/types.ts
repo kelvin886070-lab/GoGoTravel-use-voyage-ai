@@ -225,6 +225,8 @@ export interface Trip {
 
   stagedWishes?: WishItem[];
   memoryNote?: string;           // 🛂 批⑤b 旅程手記：回憶頁上寫給自己的一段話（隨 trip_data 持久化；未來餵旅風 v2/生成個人化）
+  memoryPhotoPaths?: string[];   // 🛂 批⑤c 回憶照片：Storage 路徑（trip-media 私有桶；DB 真正保存的來源）
+  memoryPhotos?: string[];       // 顯示用：載入時換成 signed URL（不持久化，serializeTripForDb 會清空）
 }
 
 // 🧱 3.2 行前待辦清單項目（原本重複定義於 ItineraryView / TripRemindersModal，統一收斂於此）
