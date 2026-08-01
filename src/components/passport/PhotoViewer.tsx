@@ -102,8 +102,8 @@ export const PhotoViewer: React.FC<{
 
     return (
         <div data-no-flip className="fixed inset-0 z-[130] flex flex-col" style={{ background: 'rgba(10,10,9,0.97)' }} onClick={e => e.stopPropagation()}>
-            {/* 頂列 */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-1">
+            {/* 頂列（📱 safe-area：fixed 全螢幕黑幕，頂 inset 自己扛，避免關閉鈕躲進動態島） */}
+            <div className="flex items-center justify-between px-4 pb-1" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}>
                 <button onClick={onClose} aria-label="關閉" className="p-2 -m-2"><X className="w-5 h-5 text-white/85" /></button>
                 {/* KT-格號：膠卷邊緣印字 */}
                 <span className="font-mono text-[11px] tracking-[0.22em]" style={{ color: 'rgba(231,221,196,0.8)' }}>
@@ -141,8 +141,8 @@ export const PhotoViewer: React.FC<{
                 <Sprockets />
             </div>
 
-            {/* 頁點：可點跳（與護照工具列同文法） */}
-            <div className="pb-6 pt-3 flex justify-center">
+            {/* 頁點：可點跳（與護照工具列同文法）；底 inset 讓頁點不貼 home-indicator */}
+            <div className="pt-3 flex justify-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
                 {photos.map((_, i) => (
                     <button key={i} onClick={() => setCurrent(i)} aria-label={`第 ${i + 1} 張`}
                         className="flex items-center justify-center" style={{ width: 22, height: 22 }}>

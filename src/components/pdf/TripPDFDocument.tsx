@@ -42,7 +42,7 @@ export const TripPDFDocument: React.FC<TripPDFDocumentProps> = ({ trip }) => {
     // 🛡️ 9.1 優化：精確設定 X 與 Y 軸百分比，確保符合 React-PDF 解析規格
     const coverPositionY = trip.coverImagePositionY ?? 50;
     
-    const currentCurrency = (trip as any).currency || 'TWD';
+    const currentCurrency = trip.currency || 'TWD';
     const totalCostString = getTripTotalCost(trip, currentCurrency);
     const tripDNA = getTripDNA(trip);
 

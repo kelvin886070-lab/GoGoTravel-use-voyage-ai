@@ -4,8 +4,8 @@
 import type { Activity, TripDay, Trip } from '../types';
 
 export const newActivityId = (): string =>
-  (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
-    ? (crypto as any).randomUUID()
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
     : `act-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 export const ensureActivityId = (a: Activity): Activity => (a.id ? a : { ...a, id: newActivityId() });

@@ -22,7 +22,7 @@ const WeatherWidget: React.FC = () => {
                 const { data, timestamp } = JSON.parse(cached);
                 if (Date.now() - timestamp < 30 * 60 * 1000) { setData(data); setLoading(false); return; } 
             } 
-        } catch(e) {} 
+        } catch { /* 快取解析失敗＝略過 */ }
         
         setLoading(true);
         try { 
@@ -31,7 +31,7 @@ const WeatherWidget: React.FC = () => {
                 setData(res); 
                 localStorage.setItem(cacheKey, JSON.stringify({ data: res, timestamp: Date.now() }));
             } 
-        } catch (e) { } finally { setLoading(false); } 
+        } catch { /* 抓取失敗＝維持舊值 */ } finally { setLoading(false); } 
     };
     
     useEffect(() => { fetchWeather(); }, [idx, locations]);
@@ -65,6 +65,7 @@ const TimeWidget: React.FC = () => {
     const [newLoc, setNewLoc] = useState('');
     
     useEffect(() => { localStorage.setItem('Kelvin Trip_time_locs', JSON.stringify(locations)); }, [locations]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切換地點的重置＝事件語意
     useEffect(() => { setTimezone(null); setTimeStr('--:--'); setDateStr('載入中...'); const fetchTz = async () => { const currentLocation = locations[idx]; const cacheKey = `Kelvin Trip_timezone_cache_${currentLocation}`; const cachedTz = localStorage.getItem(cacheKey); if (cachedTz) { setTimezone(cachedTz); return; } const tz = await getTimezone(currentLocation); if (tz) { setTimezone(tz); localStorage.setItem(cacheKey, tz); } else { setDateStr('時區錯誤'); } }; fetchTz(); }, [idx, locations]);
     useEffect(() => { if (!timezone) return; const update = () => { try { const now = new Date(); const timeOpts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false }; const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', weekday: 'short', timeZone: timezone }; setTimeStr(new Intl.DateTimeFormat('en-US', timeOpts).format(now)); setDateStr(new Intl.DateTimeFormat('zh-TW', dateOpts).format(now)); } catch (e) { setTimeStr('--:--'); } }; update(); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, [timezone]);
     

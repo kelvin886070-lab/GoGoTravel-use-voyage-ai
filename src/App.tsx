@@ -28,7 +28,7 @@ import { PasteImportModal } from './views/PasteImportModal';
 import { WishItemEditModal } from './views/ItineraryView/modals/WishItemEditModal';
 import { fetchAllBookings, upsertBooking, deleteBooking } from './services/booking/bookingStore';
 import { fetchTravelers, upsertTraveler } from './services/booking/travelerStore';
-import type { StoredBooking, FlightBooking, Traveler, PaxType } from './types/booking';
+import type { StoredBooking, Traveler, PaxType } from './types/booking';
 
 const DEFAULT_FOLDERS_CONFIG = [
     { name: '機票憑證', isPinned: true },
@@ -238,7 +238,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
       fetchUserData();
-      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
           if (event === 'SIGNED_IN') {
               fetchUserData(); 
           } else if (event === 'SIGNED_OUT') {
@@ -274,6 +274,9 @@ const App: React.FC = () => {
           async () => (await import('./dev/geoAudit')).runGeoAudit(wishItems);
       (window as unknown as { __geoBench?: () => Promise<unknown> }).__geoBench =
           async () => (await import('./dev/geoBenchmark')).runGeoBenchmark(wishItems);
+      // 🧹 Storage 孤兒檔清理（dry-run 預設；true 才刪；詳見 dev/storageOrphans.ts）
+      (window as unknown as { __storageOrphans?: (remove?: boolean) => Promise<unknown> }).__storageOrphans =
+          async (remove?: boolean) => (await import('./dev/storageOrphans')).runStorageOrphans(!!remove);
   }, [wishItems]);
 
   const fetchTrips = async (userId?: string) => {
@@ -499,7 +502,7 @@ const App: React.FC = () => {
       if (error) console.error("刪除失敗", error);
   };
 
-  const handleLogin = (newUser: User) => { 
+  const handleLogin = (_newUser: User) => { 
       fetchUserData();
   };
   
@@ -736,11 +739,7 @@ const App: React.FC = () => {
       if (error) { console.error('清單刪除失敗', error); fetchWishLists(); fetchWishItems(); }
   };
 
-  const assignWishToList = async (wishId: string, listId: string | null) => {
-      setWishItems(prev => prev.map(w => w.id === wishId ? { ...w, listId: listId ?? undefined } : w));
-      const { error } = await supabase.from('wish_items').update({ list_id: listId }).eq('id', wishId);
-      if (error) { console.error('歸類失敗', error); toast('歸類失敗，請再試一次。'); fetchWishItems(); }
-  };
+// （lint 欠債清理：assignWishToList 未被任何 UI 使用，已移除——清單指派走 WishItemEditModal 的 saveWishItem 路徑）
 
   const setWishListCover = async (id: string, path: string | null) => {
       let coverImage: string | undefined;
@@ -1042,7 +1041,9 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="w-full font-sans text-[#1D1D1B] bg-[#E4E2DD] overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+    // 📱 safe-area（上架前🔴）：根容器是 fixed inset-0——body 的 safe-area padding 對 fixed 元素無效
+    //（Kelvin 實測內容頂進動態島的真因），inset 必須加在這一層；底部由 tab bar 的 calc(70px+inset) 承擔
+    <div className="w-full font-sans text-[#1D1D1B] bg-[#E4E2DD] overflow-hidden fixed inset-0" style={{ backgroundImage: bgImage ? `url(${bgImage})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', paddingTop: 'env(safe-area-inset-top)' }}>
       {bgImage && <div className="fixed inset-0 bg-white/40 backdrop-blur-sm z-0 pointer-events-none" />}
       
       <main className="max-w-md mx-auto h-full relative shadow-2xl overflow-hidden z-10 bg-[#E4E2DD]/80 backdrop-blur-md flex flex-col">
@@ -1148,7 +1149,8 @@ const App: React.FC = () => {
             )}
         </div>
 
-        <div className="flex-shrink-0 z-50 relative w-full bg-white/90 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+        {/* 底欄：bg 提實（/90→/95）——半透明讓 home-indicator 的 inset 區看起來像「漂浮的空帶」（Kelvin 反饋） */}
+        <div className="flex-shrink-0 z-50 relative w-full bg-white/95 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
             <div className="flex justify-between items-center pb-safe pt-4 px-5 h-[calc(70px+env(safe-area-inset-bottom))]">
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="首頁" />
                 <TabButton active={currentView === AppView.WISHBOX} onClick={() => setCurrentView(AppView.WISHBOX)} icon={<Sparkles />} label="心願盒" />
@@ -1163,7 +1165,7 @@ const App: React.FC = () => {
 
 const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-1.5 transition-all duration-300 ${active ? 'text-[#45846D] scale-105' : 'text-gray-400 hover:text-gray-600'}`}>
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-6 h-6', strokeWidth: active ? 2.5 : 2 })}
+    {React.cloneElement(icon as React.ReactElement<{ className?: string; strokeWidth?: number }>, { className: 'w-6 h-6', strokeWidth: active ? 2.5 : 2 })}
     <span className="text-[10px] font-bold">{label}</span>
   </button>
 );

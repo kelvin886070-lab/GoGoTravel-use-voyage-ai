@@ -3,7 +3,7 @@
 //   - imperative API：const ok = await confirmDialog({ title, message, tone })
 //   - tone='danger'（破壞性/無法復原，磚紅）｜'default'（可復原，墨黑）
 //   - 置中排版、襯線標題（呼應品牌）、幽靈取消鈕
-import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
 
 type Tone = 'danger' | 'default';
@@ -83,19 +83,20 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
                             <Icon className="w-[22px] h-[22px]" style={{ color: tone.icon }} />
                         </div>
                         <h3 className="font-serif text-xl font-bold text-[#1D1D1B] mt-4 tracking-wide">{state.title}</h3>
+                        {/* 全 App 字體規則（Kelvin 定案）：中文＝serif——內文與按鈕補齊（標題原本就是） */}
                         {state.message && (
-                            <p className="text-sm text-gray-500 mt-2 leading-relaxed">{state.message}</p>
+                            <p className="font-serif text-sm text-gray-500 mt-2 leading-relaxed">{state.message}</p>
                         )}
                         <div className="flex gap-2.5 mt-6">
                             <button
                                 onClick={() => close(false)}
-                                className="flex-1 py-3 rounded-[15px] bg-white border border-[#E7E5E1] text-[#57534E] text-[15px] font-bold hover:bg-gray-50 active:scale-[0.98] transition-all"
+                                className="font-serif flex-1 py-3 rounded-[15px] bg-white border border-[#E7E5E1] text-[#57534E] text-[15px] font-bold hover:bg-gray-50 active:scale-[0.98] transition-all"
                             >
                                 {state.cancelText || '取消'}
                             </button>
                             <button
                                 onClick={() => close(true)}
-                                className="flex-1 py-3 rounded-[15px] text-white text-[15px] font-bold active:scale-[0.98] transition-all"
+                                className="font-serif flex-1 py-3 rounded-[15px] text-white text-[15px] font-bold active:scale-[0.98] transition-all"
                                 style={{ backgroundColor: tone.button }}
                             >
                                 {state.confirmText || '確定'}

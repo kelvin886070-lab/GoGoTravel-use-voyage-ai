@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { 
-    X, Check, Plus, Trash2, 
-    Circle, CheckCircle2, Clock, CalendarDays, 
-    Info, Calendar, ChevronDown,
+    X, Plus, Trash2,
+    Circle, CheckCircle2, Clock,
+    Info, Calendar,
     Briefcase, Shirt, Bath, Smartphone, Package, ListChecks
 } from 'lucide-react';
 
@@ -21,7 +21,7 @@ interface TripRemindersModalProps {
     onClose: () => void;
 }
 
-const CATEGORIES: { id: CategoryType, label: string, icon: any, color: string }[] = [
+const CATEGORIES: { id: CategoryType, label: string, icon: React.ElementType, color: string }[] = [
     { id: 'tasks', label: '行前任務', icon: ListChecks, color: 'text-orange-600 bg-orange-50' },
     { id: 'documents', label: '必備證件', icon: Briefcase, color: 'text-blue-600 bg-blue-50' },
     { id: 'clothes', label: '衣物穿搭', icon: Shirt, color: 'text-pink-600 bg-pink-50' },
@@ -71,6 +71,7 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
     const handleAddTodo = (categoryId: CategoryType) => {
         if (!newItemText.trim()) return;
         const newTodo: TripTodoItem = {
+            // eslint-disable-next-line react-hooks/purity -- 事件 handler 內取當下時間當 id，非 render 期
             id: Date.now().toString(),
             text: newItemText.trim(),
             isCompleted: false,
@@ -166,7 +167,7 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                                                     )}
                                                 </button>
 
-                                                <div className="flex-1 min-w-0 flex flex-col items-start" onClick={() => setEditingTodo(todo as any)}>
+                                                <div className="flex-1 min-w-0 flex flex-col items-start" onClick={() => setEditingTodo(todo)}>
                                                     <span className={`text-sm font-bold truncate w-full text-left transition-colors ${todo.isCompleted ? 'text-gray-400 line-through' : 'text-[#1D1D1B]'}`}>
                                                         {todo.text}
                                                     </span>
@@ -186,7 +187,7 @@ export const TripRemindersModal: React.FC<TripRemindersModalProps> = ({
                                                     )}
                                                 </div>
 
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingTodo(todo as any); }} className="w-8 h-8 flex items-center justify-center text-[#45846D] opacity-60 hover:opacity-100 hover:bg-[#45846D]/10 rounded-full transition-all active:scale-95 shrink-0">
+                                                <button onClick={(e) => { e.stopPropagation(); setEditingTodo(todo); }} className="w-8 h-8 flex items-center justify-center text-[#45846D] opacity-60 hover:opacity-100 hover:bg-[#45846D]/10 rounded-full transition-all active:scale-95 shrink-0">
                                                     <Info className="w-5 h-5" />
                                                 </button>
                                             </div>

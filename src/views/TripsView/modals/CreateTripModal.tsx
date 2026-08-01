@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-    X, ChevronLeft, Image as ImageIcon, Plane, Train, Clock, Bus, Car, 
+    X, ChevronLeft, Train, Bus, Car,
     User as UserIcon, Heart, Baby, Users, Armchair, Briefcase, GraduationCap, Dog,
     Coffee, Footprints, Zap, Book, MapPin, Scale, Landmark, Mountain, 
     Coins, ChevronDown, Sparkles, PlaneTakeoff, PlaneLanding, ArrowLeftRight,
-    Loader2, Calendar, ArrowRight, History, Plus, Globe, Map, Check,
+    Plus, Globe, Map,
     Sunrise, Sun, Moon, Home, Download
 } from 'lucide-react';
-import { IOSButton, IOSInput } from '../../../components/UI';
-import { generateItinerary, lookupFlightInfo } from '../../../services/gemini';
+import { IOSButton } from '../../../components/UI';
+import { generateItinerary } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
 import { ensureTripGeocoded } from '../../../services/geo';
 import type { Trip, TripDay, TripConstraints } from '../../../types';
@@ -231,7 +231,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
     const [interestDetails, setInterestDetails] = useState<Record<string, string>>({});
     const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
     const [specificRequests, setSpecificRequests] = useState('');
-    const [coverImage, setCoverImage] = useState('');
+    const [coverImage] = useState('');   // lint 清理：setter 從未呼叫（封面 B 已改背景補圖）
 
     const toggleInterest = (tag: string) => { 
         if (selectedInterests.includes(tag)) { 
@@ -319,7 +319,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         onAddTrip(newTrip); onClose();
     };
 
-    const TimeButton = ({ type, label, icon, state, setState }: { type: 'morning'|'afternoon'|'evening', label: string, icon: React.ReactNode, state: string, setState: (v: any) => void }) => {
+    const TimeButton = ({ type, label, icon, state, setState }: { type: 'morning'|'afternoon'|'evening', label: string, icon: React.ReactNode, state: string, setState: (v: 'morning' | 'afternoon' | 'evening') => void }) => {
         const isSelected = state === type;
         return (
             <button
@@ -329,7 +329,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                 }`}
             >
                 <div className={`mb-1 ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-                    {React.cloneElement(icon as React.ReactElement<any>, { size: 18, strokeWidth: 2.5 })}
+                    {React.cloneElement(icon as React.ReactElement<{ size?: number; strokeWidth?: number; className?: string }>, { size: 18, strokeWidth: 2.5 })}
                 </div>
                 <span className="text-xs font-bold">{label}</span>
             </button>
@@ -340,13 +340,14 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         const isSelected = localTransportMode === id;
         return (
             <button
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- id 為卡片字面量聯集，五步表單升級批一併正型
                 onClick={() => setLocalTransportMode(id as any)}
                 className={`flex items-center gap-4 p-4 rounded-2xl border text-left transition-all duration-300 w-full ${
                     isSelected ? `${theme.lightBg} ${theme.border} shadow-sm ring-1 ring-inset ${theme.ring}` : 'bg-white border-gray-100 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
                 }`}
             >
                 <div className={`p-3 rounded-full transition-colors ${isSelected ? `${theme.bg} text-white shadow-md` : 'bg-gray-100 text-gray-400'}`}>
-                    {React.cloneElement(icon as React.ReactElement<any>, { size: 20 })}
+                    {React.cloneElement(icon as React.ReactElement<{ size?: number; strokeWidth?: number; className?: string }>, { size: 20 })}
                 </div>
                 <div className="flex-1">
                     <h4 className={`text-sm font-bold transition-colors ${isSelected ? theme.text : 'text-[#1D1D1B]'}`}>{label}</h4>
@@ -356,7 +357,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
         );
     };
 
-    const ThemedOptionCard = ({ id, selected, onClick, icon, label, sub }: { id: string, selected: boolean, onClick: () => void, icon: React.ReactNode, label: string, sub?: string }) => (
+    const ThemedOptionCard = ({ id: _id, selected, onClick, icon, label, sub }: { id: string, selected: boolean, onClick: () => void, icon: React.ReactNode, label: string, sub?: string }) => (
         <button
             onClick={onClick}
             className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-300 w-full ${
@@ -366,7 +367,7 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
             }`}
         >
             <div className={`mb-1 ${selected ? 'text-white' : 'text-gray-400'}`}>
-                {React.cloneElement(icon as React.ReactElement<any>, { size: 20 })}
+                {React.cloneElement(icon as React.ReactElement<{ size?: number; strokeWidth?: number; className?: string }>, { size: 20 })}
             </div>
             <span className="text-xs font-bold">{label}</span>
             {sub && <span className="text-[10px] opacity-80">{sub}</span>}

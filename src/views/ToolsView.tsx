@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars -- ToolsView 預定刪除（規劃臉新功能上線後；docs 已記），不投資清理 */
 import React, { useState, useRef, useEffect } from 'react';
 import { Languages, DollarSign, Bus, Send, RefreshCw, AlertCircle, Calculator, Phone, Thermometer, Image as ImageIcon, Upload, Mic, ExternalLink, Zap, ArrowRight, ArrowLeftRight, Ruler, Gauge, Weight, Plug, Siren, Plus, Ambulance, Backpack, CheckCircle, Circle, Trash2, Shirt, Smartphone, Briefcase, Bath, Package, MapPin } from 'lucide-react';
 import { IOSHeader, IOSButton, IOSInput } from '../components/UI';

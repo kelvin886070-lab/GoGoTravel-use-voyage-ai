@@ -43,7 +43,7 @@ export const VaultCard: React.FC<{
 
     const isImageVisual = doc.fileUrl && (
         doc.type === 'passport' || 
-        (doc as any).type === 'image' || 
+        (doc.type as string) === 'image' || 
         /\.(jpeg|jpg|gif|png|webp|bmp)$/i.test(doc.fileUrl)
     );
 
@@ -178,7 +178,7 @@ export const VaultCard: React.FC<{
                             </button>
                         ) : (
                             <button 
-                                onClick={(e) => { e.stopPropagation(); onEdit && onEdit(); }}
+                                onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
                                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-gray-200 text-gray-400 hover:border-[#45846D] hover:text-[#45846D] hover:bg-[#45846D]/5 transition-all active:scale-95 group/add"
                             >
                                 <Plus className="w-3.5 h-3.5" />

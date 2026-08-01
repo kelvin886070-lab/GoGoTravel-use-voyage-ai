@@ -75,7 +75,7 @@ export function buildHotelBookings(draft: ConfirmDraft, ctx: BuildContext): Hote
     if (hotels.length === 0) { errors.push('缺少飯店資訊'); return { bookings: [], warnings, errors }; }
     if (hotels.some(h => !h.checkInLocal || !h.checkOutLocal)) warnings.push('有訂房的入住/退房日期不完整');
 
-    const newId = (i: number) => ((typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : `${ctx.id}-${i}`);
+    const newId = (i: number) => ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${ctx.id}-${i}`);
     const bookings: HotelBooking[] = hotels.map((h, i) => ({
         id: newId(i),
         userId: ctx.userId,

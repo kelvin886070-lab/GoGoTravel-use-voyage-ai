@@ -82,7 +82,7 @@ export const ActivityDetailModal: React.FC<{
         setEdited(prev => ({ ...prev, imagePositionY }));
     }, [imagePositionY]);
 
-    const handleChange = (field: keyof Activity, value: any) => {
+    const handleChange = (field: keyof Activity, value: Activity[keyof Activity]) => {
         setEdited(prev => ({ ...prev, [field]: value }));
     };
 
@@ -111,17 +111,6 @@ export const ActivityDetailModal: React.FC<{
         setIsDraggingImage(false);
     };
 
-    const handleTransportDetailChange = (field: string, value: string) => {
-        setEdited(prev => ({
-            ...prev,
-            transportDetail: {
-                ...prev.transportDetail,
-                mode: prev.transportDetail?.mode || 'bus',
-                duration: prev.transportDetail?.duration || '',
-                [field]: value
-            } as any
-        }));
-    };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -145,7 +134,7 @@ export const ActivityDetailModal: React.FC<{
         setTimeout(() => newItemInputRef.current?.focus(), 100);
     };
 
-    const updateItem = (id: string, field: keyof ExpenseItem, value: any) => {
+    const updateItem = (id: string, field: keyof ExpenseItem, value: ExpenseItem[keyof ExpenseItem]) => {
         setEdited(prev => {
             const newItems = (prev.items || []).map(item => item.id === id ? { ...item, [field]: value } : item);
             const newTotal = newItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);

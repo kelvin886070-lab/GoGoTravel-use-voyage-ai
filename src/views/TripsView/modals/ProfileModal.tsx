@@ -26,8 +26,8 @@ export const ProfileModal: React.FC<{ user: User, tripCount: number, onClose: ()
             const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
             if (updateError) throw updateError; 
             toast('頭貼更新成功！', 'success'); window.location.reload(); 
-        } catch (error: any) { 
-            console.error(error); toast('上傳失敗：' + error.message); 
+        } catch (error) { 
+            console.error(error); toast('上傳失敗：' + (error as Error).message); 
         } finally { setUploading(false); } 
     };
 

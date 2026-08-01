@@ -3,7 +3,7 @@ import React from 'react';
 interface OptionCardProps { 
     selected: boolean; 
     onClick: () => void; 
-    icon: any; 
+    icon: React.ReactElement<{ size?: number; strokeWidth?: number; className?: string }>; 
     label: string; 
     sub?: string; 
 }

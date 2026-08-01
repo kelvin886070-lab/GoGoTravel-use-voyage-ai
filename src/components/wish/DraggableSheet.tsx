@@ -36,17 +36,20 @@ export const DraggableSheet: React.FC<Props> = ({ header, children, snaps = [0.3
     }, []);
 
     // 外部訊號 → 收到最小（露出地圖）
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部收合訊號＝事件語意（一次性），非串聯渲染
     useEffect(() => { if (collapseSignal > 0) setIdx(0); }, [collapseSignal]);
 
     const snapH = (i: number) => wrapH * snaps[i];
     const curH = (forceFull ? null : dragH) ?? snapH(shownIdx);
 
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 拖曳手勢 deps 刻意超集，compiler 保守拒絕
     const onDown = useCallback((e: React.PointerEvent) => {
         if (forceFull) return;
         const fromContent = !!contentRef.current?.contains(e.target as Node);
         drag.current = { startY: e.clientY, baseH: curH || snapH(idx), fromContent, active: false };
     }, [curH, idx, wrapH, forceFull]);
 
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 同上
     const onMove = useCallback((e: React.PointerEvent) => {
         const d = drag.current;
         if (!d) return;
@@ -63,6 +66,7 @@ export const DraggableSheet: React.FC<Props> = ({ header, children, snaps = [0.3
         setDragH(next);
     }, [atFull, lastIdx, wrapH, snaps]);
 
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- 同上
     const endDrag = useCallback(() => {
         const d = drag.current;
         drag.current = null;

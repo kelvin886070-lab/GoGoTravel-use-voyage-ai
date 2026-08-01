@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs -- @hello-pangea/dnd provided.innerRef/draggableProps 官方 render-prop 用法（React Compiler 誤報） */
 import React from 'react';
 import { Train, Footprints, Car, TramFront, Plane, Bus, GripVertical } from 'lucide-react';
 import type { Activity } from '../../../types';

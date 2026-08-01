@@ -168,7 +168,7 @@ export function reconcileDay(day: TripDay, opts: ReconcileOptions = {}): DayReco
     for (const f of floats) {
       const dur = activityDuration(f);
       const orig = timeToMin(f.time);
-      let start = Math.max(cursor, orig ?? cursor);
+      const start = Math.max(cursor, orig ?? cursor);
       if (start + dur > seg.end && !isSystemCard(f)) {
         // 因原訂時間造成的殘餘溢位（含間隙）→ 一樣只搬不刪。連接卡不 park（照樣鋪、讓它流動）。
         parked.push(f);

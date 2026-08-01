@@ -44,53 +44,8 @@ const parseDurationString = (durationStr?: string): number => {
     return total;
 };
 
-/**
- * 判斷是否為「定點活動」 (Stay Activity)
- * 這些活動之間如果沒有交通，就需要插入移動卡片
- */
-const isStayActivity = (type: string): boolean => {
-    const stayTypes = ['sightseeing', 'food', 'cafe', 'shopping', 'relax', 'bar', 'culture', 'activity', 'hotel', 'other'];
-    return stayTypes.includes(type);
-};
 
-/**
- * 檢查並填補缺失的移動卡片 (Gap Filling)
- * 如果 Act A 和 Act B 都是定點活動，中間自動插入 "移動 (預估 15 min)"
- */
-const ensureGapConnectors = (activities: Activity[]): Activity[] => {
-    if (activities.length < 2) return activities;
-    
-    const result: Activity[] = [];
-    
-    for (let i = 0; i < activities.length; i++) {
-        const current = activities[i];
-        result.push(current);
-
-        // 如果還有下一個活動
-        if (i < activities.length - 1) {
-            const next = activities[i + 1];
-            
-            // 邏輯：當前是定點 && 下一個也是定點 -> 插入移動
-            if (isStayActivity(current.type) && isStayActivity(next.type)) {
-                result.push({
-                    time: current.time, // 暫時時間，稍後會被重算
-                    title: '移動 (預估)',
-                    description: '系統自動填補，點擊可修改',
-                    type: 'transport',
-                    source: 'generated',  // 🛣️ C1：標記為系統自動連接卡（可被 stripAutoConnectors 冪等清除）
-                    location: '',
-                    cost: 0,
-                    transportDetail: {
-                        mode: 'walk',
-                        duration: '15 min',
-                        instruction: '前往下個地點'
-                    }
-                });
-            }
-        }
-    }
-    return result;
-};
+// （lint 欠債清理：ensureGapConnectors 死碼已移除——gap 填補由 scheduler/stripAutoConnectors 體系接手）
 
 // 🧱 F3：已退休 `ensureArrivalProcess`（自動插「入境審查」）。
 //   它每次 recalc 都在首張 flight 後硬插一張入境卡，與真訂位的抵達錨打架（購物排在入境前、重複抵達序列）。

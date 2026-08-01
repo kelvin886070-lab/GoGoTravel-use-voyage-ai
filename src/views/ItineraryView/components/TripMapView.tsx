@@ -225,6 +225,7 @@ const RouteLine: React.FC<{ points: { lat: number; lng: number }[] }> = ({ point
     // 取沿道路的路線（需 geometry 函式庫解碼；未就緒前先用直線）
     useEffect(() => {
         let cancelled = false;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- 清空路徑的同步 early-return（無串聯渲染）
         if (points.length < 2) { setPath(null); return; }
         if (!geometryLib) { setPath(points); return; }
         getRoutePolyline(points).then(encoded => {

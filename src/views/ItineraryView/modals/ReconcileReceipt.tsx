@@ -35,7 +35,7 @@ export const ReconcileReceipt: React.FC<Props> = ({ open, onClose, flightLabel, 
   const Row = ({ time, title, note, dim }: { time: string; title: string; note: React.ReactNode; dim?: boolean }) => (
     <div style={{ display: 'flex', gap: 10, marginBottom: 11, alignItems: 'baseline' }}>
       <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: dim ? '#B4B0A4' : INK, width: 42, flexShrink: 0 }}>{time}</span>
-      <div style={{ flex: 1, fontSize: 13, color: INK, lineHeight: 1.5 }}>{title}　<span style={{ fontSize: 11 }}>{note}</span></div>
+      <div style={{ flex: 1, fontSize: 13, color: INK, lineHeight: 1.5 }}>{title}{'\u3000'}<span style={{ fontSize: 11 }}>{note}</span></div>
     </div>
   );
 

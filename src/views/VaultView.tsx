@@ -97,10 +97,10 @@ export const VaultView: React.FC<VaultViewProps> = ({
         setLocalFolders([...otherFolders, ...items]);
     };
 
-    const updateFolderStatus = async (id: string, updates: any) => {
+    const updateFolderStatus = async (id: string, updates: Partial<Pick<VaultFolder, 'isDeleted' | 'isPinned'>>) => {
         // 樂觀更新 (Optimistic Update)
         setLocalFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
-        const dbUpdates: any = {};
+        const dbUpdates: Record<string, boolean> = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
         if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
         
@@ -172,8 +172,8 @@ export const VaultView: React.FC<VaultViewProps> = ({
             
             onRefresh(); // 通知更新
             toast("上傳成功！", 'success');
-        } catch (error: any) { 
-            toast("上傳失敗：" + error.message); 
+        } catch (error) { 
+            toast("上傳失敗：" + (error as Error).message); 
         } finally { 
             setIsUploading(false);
         }
@@ -202,9 +202,9 @@ export const VaultView: React.FC<VaultViewProps> = ({
         }
     };
 
-    const updateFileStatus = async (id: string, updates: any) => {
+    const updateFileStatus = async (id: string, updates: Partial<Pick<VaultFile, 'isDeleted' | 'isPinned'>>) => {
         setLocalFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
-        const dbUpdates: any = {};
+        const dbUpdates: Record<string, boolean> = {};
         if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
         if (updates.isPinned !== undefined) dbUpdates.is_pinned = updates.isPinned;
         

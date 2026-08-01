@@ -1,13 +1,12 @@
 // src/views/ItineraryView/ItineraryView.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-    ArrowLeft, List, Map, Plus, Settings, 
-    Train, Plane, Ticket, Wallet, 
-    MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles, 
-    Briefcase, PlusCircle, Share, ListChecks, X, ShoppingBag,
-    Check, Trash2, Undo, Clock, ChevronDown, CalendarPlus, Navigation, Pencil, Inbox, AlertTriangle, Search
+    ArrowLeft, List, Map, Plus, Settings,
+    MapPin, Bus, StickyNote, Banknote, RefreshCw, Sparkles,
+    Briefcase, PlusCircle, Share, X, ShoppingBag,
+    Check, Trash2, Clock, ChevronDown, CalendarPlus, Navigation, Inbox, AlertTriangle, Search
 } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult, type DroppableProvided } from '@hello-pangea/dnd';
 import type { Trip, TripDay, Activity, Document, VaultFolder, VaultFile, User, WishItem, WishList, TripTodoItem } from '../../types';
 import { suggestNextSpot } from '../../services/gemini';
 import { recalculateTimeline } from '../../services/timeline';
@@ -21,7 +20,6 @@ import { useNearby, haversineKm, fmtDist } from '../../hooks/useNearby';
 
 import { uploadTripImageWithThumb, signPaths, deleteTripImage } from '../../services/storage';
 
-import { GlassCapsule } from '../../components/common/GlassCapsule';
 import { GhostInsertButton } from '../../components/common/GhostInsertButton';
 import { isSystemType } from './shared';
 
@@ -107,12 +105,14 @@ const CurrentTimeIndicator: React.FC = () => {
     );
 };
 
-const EmptyDayPlaceholder: React.FC<{ provided: any }> = ({ provided }) => (
+const EmptyDayPlaceholder: React.FC<{ provided: DroppableProvided }> = ({ provided }) => (
+    // eslint-disable-next-line react-hooks/refs -- @hello-pangea/dnd 官方 API：provided.innerRef 於 render 綁定（compiler 誤報）
     <div ref={provided.innerRef} {...provided.droppableProps} className="min-h-[160px] rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center p-8 text-gray-400 bg-gray-50/50 transition-all hover:bg-white hover:border-[#3F6B52]/30 group">
         <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
             <Map className="w-8 h-8 text-gray-300 group-hover:text-[#3F6B52] transition-colors" />
         </div>
         <p className="text-sm font-bold text-gray-500 mb-1">這天還是空的</p>
+        {/* eslint-disable-next-line react-hooks/refs -- 同上：dnd placeholder */}
         <div className="hidden">{provided.placeholder}</div>
     </div>
 );
@@ -169,7 +169,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     wishLists,
     onCreateWishList,
     tripDestById = {},
-    onRefreshVault,
     onLocalFileUpdate
 }) => {
     const currentUser: User = user || {
@@ -246,7 +245,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     // 🎟️ 脊椎啟動：出發前 30 天內（或已在旅途/回憶）才點亮「現在」；更早整條變暗（傳 current=-1）。
     const spineActivated = currentStageIdx >= 1 || daysToDep <= ACTIVATE_DAYS;
     // 🎟️ 機票就緒＝這趟有連到 flight booking（取代結構偵測的假陽性與手動蓋章）
-    const hasFlightBooking = useMemo(() => bookings.some(b => b.kind === 'flight'), [bookings]);
     const flightBookings = useMemo(() => bookings.filter(b => b.kind === 'flight') as FlightBooking[], [bookings]);
     const hotelBookings = useMemo(() => bookings.filter(b => b.kind === 'hotel') as HotelBooking[], [bookings]);
     // 🎟️ 就緒快照：bookings 變動時把「機票/住宿完整性把關」結果寫進 trip.readiness，
@@ -404,7 +402,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     }, [wishItems, wishTrayTab, pickerScope, pickerListFilter, trip.destination, nearbyKm]);
 
     const togglePick = (id: string) => setPickerSelected(prev => {
-        const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+        const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n;
     });
 
     const openLibraryPicker = () => { setInjectTargetDayIdx(null); setPickerSelected(new Set()); setPickerScope('trip'); setPickerListFilter(null); setLibraryPickerOpen(true); };
@@ -508,15 +506,14 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const currentTodos: TripTodoItem[] = trip.todos || DEFAULT_TODOS;
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
-    const [showVault, setShowVault] = useState(false);
+    const [showVault] = useState(false);   // lint 清理：setter 從未呼叫（遺留 UI 路徑，保管箱入口已改版）
     const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
     const [menuTargetIndex, setMenuTargetIndex] = useState<{dayIdx: number, actIdx: number} | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     const [selectedActivity, setSelectedActivity] = useState<{ dayIdx: number, actIdx: number, activity: Activity, initialEdit: boolean } | null>(null);
     const [shareOpen, setShareOpen] = useState(false);
-    const [shareUrl, setShareUrl] = useState('');
+    const [shareUrl] = useState('');       // lint 清理：setter 從未呼叫（分享連結功能屬未來批）
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const notifiedRef = useRef<Set<string>>(new Set());
     // 🗺️ G4：打開行程時補跑一次 geocode——回填舊行程、手動新增的點（生成端已在建立時 geocode）。
     //   以 trip.id 為觸發（每趟開一次），ref 防重入，只在真有變動時 onUpdateTrip，避免蓋掉編輯。
     const geocodingRef = useRef(false);
@@ -532,7 +529,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trip.id]);
     const currencyCode = trip.currency || 'TWD';
-    const incompleteTodosCount = currentTodos.filter(t => !t.isCompleted).length;
 
     // 🧭 空間類·第二刀：地點把關。geocode 目的地城市→質心，比對每個活動是否排錯城/太遠。
     const destinationCities = useMemo(() => {
@@ -624,7 +620,6 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     }, [trip.linkedDocumentIds, files, folders]);
 
     const flightDisplayOrigin = trip.origin || 'ORIGIN';
-    const flightDisplayDest = trip.destination || 'DEST';
     // 🎟️ 封面 B/V1：航線只放「短城市」當 TO（避免把長行程名塞進去）；日期範圍 MM.DD–MM.DD。
     const coverRouteTo = (destinationCities[0] && destinationCities[0].length <= 4) ? destinationCities[0] : '';
     const coverDateRange = (() => {
@@ -716,7 +711,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
 
     const handleSaveVibeTag = (dayNumber: number, newTag: string) => {
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
-        const targetDay = newTrip.days.find((d: any) => d.day === dayNumber);
+        const targetDay = newTrip.days.find(d => d.day === dayNumber);
         if (targetDay) {
             targetDay.vibeTag = newTag; 
             onUpdateTrip(newTrip);     
@@ -740,7 +735,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
         const newTrip = JSON.parse(JSON.stringify(trip)) as Trip;
         const dayIdx = activeDayForAdd - 1;
         newTrip.days[dayIdx].activities.push(newActivity);
-        newTrip.days[dayIdx].activities.sort((a: any, b: any) => a.time.localeCompare(b.time));
+        newTrip.days[dayIdx].activities.sort((a, b) => a.time.localeCompare(b.time));
         newTrip.days[dayIdx] = recalculateTimeline(newTrip.days[dayIdx]);
         onUpdateTrip(newTrip);
         setIsAddModalOpen(false);
@@ -993,7 +988,8 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
 
 
     return (
-        <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
+        // 📱 safe-area：行程頁是獨立全螢幕根（不經 App main），頂 inset 自己扛；滾動時內容滑入 inset 區＝原生慣例
+        <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             
             {/* 置頂 Banner 區（🎟️ 收窄至 h-60：行程更快出現；裁切由 coverImagePositionY 拖曳重新定位處理） */}
             <div className={`relative h-60 w-full ${headerBgClass}`}>
@@ -1390,7 +1386,7 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
             }} onDelete={onDelete}
                 onOpenWishTray={() => setShowWishTray(true)}
                 onOpenExpenses={() => setShowExpenses(true)}
-                onOpenReminders={() => { setIsRemindersOpen(true); Notification.permission === 'default' && Notification.requestPermission(); }}
+                onOpenReminders={() => { setIsRemindersOpen(true); if (Notification.permission === 'default') void Notification.requestPermission(); }}
             />}
             {isAddModalOpen && <AddActivityModal day={activeDayForAdd} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddActivity} />}
             {searchTargetDayIdx != null && (() => {

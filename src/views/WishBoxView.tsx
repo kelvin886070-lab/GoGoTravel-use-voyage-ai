@@ -6,7 +6,7 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import { MarkerClusterer, type Marker } from '@googlemaps/markerclusterer';
 import {
     MapPin, ShoppingBag, Plus, ArrowLeft, Globe, Sparkles, X,
-    Map as MapIcon, List, Navigation, Edit3, Check, Store,
+    List, Navigation, Edit3, Check, Store,
     Coffee, Utensils, Landmark, Wine, Search, ArrowDownUp, Star, MapPinPlus, Briefcase, Trash2, LayoutGrid, Receipt, Image as ImageIcon, Share2, Pin
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -300,6 +300,7 @@ const AlbumEditGrid: React.FC<{
 }> = ({ lists, countInList, photosOf, onReorder, onSetPinned }) => {
     const [order, setOrder] = useState<string[]>(() => lists.map(l => l.id));
     // 外部（釘選重排/新增刪除）變動 → 同步本地順序
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部重排/增刪的順序同步（受控鏡像）
     useEffect(() => { setOrder(lists.map(l => l.id)); }, [lists]);
     // ⚠️ 本檔第 5 行 import 了 @vis.gl 的 Map 元件，蓋掉全域 Map 建構子；故用 Record 查找表，不用 new Map。
     const byId = useMemo(() => {
@@ -391,7 +392,7 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
     const [newAlbumName, setNewAlbumName] = useState('');
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
     const [selectedCity, setSelectedCity] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+    const [, setViewMode] = useState<'map' | 'list'>('map');   // lint 清理：讀值端已改地圖常駐
     const [actionWish, setActionWish] = useState<WishItem | null>(null);
     const [selectedPin, setSelectedPin] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<'recent' | 'name' | 'rating' | 'reputation'>('recent');
@@ -418,7 +419,7 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
     const [shopNearbyOn, setShopNearbyOn] = useState(false);
     const enterSelect = (seedId?: string) => { setSelectMode(true); setSelectedIds(seedId ? new Set([seedId]) : new Set()); };
     const exitSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
-    const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const toggleSelect = (id: string) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
     // 破壞性、須確認：批次刪除選取的收藏
     const handleBatchDelete = async () => {
         if (selectedIds.size === 0) return;
@@ -1138,7 +1139,7 @@ export const WishBoxView: React.FC<WishBoxViewProps> = ({
                 const origin = below ? 'top center' : 'bottom center';
                 const soon = () => { toast('即將推出，敬請期待'); setMenu(null); };
                 // 灰階佔位項；有 icon 入口，功能留待未來（協作/冷啟動架構就緒後）
-                const Row = ({ icon: Ic, label, onClick, tone, soonTag }: { icon: any; label: string; onClick: () => void; tone?: 'danger'; soonTag?: boolean }) => (
+                const Row = ({ icon: Ic, label, onClick, tone, soonTag }: { icon: React.ElementType; label: string; onClick: () => void; tone?: 'danger'; soonTag?: boolean }) => (
                     <button onClick={onClick}
                         className="w-full flex items-center gap-3 px-4 h-[52px] text-left active:bg-white/10 transition-colors"
                         style={{ opacity: soonTag ? 0.42 : 1 }}>

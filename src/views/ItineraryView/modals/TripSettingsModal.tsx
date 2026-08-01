@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { 
     X, Camera, Calendar, MapPin, 
-    Bell, Trash2, Plus, Minus, 
+    Bell, Plus, Minus, 
     Check, Users, Crop, MoveVertical, Save,
     Sparkles, Wallet, ListChecks
 } from 'lucide-react';

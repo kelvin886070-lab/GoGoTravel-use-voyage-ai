@@ -1,7 +1,7 @@
 // src/views/ItineraryView/StageFaces.tsx
 // 🎟️ 準備／前夕／回憶 三張階段臉（簽名版·最小可用；細節後續逐臉補）。
 import React from 'react';
-import { Plane, BedDouble, FileText, Luggage, Footprints, AlertTriangle, Stamp, Heart, Search, ChevronRight, Share2, Hourglass, CircleCheck, Baby, Upload, Moon, Route, Plus } from 'lucide-react';
+import { Plane, BedDouble, FileText, Luggage, Footprints, AlertTriangle, Stamp, Heart, ChevronRight, Share2, Hourglass, CircleCheck, Baby, Upload, Moon, Route, Plus } from 'lucide-react';
 import type { Trip, Activity } from '../../types';
 import type { FlightBooking, HotelBooking, StoredBooking } from '../../types/booking';
 import { haversineKm } from '../../hooks/useNearby';
@@ -33,7 +33,6 @@ export const PrepareFace: React.FC<{
     const flightDone = isFlightRoundTrip(fbs);
     // 🛏️ 住宿覆蓋：全覆蓋才算「訂購完成」；部分覆蓋顯示尚缺幾晚
     const hbs = hotelBookings ?? [];
-    const hb = hbs[0];
     const cov = nightsCoverage(trip, hbs);
     const hasHotel = hbs.length > 0;
     const canCover = cov.neededCount > 0;                 // 有行程夜數才算得了覆蓋
@@ -54,17 +53,10 @@ export const PrepareFace: React.FC<{
 
     // 機票摘要 / 兒童 / 行李彙總（取第一筆 flight）
     const fb = fbs[0];
-    const seg0 = fb?.segments[0], segN = fb?.segments[fb.segments.length - 1];
-    const dateRange = seg0 && segN ? `${seg0.depLocal.slice(5, 10).replace('-', '/')}–${segN.arrLocal.slice(5, 10).replace('-', '/')}` : '';
-    const flightSub = fb && seg0 ? `${seg0.fromIata}→${seg0.toIata} · ${fb.passengers.length} 人 · ${dateRange}` : '已訂';
     const kids = fb ? fb.passengers.filter(p => p.isChild).length : 0;
     const checked = fb ? fb.passengers.filter(p => (p.perSegment[0]?.checkedKg ?? null) != null).length : 0;
     const carry = fb ? fb.passengers.length - checked : 0;
     const packSub = fb ? `${checked} 件託運 · ${carry} 件只手提` : (packDone ? '已收' : '行李清單');
-    const hotelSub = !hasHotel ? '匯入確認信'
-        : !canCover ? `入住 ${(hb!.checkInLocal || '').slice(5, 10)} · 退房 ${(hb!.checkOutLocal || '').slice(5, 10)}`
-            : fullyCovered ? `${cov.neededCount} 晚住宿已確認 · 搞定！`
-                : `住 ${shortNight(hb!.checkInLocal)}–${shortNight(hb!.checkOutLocal)}（已排 ${cov.coveredCount} 晚 ／ 總共 ${cov.neededCount} 晚）`;
 
     // 🎟️ 批 C：五段里程碑（規劃/機票/住宿/文件/打包）全亮 → 騎縫大章接替進度環
     const allReady = readinessSummary(trip).allReady;

@@ -43,7 +43,7 @@ const dayTs = (dateStr: string): number => {
 };
 
 export const TripsView: React.FC<TripsViewProps> = ({
-    trips, user, activeTrip, onOpenActiveTrip, onLogout, onAddTrip, onImportTrip, onSelectTrip,
+    trips, activeTrip, onOpenActiveTrip, onAddTrip, onImportTrip, onSelectTrip,
     onUpdateTrip,
 }) => {
   const [isCreating, setIsCreating] = useState(false);

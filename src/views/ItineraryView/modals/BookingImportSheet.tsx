@@ -60,11 +60,6 @@ export const BookingImportSheet: React.FC<Props> = ({ open, trip, userId, viewBo
     const [removedHotels, setRemovedHotels] = useState<Set<number>>(new Set());  // 匯入前移除的飯店 index
 
     const selfTraveler = travelers.find(t => t.isSelf);
-    const travelerLabel = (id: string | null) => {
-        if (!id) return '';
-        const t = travelers.find(x => x.id === id);
-        return t ? (t.nickname || t.legalName) : '';
-    };
 
     const reset = () => { setStep('input'); setText(''); setRaw(null); setMemberMap({}); setErr(null); setFilePath(undefined); setSource('paste'); setRenameFor(null); setPickerRow(null); setRemovedHotels(new Set()); };
     const close = () => { reset(); onClose(); };
@@ -72,6 +67,7 @@ export const BookingImportSheet: React.FC<Props> = ({ open, trip, userId, viewBo
     // 開啟時決定進「檢視」還是「匯入」
     useEffect(() => {
         if (!open) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- 開窗重置＝事件語意（一次性），非串聯渲染
         setStep(viewBooking ? 'view' : 'input');
         setErr(null);
         setConfirmDel(false);
@@ -80,6 +76,7 @@ export const BookingImportSheet: React.FC<Props> = ({ open, trip, userId, viewBo
     // 抽取 loading 時輪播通用品牌標語
     useEffect(() => {
         if (step !== 'loading') return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- 輪播歸零＝事件語意
         setLineIdx(0);
         const t = setInterval(() => setLineIdx(x => (x + 1) % LOADING_LINES.length), 1600);
         return () => clearInterval(t);
@@ -133,7 +130,7 @@ export const BookingImportSheet: React.FC<Props> = ({ open, trip, userId, viewBo
 
     const confirmImport = async () => {
         if (!raw) return;
-        const ctxBuild = { id: (crypto as any).randomUUID?.() ?? String(Date.now()), userId, source, fileUrl: filePath };
+        const ctxBuild = { id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()), userId, source, fileUrl: filePath };
         // 訂房：多間各建一筆（移除的不建）；無旅伴對應
         if (raw.kind === 'hotel') {
             setSaving(true);

@@ -171,6 +171,7 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
     const [selectedDate, setSelectedDate] = useState<string>(initialDate || '');
 
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- 開窗同步 initialDate：iOS 選擇器慣例（未來 UI 汰換批重構） */
         if (isOpen) {
             if (initialDate) {
                 setViewDate(new Date(initialDate));
@@ -179,6 +180,7 @@ export const IOSDatePicker: React.FC<IOSDatePickerProps> = ({ isOpen, onClose, o
                  setViewDate(new Date());
             }
         }
+        /* eslint-enable react-hooks/set-state-in-effect */
     }, [isOpen, initialDate]);
     if (!isOpen) return null;
 

@@ -16,11 +16,9 @@ interface DocumentEditModalProps {
 
 export const DocumentEditModal: React.FC<DocumentEditModalProps> = ({ 
     doc, 
-    folders, 
     onClose, 
     onSave 
 }) => {
-    const initialFolderId = folders.find(f => f.name === doc.folderName)?.id || '';
     const displayFolderName = doc.folderName || '一般文件 / 未分類';
 
     const smartConfig = useMemo(() => {
@@ -71,9 +69,9 @@ export const DocumentEditModal: React.FC<DocumentEditModalProps> = ({
             });
             
             onClose();
-        } catch (e: any) {
+        } catch (e) {
             console.error("更新失敗", e);
-            toast("更新失敗：" + e.message);
+            toast("更新失敗：" + (e as Error).message);
         } finally {
             setIsSaving(false);
         }

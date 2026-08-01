@@ -62,7 +62,7 @@ export const TodayView: React.FC<Props> = ({ trip, wishItems, onOpenTrip, onSeeA
         [wishItems, trip.id, todayStopIds],
     );
 
-    const dateStr = useMemo(() => `${now.getMonth() + 1}/${now.getDate()}`, []);
+    const dateStr = `${now.getMonth() + 1}/${now.getDate()}`;   // lint 清理：便宜字串不需 memo（compiler 也拒絕保留空 deps）
 
     return (
         <div className="h-full flex flex-col w-full bg-transparent">

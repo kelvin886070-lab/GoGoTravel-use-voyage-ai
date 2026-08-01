@@ -40,7 +40,8 @@ const ToastPill: React.FC<{ toast: ToastItem; onDone: (id: number) => void }> = 
             <span className="w-4.5 h-4.5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color, width: 18, height: 18 }}>
                 <Icon className="w-3 h-3 text-white" />
             </span>
-            <span className="truncate">{toast.message}</span>
+            {/* 全 App 字體規則（Kelvin 定案）：中文＝serif（與 hero 卡同）——Toast 是全站共用件，統一於此 */}
+            <span className="truncate font-serif">{toast.message}</span>
         </div>
     );
 };

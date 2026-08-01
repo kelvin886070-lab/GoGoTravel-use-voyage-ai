@@ -7,6 +7,7 @@ import { supabase } from "./supabase";
 
 // 🔐 所有外部 API 金鑰已移至 Supabase Edge Function (ai-proxy)。
 // 前端不再持有任何金鑰，僅以「已登入使用者的 JWT」呼叫代理。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- proxy 回傳依 action 而異，各呼叫端自行窄化
 async function callProxy(action: string, payload: Record<string, unknown>): Promise<any> {
     const { data, error } = await supabase.functions.invoke('ai-proxy', {
         body: { action, payload },
@@ -51,13 +52,11 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinu
         try {
             const { data, timestamp } = JSON.parse(cached);
             if ((Date.now() - timestamp) / 1000 / 60 < ttlMinutes) return data as T;
-        } catch (e) {}
+        } catch { /* 快取解析失敗＝視同無快取 */ }
     }
-    try {
-        const data = await fetcher();
-        if (data) localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
-        return data;
-    } catch (error) { throw error; }
+    const data = await fetcher();
+    if (data) localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
+    return data;
 }
 
 const parseJSON = <T>(text: string | undefined): T | null => {
@@ -77,8 +76,8 @@ const parseJSON = <T>(text: string | undefined): T | null => {
             }
         }
         return JSON.parse(clean) as T;
-    } catch (e) {
-        console.error("JSON Parse Error:", e);
+    } catch (err) {
+        console.error("JSON Parse Error:", err);
         return null;
     }
 };
@@ -406,7 +405,6 @@ export const generateItinerary = async (
         
         Language: Traditional Chinese (繁體中文).
       `;
-      try {
         const text = await callGeminiDirectly(prompt);
         const data = parseJSON<TripDay[]>(text);
         if (!data) throw new Error("AI 生成格式錯誤");
@@ -426,7 +424,7 @@ export const generateItinerary = async (
         const seen = new Set<string>();
         return withMeta.map(day => ({
           ...day,
-          activities: day.activities.filter((a: any) => {
+          activities: day.activities.filter((a) => {
             if (SYS.has((a.type || '').toLowerCase())) return true;
             const k = normTitle(a.title);
             if (!k) return true;
@@ -435,9 +433,6 @@ export const generateItinerary = async (
             return true;
           }),
         }));
-      } catch (error) {
-        throw error;
-      }
   }, CACHE_TTL.ITINERARY);
 };
 
@@ -475,7 +470,7 @@ export const lookupFlightInfo = async (flightCode: string): Promise<FlightInfo |
         try {
             const text = await callGeminiDirectly(prompt);
             return parseJSON<FlightInfo>(text);
-        } catch (e) {
+        } catch {
             return null;
         }
     }, CACHE_TTL.FLIGHT);
@@ -539,8 +534,8 @@ export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptR
     try {
         const text = await callGeminiVision(prompt, base64Image);
         return parseJSON<ReceiptResult>(text);
-    } catch (e) {
-        console.error("AI Receipt Analysis Failed:", e);
+    } catch (err) {
+        console.error("AI Receipt Analysis Failed:", err);
         return null;
     }
 };
@@ -629,7 +624,7 @@ export const getTimezone = async (location: string): Promise<string | null> => {
         try {
             const res = await callProxy('timezone', { location });
             if (res?.data?.location?.tz_id) return res.data.location.tz_id;
-        } catch (e) {}
+        } catch { /* 靜默 */ }
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
     }, CACHE_TTL.TIMEZONE);
 }

@@ -64,14 +64,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
              setLoading(false);
              return;
         }
-    } catch (err: any) {
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.error(err);
-        if (err.message.includes('Invalid login')) {
+        if (msg.includes('Invalid login')) {
             setError('帳號或密碼錯誤');
-        } else if (err.message.includes('already registered')) {
+        } else if (msg.includes('already registered')) {
             setError('此暱稱已被註冊，請切換到「登入」');
         } else {
-            setError(err.message || '發生錯誤，請稍後再試');
+            setError(msg || '發生錯誤，請稍後再試');
         }
         setLoading(false);
     }

@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     X, MapPin, ShoppingBag, Camera, Store, Trash2,
     Link as LinkIcon, Tag as TagIcon, Save, Globe, MapPinPlus, MapPinCheck
 } from 'lucide-react';
-import type { WishItem, WishItemType, Trip } from '../../../types';
+import type { WishItem, Trip } from '../../../types';
 import { toast } from '../../../components/Toast';
 import { confirmDialog } from '../../../components/ConfirmDialog';
 import { CURRENCY_SYMBOLS } from '../shared';
@@ -104,7 +104,7 @@ export const WishItemEditModal: React.FC<WishItemEditModalProps> = ({
     }, [edited.country, allWishItems]);
 
     // 表單更新 Handler
-    const handleChange = (field: keyof WishItem, value: any) => {
+    const handleChange = (field: keyof WishItem, value: WishItem[keyof WishItem]) => {
         setEdited(prev => ({ ...prev, [field]: value }));
     };
 

@@ -55,7 +55,7 @@ export const ExploreView: React.FC = () => {
 const BookingCategory: React.FC<{ icon: React.ReactNode, label: string, active: boolean, onClick: () => void }> = ({ icon, label, active, onClick }) => (
     <button onClick={onClick} className="flex flex-col items-center gap-3 group">
         <div className={`w-[70px] h-[70px] rounded-[24px] flex items-center justify-center shadow-sm transition-all duration-300 ${active ? 'bg-[#45846D] text-white scale-105 shadow-md shadow-[#45846D]/30' : 'bg-white text-gray-400 hover:bg-gray-50 border border-white'}`}>
-            {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-8 h-8' })}
+            {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: 'w-8 h-8' })}
         </div>
         <span className={`text-xs font-bold tracking-wide transition-colors ${active ? 'text-[#45846D]' : 'text-gray-400'}`}>{label}</span>
     </button>

@@ -63,7 +63,7 @@ export const SettlementSheet: React.FC<Props> = ({ open, wishItems, trips, onClo
     };
 
     const share = async (name: string, items: WishItem[], byCur: Record<string, number>) => {
-        const lines = items.map(i => `・${i.title} ×${i.quantity ?? 1}　${i.currency || ''} ${lineTotal(i).toLocaleString()}`);
+        const lines = items.map(i => `・${i.title} ×${i.quantity ?? 1}\u3000${i.currency || ''} ${lineTotal(i).toLocaleString()}`);
         const totals = Object.entries(byCur).map(([c, s]) => `${c} ${s.toLocaleString()}`).join(' + ');
         const text = `${name} 的代購清單\n${lines.join('\n')}\n合計：${totals}`;
         try {

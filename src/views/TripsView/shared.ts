@@ -1,4 +1,4 @@
-import { ShoppingBag, Utensils, TreePine, Camera, Sparkles, Coffee, Music, Building } from 'lucide-react';
+import { ShoppingBag, Utensils, TreePine, Camera, Coffee, Music, Building } from 'lucide-react';
 
 // ============================================================================
 // 1. 共用靜態資料 (Interests & Currencies)
