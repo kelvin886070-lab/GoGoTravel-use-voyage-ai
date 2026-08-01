@@ -149,7 +149,9 @@ export const ProfileView: React.FC<{
         return out;
     }, [memorySheets]);
     return (
-        <div className="h-full w-full bg-[#E4E2DD] flex flex-col items-center justify-center px-3 relative overflow-hidden">
+        // paddingBottom 46＝「目錄/帳戶」的結構性保留帶：置中群組（書+頁點+頁名）永遠不侵入底部連結領空
+        // ——safe-area 讓可用高度變矮後，iPhone 14/11 實測兩層相撞（置中排版被壓縮下移）的幾何解法
+        <div className="h-full w-full bg-[#E4E2DD] flex flex-col items-center justify-center px-3 relative overflow-hidden" style={{ paddingBottom: 46 }}>
             {/* B+C 定案：比例 1:1.52（口袋書感，介於真護照與螢幕之間，上下空白減半）；
                 下方留白交給頁碼指示（有工作的留白）；上方留白＝書上方的空氣，保持乾淨。 */}
             <div className="w-full" style={{ aspectRatio: '1 / 1.52', maxHeight: 'calc(100% - 58px)', maxWidth: 420 }}>
