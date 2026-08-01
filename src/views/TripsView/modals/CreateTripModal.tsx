@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
     X, ChevronLeft, Train, Bus, Car,
     User as UserIcon, Heart, Baby, Users, Armchair, Briefcase, GraduationCap, Dog,
@@ -12,8 +12,7 @@ import { generateItinerary } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
 import { ensureTripGeocoded } from '../../../services/geo';
 import type { Trip, TripDay, TripConstraints } from '../../../types';
-import { INTEREST_DATA, CURRENCIES, DESTINATION_DICTIONARY } from '../shared';
-import type { DestinationNode } from '../shared';
+import { INTEREST_DATA, CURRENCIES } from '../shared';
 import { toast } from '../../../components/Toast';
 
 // ============================================================================
@@ -140,75 +139,8 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
     // ============================================================================
     // ✨ 靈感雙層架構邏輯 + Fisher-Yates 隨機洗牌
     // ============================================================================
-    const [activeCityRecs, setActiveCityRecs] = useState<DestinationNode[]>([]);
-    const [activeRouteRecs, setActiveRouteRecs] = useState<DestinationNode[]>([]);
-    const [smartConnectKeywords, setSmartConnectKeywords] = useState<string[]>([]);
 
-    useEffect(() => {
-        if (step < 2) return;
-
-        const currentDict = DESTINATION_DICTIONARY[tripType];
-        const currentMonth = new Date(startDate).getMonth() + 1;
-
-        const seasonValidNodes = currentDict.filter(node => 
-            !node.validMonths || node.validMonths.includes(currentMonth)
-        );
-
-        const query = destinationInput.trim().toLowerCase();
-
-        if (query === '') {
-            if (smartConnectKeywords.length > 0) {
-                const connectedCities = seasonValidNodes.filter(node => 
-                    node.type === 'city' && smartConnectKeywords.some(k => 
-                        node.title.includes(k) || node.keywords.includes(k)
-                    )
-                );
-                setActiveCityRecs(connectedCities);
-                setActiveRouteRecs([]); 
-            } else {
-                const shuffleArray = <T,>(arr: T[]): T[] => {
-                    const copy = [...arr];
-                    for (let i = copy.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [copy[i], copy[j]] = [copy[j], copy[i]];
-                    }
-                    return copy;
-                };
-
-                const allCities = seasonValidNodes.filter(n => n.type === 'city');
-                const allRoutes = seasonValidNodes.filter(n => n.type === 'route');
-                
-                setActiveCityRecs(shuffleArray(allCities).slice(0, 5));
-                setActiveRouteRecs(shuffleArray(allRoutes).slice(0, 4));
-            }
-        } else {
-            const matched = seasonValidNodes.filter(node => 
-                node.title.toLowerCase().includes(query) || 
-                node.keywords.some(k => k.toLowerCase().includes(query))
-            );
-            setActiveCityRecs(matched.filter(n => n.type === 'city'));
-            setActiveRouteRecs(matched.filter(n => n.type === 'route'));
-            
-            if (smartConnectKeywords.length > 0) {
-                setSmartConnectKeywords([]); 
-            }
-        }
-    }, [destinationInput, tripType, startDate, step, smartConnectKeywords]);
-
-    const handleRecommendationClick = (node: DestinationNode) => {
-        const parts = node.title.split(' ');
-        let cleanName = parts.length > 1 ? parts[1] : node.title;
-        cleanName = cleanName.split('(')[0].split('（')[0].trim();
-        
-        addDestination(cleanName);
-        
-        if (node.connectsWith && node.connectsWith.length > 0) {
-            setSmartConnectKeywords(node.connectsWith);
-        } else {
-            setSmartConnectKeywords([]);
-        }
-    };
-
+    // （靈感辭典已刪：見 shared.ts 註記——順遊/標籤由目的地感知 LLM 快取承接，屬生成表單重設計批）
 
     // --- Step 3 Data ---
     const [arrivalTime, setArrivalTime] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
@@ -481,58 +413,6 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
                                     <p className="text-[10px] text-gray-400 font-medium tracking-wider uppercase">{tripType === 'international' ? "Where to next?" : "Discover Local Gems"}</p>
                                 </div>
 
-                                <div className="min-h-[160px] flex items-start justify-center pt-8 w-full">
-                                    {(activeCityRecs.length > 0 || activeRouteRecs.length > 0) ? (
-                                        <div className="animate-in fade-in slide-in-from-top-4 duration-500 max-w-[340px] mx-auto w-full flex flex-col gap-4">
-                                            
-                                            <div className="flex items-center gap-1.5 px-1 -mb-1">
-                                                <Sparkles className={`w-3.5 h-3.5 ${theme.text}`} />
-                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                                    {smartConnectKeywords.length > 0 
-                                                        ? '💡 推薦順遊城市' 
-                                                        : destinationInput ? `搜尋 "${destinationInput}" 的靈感` : '為您精選熱門靈感'}
-                                                </span>
-                                            </div>
-
-                                            {activeCityRecs.length > 0 && (
-                                                <div className="flex flex-wrap gap-2 px-1">
-                                                    {activeCityRecs.map(node => (
-                                                        <button
-                                                            key={node.id}
-                                                            onClick={() => handleRecommendationClick(node)}
-                                                            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm border ${theme.cityPill}`}
-                                                        >
-                                                            {node.title}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* 🛹 關鍵修復 2：加上 overscroll-x-contain 阻斷系統返回手勢，加上 w-full 確保寬度自適應 */}
-                                            {activeRouteRecs.length > 0 && (
-                                                <div className="flex gap-2.5 overflow-x-auto overscroll-x-contain pb-2 px-1 no-scrollbar snap-x w-full">
-                                                    {activeRouteRecs.map(node => (
-                                                        <button
-                                                            key={node.id}
-                                                            onClick={() => handleRecommendationClick(node)}
-                                                            className={`flex-shrink-0 snap-start flex flex-col items-start p-3.5 rounded-2xl border transition-all duration-300 group shadow-sm w-max min-w-[200px] max-w-[260px] ${theme.ghostButton}`}
-                                                        >
-                                                            <span className="text-sm font-black tracking-wide mb-1 flex justify-between w-full items-center gap-3">
-                                                                <span className="whitespace-nowrap">{node.title}</span>
-                                                                <Plus className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                                                            </span>
-                                                            <span className={`text-[10px] font-medium leading-relaxed text-left line-clamp-2 whitespace-normal transition-colors ${theme.ghostSubtitle}`}>
-                                                                {node.subtitle}
-                                                            </span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="opacity-0">Placeholder</div> 
-                                    )}
-                                </div>
 
                                 <div className="pt-2 w-full">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider text-center block mb-3">預計停留時間</label>
