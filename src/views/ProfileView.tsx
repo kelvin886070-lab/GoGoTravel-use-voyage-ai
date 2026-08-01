@@ -152,9 +152,11 @@ export const ProfileView: React.FC<{
         // paddingBottom 46＝「目錄/帳戶」的結構性保留帶：置中群組（書+頁點+頁名）永遠不侵入底部連結領空
         // ——safe-area 讓可用高度變矮後，iPhone 14/11 實測兩層相撞（置中排版被壓縮下移）的幾何解法
         <div className="h-full w-full bg-[#E4E2DD] flex flex-col items-center justify-center px-3 relative overflow-hidden" style={{ paddingBottom: 46 }}>
-            {/* B+C 定案：比例 1:1.52（口袋書感，介於真護照與螢幕之間，上下空白減半）；
-                下方留白交給頁碼指示（有工作的留白）；上方留白＝書上方的空氣，保持乾淨。 */}
-            <div className="w-full" style={{ aspectRatio: '1 / 1.52', maxHeight: 'calc(100% - 58px)', maxWidth: 420 }}>
+            {/* B+C 定案：比例 1:1.52（口袋書感）。
+                📐 高度驅動（iPhone 14/11 頂部被吃修正）：書高＝可用空間 100%、寬由比例導出——
+                容器變矮（safe-area+底部保留帶）書就等比縮小、永不溢出；638px 上限＝桌機維持原尺寸。 */}
+            <div className="w-full flex-1 min-h-0 flex justify-center items-center">
+                <div style={{ aspectRatio: '1 / 1.52', height: '100%', maxHeight: 638, maxWidth: '100%' }}>
                 <PassportBook
                     ref={bookRef}
                     cover={<PassportCover />}
@@ -169,6 +171,7 @@ export const ProfileView: React.FC<{
                         <BackCover key="back" />,
                     ]}
                 />
+                </div>
             </div>
             {/* 書下工具列：頁點（可點跳，iPhone 桌布式）＋頁名＋「目錄／帳戶」底線字（批⑤a 定案，無膠囊） */}
             <div className="flex flex-col items-center gap-1.5 pt-3 pb-1">
