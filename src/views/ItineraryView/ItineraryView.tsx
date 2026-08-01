@@ -507,6 +507,19 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
     const [activeDayForAdd, setActiveDayForAdd] = useState<number>(1);
     const [showExpenses, setShowExpenses] = useState(false);
     const [showVault] = useState(false);   // lint 清理：setter 從未呼叫（遺留 UI 路徑，保管箱入口已改版）
+
+    // 📱 safe-area 釘住偵測（哨兵 + IntersectionObserver）：工具列「未釘住」時普通 padding（貼著封面不肥）、
+    //   「釘住」時補頂 inset（背景蓋住瀏海區，內容從底下滑過）。桌機 inset=0 兩態等值＝零影響。
+    const chromeScrollRef = useRef<HTMLDivElement>(null);
+    const chromeSentinelRef = useRef<HTMLDivElement>(null);
+    const [chromeStuck, setChromeStuck] = useState(false);
+    useEffect(() => {
+        const root = chromeScrollRef.current, sentinel = chromeSentinelRef.current;
+        if (!root || !sentinel || typeof IntersectionObserver === 'undefined') return;
+        const io = new IntersectionObserver(([e]) => setChromeStuck(!e.isIntersecting), { root, threshold: 0 });
+        io.observe(sentinel);
+        return () => io.disconnect();
+    }, []);
     const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
     const [menuTargetIndex, setMenuTargetIndex] = useState<{dayIdx: number, actIdx: number} | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -988,14 +1001,15 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
 
 
     return (
-        // 📱 safe-area：行程頁是獨立全螢幕根（不經 App main），頂 inset 自己扛；滾動時內容滑入 inset 區＝原生慣例
-        <div className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        // 📱 safe-area：inset 不放滾動容器（sticky 釘在內容盒＝內容會爬進 padding 區「漂浮」，Kelvin 實測抓包）
+        // ——改由 sticky 工具列自己帶頂 inset＋背景蓋住瀏海區，內容從它底下滑過（原生慣例）
+        <div ref={chromeScrollRef} className="bg-[#E4E2DD] h-[100dvh] w-full block overflow-y-auto relative no-scrollbar">
             
             {/* 置頂 Banner 區（🎟️ 收窄至 h-60：行程更快出現；裁切由 coverImagePositionY 拖曳重新定位處理） */}
             <div className={`relative h-60 w-full ${headerBgClass}`}>
                 {/* 🎟️ B 封面：頂部漸層保證上緣圖示對比；方案1＝裸白圖示、無玻璃 */}
                 <div className="absolute inset-x-0 top-0 h-24 pointer-events-none z-20" style={{ background: 'linear-gradient(rgba(0,0,0,0.42), transparent)' }} />
-                <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none">
+                <div className="absolute top-0 left-0 right-0 z-30 p-5 flex justify-between items-start pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 8px)' }}>
                     <button onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center text-white pointer-events-auto active:scale-90 transition-transform" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.45))' }}>
                         <ArrowLeft className="w-6 h-6" />
                     </button>
@@ -1032,8 +1046,9 @@ export const ItineraryView: React.FC<ItineraryViewProps> = ({
                 <input type="file" ref={fileInputRef} onChange={handleCoverChange} className="hidden" accept="image/*" />
             </div>
 
-            {/* 🎟️ 五段脊椎（頂部導覽）＋規劃時的列表/地圖鏡頭 */}
-            <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pt-3 pb-3 transition-all">
+            {/* 🎟️ 五段脊椎（頂部導覽）＋規劃時的列表/地圖鏡頭；哨兵＝釘住偵測（見 chromeStuck） */}
+            <div ref={chromeSentinelRef} aria-hidden style={{ height: 1, marginTop: -1 }} />
+            <div className="sticky top-0 z-40 bg-[#E4E2DD]/95 backdrop-blur-sm border-b border-gray-200/50 shadow-sm px-5 pb-3 transition-all" style={{ paddingTop: chromeStuck ? 'calc(env(safe-area-inset-top) + 12px)' : '12px' }}>
                 <StageSpine current={spineActivated ? currentStageIdx : -1} selected={vmToStage(viewMode)} onSelect={(i) => setViewMode(stageToVM[i])} onLockedTap={handleLockedTap} />
                 {(viewMode === 'list' || viewMode === 'map') && (
                     <div className="flex justify-center mt-3">

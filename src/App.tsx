@@ -1149,9 +1149,11 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* 底欄：bg 提實（/90→/95）——半透明讓 home-indicator 的 inset 區看起來像「漂浮的空帶」（Kelvin 反饋） */}
+        {/* 底欄：高度/inset 全走 inline style——Tailwind 任意值 h-[calc(70px+env(...))] 在 Play CDN JIT
+            沒有生成（Kelvin 真機抓到的灰帶真因：高度塌掉、inset 區露出底色），inline 不經 JIT 零風險 */}
         <div className="flex-shrink-0 z-50 relative w-full bg-white/95 backdrop-blur-xl border-t border-white/50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
-            <div className="flex justify-between items-center pb-safe pt-4 px-5 h-[calc(70px+env(safe-area-inset-bottom))]">
+            <div className="flex justify-between items-center px-5"
+                style={{ paddingTop: 14, paddingBottom: 'calc(14px + env(safe-area-inset-bottom))' }}>
                 <TabButton active={currentView === AppView.TRIPS} onClick={() => setCurrentView(AppView.TRIPS)} icon={<Home />} label="首頁" />
                 <TabButton active={currentView === AppView.WISHBOX} onClick={() => setCurrentView(AppView.WISHBOX)} icon={<Sparkles />} label="心願盒" />
                 <TabButton active={currentView === AppView.VAULT} onClick={() => setCurrentView(AppView.VAULT)} icon={<FileText />} label="保管箱" />
