@@ -5,7 +5,48 @@ import { compressImage } from '../utils/imageUtils';
 import type { Trip } from '../types';
 
 const BUCKET = 'trip-media';
-const SIGNED_TTL = 60 * 60 * 24; // 24 小時
+// 🔏 簽名 URL 本地重用（秒開路線圖②，Kelvin 四決策 2026-08-01）：
+//   TTL 24h → 7 天——瀏覽器圖片快取以 URL 為 key，URL 穩定＝重複觀看走本機磁碟、egress 歸零。
+//   個人旅遊照片、URL 只存自己裝置的 localStorage，風險可接受；vault（證件）不走此快取、維持 24h 短命。
+//   安全邊際 24h：剩餘壽命 < 24h 視同過期重簽——URL 永不在使用中斷氣（實際穩定期 ~6 天）。
+//   登出必清（clearSignedUrlCache，App 登出流程呼叫）；刪檔清該路徑（dropCachedUrls）。
+//   已知邊界（接受）：Supabase 金鑰輪替會讓未到期 URL 集體失效＝圖片破到快取過期，機率極低不蓋工程。
+const SIGNED_TTL = 60 * 60 * 24 * 7;              // 7 天
+const REUSE_MARGIN_MS = 24 * 60 * 60 * 1000;      // 安全邊際 24h
+const URL_CACHE_KEY = 'kt_signed_urls_v1';
+
+type UrlCache = Record<string, { u: string; e: number }>;   // path → { url, 到期 ms }
+let _urlCache: UrlCache | null = null;
+
+const loadUrlCache = (): UrlCache => {
+    try {
+        const raw = localStorage.getItem(URL_CACHE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw) as UrlCache;
+        // 載入時清掉已到期項（防 localStorage 無限膨脹）
+        const now = Date.now();
+        for (const k of Object.keys(parsed)) if (!parsed[k]?.u || parsed[k].e <= now) delete parsed[k];
+        return parsed;
+    } catch { return {}; }   // 私密模式/配額滿＝無快取模式，功能不受影響
+};
+const getUrlCache = (): UrlCache => (_urlCache ??= loadUrlCache());
+const persistUrlCache = (): void => {
+    try { localStorage.setItem(URL_CACHE_KEY, JSON.stringify(getUrlCache())); } catch { /* 寫不進＝退化為記憶體快取 */ }
+};
+
+/** 登出時清空簽名 URL 快取（換帳號不撿到上一位的照片鑰匙）。 */
+export const clearSignedUrlCache = (): void => {
+    _urlCache = {};
+    try { localStorage.removeItem(URL_CACHE_KEY); } catch { /* ignore */ }
+};
+
+/** 刪檔時同步清掉該路徑的快取 URL（避免殘留 404 鑰匙）。 */
+const dropCachedUrls = (paths: string[]): void => {
+    const c = getUrlCache();
+    let dirty = false;
+    for (const p of paths) if (c[p]) { delete c[p]; dirty = true; }
+    if (dirty) persistUrlCache();
+};
 
 // 判斷一個值是否為「Storage 路徑」（而非舊的 base64 或外部 http 圖）
 export const isStoragePath = (value?: string): boolean =>
@@ -52,19 +93,39 @@ export async function uploadTripImageWithThumb(file: File): Promise<string> {
 // 連影子縮圖一起刪——沒有縮圖的路徑（封面/頭貼/舊照）刪不存在的檔＝無害 no-op。
 export async function deleteTripImage(path?: string): Promise<void> {
     if (!isStoragePath(path)) return;
-    await supabase.storage.from(BUCKET).remove([path as string, thumbPathOf(path as string)]);
+    const targets = [path as string, thumbPathOf(path as string)];
+    dropCachedUrls(targets);   // ② 快取同步清（避免殘留 404 鑰匙）
+    await supabase.storage.from(BUCKET).remove(targets);
 }
 
-// 批次把多個路徑換成 signed URL（一次 API，不逐張呼叫）
+// 批次把多個路徑換成 signed URL（一次 API，不逐張呼叫）。
+// ② 快取層：命中（未過期且餘命 > 邊際）直接回、只簽 miss——全 App 簽名的唯一咽喉點，所有呼叫端自動受益。
 export async function signPaths(paths: (string | undefined)[]): Promise<Record<string, string>> {
     const map: Record<string, string> = {};
     const real = Array.from(new Set(paths.filter(isStoragePath))) as string[];
     if (real.length === 0) return map;
 
-    const { data } = await supabase.storage.from(BUCKET).createSignedUrls(real, SIGNED_TTL);
+    const cache = getUrlCache();
+    const now = Date.now();
+    const misses: string[] = [];
+    for (const p of real) {
+        const hit = cache[p];
+        if (hit && hit.e - now > REUSE_MARGIN_MS) map[p] = hit.u;
+        else misses.push(p);
+    }
+    if (misses.length === 0) return map;
+
+    const { data } = await supabase.storage.from(BUCKET).createSignedUrls(misses, SIGNED_TTL);
+    const expiresAt = now + SIGNED_TTL * 1000;
+    let dirty = false;
     data?.forEach(item => {
-        if (item.path && item.signedUrl) map[item.path] = item.signedUrl;
+        if (item.path && item.signedUrl) {
+            map[item.path] = item.signedUrl;
+            cache[item.path] = { u: item.signedUrl, e: expiresAt };
+            dirty = true;
+        }
     });
+    if (dirty) persistUrlCache();
     return map;
 }
 
@@ -82,6 +143,7 @@ export async function deleteTripImages(paths: (string | undefined)[]): Promise<v
     const real = Array.from(new Set(paths.filter(isStoragePath))) as string[];
     if (real.length === 0) return;
     const withThumbs = Array.from(new Set([...real, ...real.map(thumbPathOf)]));
+    dropCachedUrls(withThumbs);   // ② 快取同步清
     await supabase.storage.from(BUCKET).remove(withThumbs);
 }
 

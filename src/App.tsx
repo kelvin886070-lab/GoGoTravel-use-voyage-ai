@@ -18,7 +18,7 @@ import { VaultView } from './views/VaultView';
 import { ProfileView } from './views/ProfileView';
 import { LoginView } from './views/LoginView';
 import { supabase } from './services/supabase';
-import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath } from './services/storage';
+import { signPaths, collectTripImagePaths, deleteTripImages, resolveTripImages, serializeTripForDb, isStoragePath, clearSignedUrlCache } from './services/storage';
 import { tripNeedsSlimming, buildSlimPatch, applySlimPatch } from './services/tripSlimming';
 import { fetchTrashSummaries, fetchTrashTripFull } from './services/trashTrips';
 import type { TrashSummary } from './types';
@@ -243,6 +243,7 @@ const App: React.FC = () => {
               fetchUserData(); 
           } else if (event === 'SIGNED_OUT') {
               fetchedForUserRef.current = null;   // 換帳號重登要重抓
+              clearSignedUrlCache();              // ② 換帳號不撿到上一位的照片鑰匙
               setUser(null);
               setCurrentView(AppView.TRIPS);
               setSelectedTrip(null);
