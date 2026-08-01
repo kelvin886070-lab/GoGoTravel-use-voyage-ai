@@ -23,9 +23,9 @@ const loadUrlCache = (): UrlCache => {
         const raw = localStorage.getItem(URL_CACHE_KEY);
         if (!raw) return {};
         const parsed = JSON.parse(raw) as UrlCache;
-        // 載入時清掉已到期項（防 localStorage 無限膨脹）
+        // 載入時清掉已到期項（防 localStorage 無限膨脹）；負面項（u=''）未到期要保留——它的價值正是在下次冷啟
         const now = Date.now();
-        for (const k of Object.keys(parsed)) if (!parsed[k]?.u || parsed[k].e <= now) delete parsed[k];
+        for (const k of Object.keys(parsed)) if (typeof parsed[k]?.e !== 'number' || parsed[k].e <= now) delete parsed[k];
         return parsed;
     } catch { return {}; }   // 私密模式/配額滿＝無快取模式，功能不受影響
 };
@@ -110,22 +110,25 @@ export async function signPaths(paths: (string | undefined)[]): Promise<Record<s
     const misses: string[] = [];
     for (const p of real) {
         const hit = cache[p];
-        if (hit && hit.e - now > REUSE_MARGIN_MS) map[p] = hit.u;
+        if (hit && hit.u && hit.e - now > REUSE_MARGIN_MS) map[p] = hit.u;          // 正面命中
+        else if (hit && !hit.u && hit.e > now) { /* 負面命中：已知不存在，24h 內不重試 */ }
         else misses.push(p);
     }
     if (misses.length === 0) return map;
 
     const { data } = await supabase.storage.from(BUCKET).createSignedUrls(misses, SIGNED_TTL);
     const expiresAt = now + SIGNED_TTL * 1000;
-    let dirty = false;
+    const negExpiresAt = now + 24 * 60 * 60 * 1000;   // 負面快取 24h（test06 抓到：舊封面的影子縮圖不存在＝每次冷啟白簽）
+    const got = new Set<string>();
     data?.forEach(item => {
         if (item.path && item.signedUrl) {
             map[item.path] = item.signedUrl;
             cache[item.path] = { u: item.signedUrl, e: expiresAt };
-            dirty = true;
+            got.add(item.path);
         }
     });
-    if (dirty) persistUrlCache();
+    for (const p of misses) if (!got.has(p)) cache[p] = { u: '', e: negExpiresAt };   // 簽不到＝記負面
+    persistUrlCache();
     return map;
 }
 
