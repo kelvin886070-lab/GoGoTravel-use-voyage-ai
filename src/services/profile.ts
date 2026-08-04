@@ -42,7 +42,21 @@ export interface ProfileMeta {
     friendCode: string | null;   // DB 版會員碼（Founder 序號碼優先；null＝退回 uuid 導出）
     role: string | null;         // 內部身份（'FOUNDER' 等；一般使用者 null → 不顯示 TYPE 欄）
     joinDate: string | null;     // 加入日 YYYYMMDD（created_at；MRZ 的 JOINED 彩蛋，Kelvin 定案含年月日）
+    residenceCountry: string;    // 居住國 ISO alpha-2（生成表單批A：國內外由此推斷；缺值＝裝置語系推得）
+    residenceCity: string | null;// 常用出發地（登機證顯示；表單永不問）
 }
+
+// 裝置語系 → 居住國預設（註冊時選國家上線前的過渡；zh-TW→TW、ja-JP→JP…）
+export const localeCountry = (): string => {
+    try {
+        const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+        for (const t of tags) {
+            const region = (t || '').split('-')[1];
+            if (region && /^[A-Za-z]{2}$/.test(region)) return region.toUpperCase();
+        }
+    } catch { /* ignore */ }
+    return 'TW';   // 最終保底（第一批使用者在台灣）
+};
 
 /** Date → YYYYMMDD（MRZ 用；無效日期回 null）。 */
 export const toYmd = (d: Date): string | null => {
@@ -51,18 +65,35 @@ export const toYmd = (d: Date): string | null => {
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
 };
 
-/** 讀個資頁 meta（會員碼覆寫/身份/加入日）。表未建/離線 → 全 null（顯示端各自有退位）。 */
+/** 讀個資頁 meta（會員碼覆寫/身份/加入日/居住地）。表未建/離線 → 各欄有退位（居住地退回裝置語系）。 */
 export async function fetchProfileMeta(userId: string): Promise<ProfileMeta> {
     try {
         const { data } = await supabase.from('profiles')
-            .select('friend_code, role, created_at').eq('user_id', userId).maybeSingle();
+            .select('friend_code, role, created_at, residence_country, residence_city')
+            .eq('user_id', userId).maybeSingle();
         return {
             friendCode: (data?.friend_code as string) || null,
             role: (data?.role as string) || null,
             joinDate: data?.created_at ? toYmd(new Date(data.created_at as string)) : null,
+            residenceCountry: ((data?.residence_country as string) || '').toUpperCase() || localeCountry(),
+            residenceCity: (data?.residence_city as string) || null,
         };
     } catch {
-        return { friendCode: null, role: null, joinDate: null };
+        return { friendCode: null, role: null, joinDate: null, residenceCountry: localeCountry(), residenceCity: null };
+    }
+}
+
+/** 寫入居住地（註冊選國家／個人檔案修改；只 update 不 upsert 整列，避免蓋掉 friend_code/role）。 */
+export async function updateResidence(userId: string, country: string, city?: string): Promise<void> {
+    const patch: Record<string, string> = { residence_country: country.toUpperCase() };
+    if (city !== undefined) patch.residence_city = city;
+    const { data, error } = await supabase.from('profiles')
+        .update(patch).eq('user_id', userId).select('user_id');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+        const { error: insErr } = await supabase.from('profiles')
+            .insert({ user_id: userId, friend_code: friendCodeOf(userId), ...patch });
+        if (insErr) throw insErr;
     }
 }
 

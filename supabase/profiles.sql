@@ -21,6 +21,13 @@ alter table public.profiles add column if not exists avatar_path text;
 --   ——註冊管道天然只產生一般使用者。內部員工＝員編序號制（KT-A＋5 碼，KT-A00001 起），一般使用者維持 uuid 8 碼。
 alter table public.profiles add column if not exists role text;
 
+-- 生成表單重設計・批A：居住地＝護照簽發地（表單零提問的地基）。
+--   residence_country＝ISO 3166-1 alpha-2（'TW'/'JP'…）；目的地國家 === 此欄 ⇒ 國內旅行。
+--   residence_city＝常用出發地（登機證顯示、未來航班對照用；預設＝註冊國主要城市，可改）。
+--   註冊時選國家（登入頁 2-2 批）；在此之前以裝置語系推得預設值。
+alter table public.profiles add column if not exists residence_country text;
+alter table public.profiles add column if not exists residence_city text;
+
 -- Kelvin 專屬列（範例；用「現有會員碼」當條件最不會貼錯——friend_code 是 UNIQUE，精準鎖定一列）：
 --   update public.profiles set role = 'FOUNDER', friend_code = 'KT-A00001' where friend_code = 'KT-C641B5BA';
 --   驗證：select display_name, friend_code, role from public.profiles;

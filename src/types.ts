@@ -230,6 +230,55 @@ export interface Trip {
   memoryPhotos?: string[];       // 顯示用：載入時換成 signed URL（不持久化，serializeTripForDb 會清空）
   memoryPhotoThumbs?: string[];  // 顯示用：縮圖 signed URL（縮圖層；與 memoryPhotos 同長同序，缺縮圖＝同大圖 URL；不持久化）
   coverImageThumb?: string;      // 顯示用：封面縮圖 signed URL（封面縮圖小批；舊封面無影子檔＝undefined 退回大圖；不持久化）
+  brief?: TripBrief;             // 🎫 旅程券：生成表單的答案（隨 trip_data 持久化；規劃臉可開可改，改了問要不要重排）
+}
+
+// 🎫 旅程券／TripBrief（生成表單重設計・資料層；docs E3 定案）
+//   本質：使用者在六頁表單裡「說過的每一句話」的持久化形態——生成後**跟著行程走**，
+//   規劃臉可隨時打開看「當初我選了什麼」、就地改（改了問要不要重排）。
+//   同時是 **prompt 的 payload**：圈＝必含、劃除＝負面約束、度量衡數字＝硬約束、
+//   心願盒收藏＝few-shot 範例、講究欄＝自由約束。
+//   儲存：住在 trip_data（Trip.brief），**不動 DB schema**。
+export type PaceLevel = 'relaxed' | 'standard' | 'packed' | 'deep';
+export type VibeLevel = 'classic' | 'balanced' | 'culture' | 'hidden';
+export type BudgetLevel = 'economy' | 'standard' | 'luxury';
+export type LocalTransport = 'public' | 'car' | 'charter';
+export type TimeSlot = 'morning' | 'afternoon' | 'evening' | 'unset';   // unset＝「還沒訂」（預設值，零操作可過）
+/** 重新安排的方向（速覽階段只給看得出來的四種；「換一批景點」＝盲換已刪） */
+export type RearrangeMood = 'lighter' | 'tighter' | 'less-transit' | 'easy-first-day';
+
+export interface TripBrief {
+  version: 1;
+  // ── 去哪（入口＋縮圈） ──
+  destinations: string[];        // 使用者輸入/選定的地點（城市或國家）
+  zones?: string[];              // 縮圈選的地帶（「關西 · 大阪＋京都」等；國家/區域級輸入才有）
+  isDomestic: boolean;           // 由「目的地國家 === 居住國」推斷；表單永不提問
+  // ── 什麼時候 ──
+  datesUndecided: boolean;       // true＝只有月份/天數，無確切日期
+  month?: number;                // 1–12（模糊層；跨年由 year 表達）
+  year?: number;                 // 月份所屬年份（早於當前月＝自動進位次年）
+  startDate?: string;            // YYYY-MM-DD（精確層）
+  endDate?: string;
+  daysCount: number;             // 天數（縮圈反哺預設；與日期雙向同步）
+  arrivalSlot: TimeSlot;         // 第一天抵達（預設 unset）
+  departureSlot: TimeSlot;       // 最後一天離開（預設 unset）
+  // ── 想怎麼玩 ──
+  companions: string[];          // 複選（獨旅/兩人/家人/長輩/寵物/同事/同學…）
+  pace: PaceLevel;               // 度量衡：relaxed 2–3 站、standard 4–5、packed 6+、deep 站少待久
+  vibe: VibeLevel;
+  budgetLevel: BudgetLevel;
+  currency: string;              // 由目的地推斷、可點改（旁註）
+  localTransport: LocalTransport;
+  // ── 你的講究 ──
+  tagsWanted: string[];          // 圈起來＝必含
+  tagsAvoided: string[];         // 劃掉＝負面約束（prompt 執行力最高的材料）
+  notes: string;                 // 手打欄原文（永久保留）
+  notesRefined?: string;         // 「整理一下」後的版本（使用者按「用這個」才生效；原文永遠可還原）
+  // ── 產出後的歷程 ──
+  createdAt: string;
+  updatedAt: string;
+  regenerations?: number;        // 整趟重排次數（第三次提示「進去手動調整可能更快」）
+  lastMoods?: RearrangeMood[];   // 最近一次重排的方向（餵旅風學習）
 }
 
 // 🐘 垃圾桶輕量投影（lazy-load，Kelvin 定案；HAR 背書：垃圾桶佔冷啟 99% 重量）：
