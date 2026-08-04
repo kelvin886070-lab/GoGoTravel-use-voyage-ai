@@ -261,9 +261,16 @@ async function geminiText(
   const generationConfig: Record<string, unknown> = {};
   if (jsonMode) generationConfig.responseMimeType = "application/json";
   if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
-  // ⚠️ flash-lite 屬「思考型」模型：不關掉 thinking，輸出額度會被思考過程吃光、text 回空字串
-  //    （destination-intel 全數失敗、快取表零列的真因）。結構化任務不需要 thinking。
-  if (jsonMode) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  // ⚠️ 思考型模型：不壓低 thinking，輸出額度會被思考過程吃光、text 回空字串。結構化任務不需要 thinking。
+  //    但**參數依世代而異**（2026-08-04 實測 400「Request contains an invalid argument」的真因）：
+  //    - Gemini 3.x：用 `thinkingLevel`（minimal 為抽取／分類類任務的建議值）；舊的 thinkingBudget 會被拒收
+  //    - Gemini 2.5：只認 `thinkingBudget`
+  //    兩者**絕不可同時送**（會直接 400）。
+  if (jsonMode) {
+    generationConfig.thinkingConfig = /^gemini-3/.test(model)
+      ? { thinkingLevel: "minimal" }
+      : { thinkingBudget: 0 };
+  }
 
   // 硬逾時：Gemini 若久久不回（或生成過長），一律放棄——上游全部有退位，等下去只會讓使用者盯著轉圈
   const controller = new AbortController();
@@ -289,6 +296,15 @@ async function geminiText(
   const data = await res.json();
   const ms = Date.now() - t0;   // 進日誌：延遲要能被量測，才不會又靠猜的
   if (!res.ok) {
+    // ⚠️ Google 的 message 常只有一句「Request contains an invalid argument」——真正指出哪個欄位的
+    //    是 error.details。**一定要一起印出來**，否則只能靠猜（這次就浪費了兩輪）。
+    console.error("[gemini] http error", {
+      status: res.status,
+      model,
+      message: data?.error?.message ?? null,
+      details: JSON.stringify(data?.error?.details ?? null).slice(0, 500),
+      ms,
+    });
     return { error: data?.error?.message ?? `Gemini 錯誤 ${res.status}`, ms };
   }
   const cand = data.candidates?.[0];
