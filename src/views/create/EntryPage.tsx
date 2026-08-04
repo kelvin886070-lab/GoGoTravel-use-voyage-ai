@@ -15,13 +15,14 @@
 //       偵測可以不完美，但**絕不無聲接受**：亂填必定被使用者親眼看見並親手放行。
 //     ④資料衛生：未驗證的地點不換主題色、不抓封面照、不寫入 intel（見 services/destinationIntel）。
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, X, Loader2, Mic } from 'lucide-react';
+import { X, Loader2, Mic } from 'lucide-react';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
 import { fetchDestinationIntel, isVerifiedIntel, misspellSuggestions, prefetchDestinationDeep, type DestinationIntel } from '../../services/destinationIntel';
 import { localPlaceVerdict } from '../../services/placeSanity';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
+import { TicketNextButton } from './TicketNextButton';
 
 const reduceMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -33,6 +34,9 @@ const seedOf = (s: string): number => {
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return h % 1000;
 };
+
+/** 版面錨點：輸入列**橫跨畫面正中線**；此值＝輸入列高度的一半（上下兩塊各自貼齊它的邊） */
+const INPUT_HALF = 26;
 
 /** 圈選的三種狀態：等情報／已驗證／未確認（查不到、逾時未定、或本地判定亂填） */
 type PickState = 'pending' | 'verified' | 'unverified';
@@ -316,10 +320,8 @@ export const EntryPage: React.FC<{
     const canNext = picked.length > 0;
     const crowded = picked.length >= 5;
 
-    /** 真的往下一步（已通過出口攔截） */
+    /** 真的往下一步（撕票由 TicketNextButton 負責，這裡只交出資料） */
     const goNext = useCallback(() => {
-        playPageSound('tear', 0.5);
-        hapticTap();
         onNext({
             destinations: picked.map(p => p.name),
             unverified: picked.filter(p => p.state === 'unverified').map(p => p.name),
@@ -328,17 +330,18 @@ export const EntryPage: React.FC<{
         });
     }, [picked, intel, isDomestic, layerA, layerB, onNext]);
 
-    /** ③出口攔截：永不 disabled——沒填給提示、還在查請他等、有未確認的先讓他親眼看見 */
-    const handleNext = () => {
-        if (!canNext) { toast('先寫下想去的地方，至少一個', 'info'); inputRef.current?.focus(); return; }
-        if (pendingCount > 0) { toast('正在確認地點，稍等一下', 'info'); return; }
+    /** ③出口攔截：回 false ＝ 不撕不前進（永不 disabled——沒填給提示、還在查請他等、
+     *  有未確認的先讓他親眼看見）。回 true 才由票券鈕演出快撕並交棒。 */
+    const guardNext = (): boolean => {
+        if (!canNext) { toast('先寫下想去的地方，至少一個', 'info'); inputRef.current?.focus(); return false; }
+        if (pendingCount > 0) { toast('正在確認地點，稍等一下', 'info'); return false; }
         if (unverifiedNames.length > 0) {
             setConfirmOpen(true);
             playPageSound('paperDrop');
             hapticTap();
-            return;
+            return false;
         }
-        goNext();
+        return true;
     };
 
     return (
@@ -392,9 +395,9 @@ export const EntryPage: React.FC<{
                         手機上那塊佔比更大 → 錨點被往上推（Kelvin 實測「還是沒置中」的真因）。
                         故本層 absolute inset-0 脫離 flex 流，底部票券鈕改用 mt-auto 自行貼底。 */}
                     <div className="absolute inset-0" style={{ animation: instant ? undefined : 'ktFadeUp .5s ease-out' }}>
-                        {/* 上半：標題與已選——底邊貼齊 42% 那條線（bottom:58% ＝ 距頂 42%） */}
+                        {/* 上半：標題與已選——底邊貼齊輸入列的上緣 */}
                         <div className="absolute inset-x-0 top-0 px-6 flex flex-col justify-end overflow-y-auto"
-                            style={{ bottom: '58%', paddingBottom: 14 }}>
+                            style={{ bottom: `calc(50% + ${INPUT_HALF}px)`, paddingBottom: 14 }}>
                             <div className="font-serif text-[25px] font-bold text-[#F6F1E7] text-center">這一趟，想去哪？</div>
                             <div className="font-mono text-[9px] tracking-[0.34em] text-white/55 text-center mt-1.5">DESTINATION</div>
 
@@ -412,9 +415,9 @@ export const EntryPage: React.FC<{
                             )}
                         </div>
 
-                        {/* 下半：輸入線本體與其後的一切——頂邊貼齊同一條 42% 線；底部留出票券鈕的位置 */}
-                        <div className="absolute inset-x-0 px-6 overflow-y-auto" style={{ top: '42%', bottom: 118 }}>
-
+                        {/* 輸入列：**整條橫跨畫面正中線**（top 50% + translateY(-50%)）——
+                            這是全頁唯一的錨點，上下內容各自往外長，永遠不會把它推走。 */}
+                        <div className="absolute inset-x-0 px-6" style={{ top: '50%', transform: 'translateY(-50%)' }}>
                         {/* 輸入：金色髮絲線＋金游標；IME 組字中的 Enter 不送出 */}
                         <div className="flex items-end gap-2 mx-auto w-full max-w-[250px] pb-1.5"
                             style={{ borderBottom: '1px solid rgba(201,185,143,.75)' }}>
@@ -443,6 +446,11 @@ export const EntryPage: React.FC<{
                                 </button>
                             ) : null}
                         </div>
+                        </div>
+
+                        {/* 下半：提醒與候選——頂邊貼齊輸入列下緣，往下長；底部留出票券鈕的位置 */}
+                        <div className="absolute inset-x-0 px-6 overflow-y-auto"
+                            style={{ top: `calc(50% + ${INPUT_HALF}px)`, bottom: 118 }}>
 
                         {/* ②未確認提醒：跟著**那一筆**走（不再靠全域 intel 判斷，逾時也一定會說話）；提醒但不擋 */}
                         {hint && pickedNames.includes(hint.name) && (
@@ -491,18 +499,7 @@ export const EntryPage: React.FC<{
                     </div>
 
                     <div className="px-4 mt-auto relative z-10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
-                        <button
-                            onClick={handleNext}
-                            className="w-full flex items-stretch active:scale-[0.99] transition-transform"
-                        >
-                            <span className="flex-1 bg-[#F6F1E7] rounded-l-full pl-5 pr-3 py-2.5 flex items-center justify-between">
-                                <span className="font-serif text-[15px] font-bold text-[#232320]">下一步</span>
-                                <span className="font-mono text-[8px] tracking-[0.2em] text-[#8A8266]">NEXT</span>
-                            </span>
-                            <span className="bg-[#F6F1E7] rounded-r-full px-3 flex items-center border-l-2 border-dashed border-[#C9BFA6]">
-                                <span className="w-7 h-7 rounded-full bg-[#232320] text-[#F6F1E7] flex items-center justify-center"><ArrowRight className="w-4 h-4" /></span>
-                            </span>
-                        </button>
+                        <TicketNextButton onPress={guardNext} onNext={goNext} />
                         <div className="flex justify-center gap-7 mt-3">
                             <button onClick={onManualCreate} className="font-serif text-[12px] text-white/70 underline underline-offset-4 decoration-white/40">自己手動建立</button>
                             <button onClick={onImport} className="font-serif text-[12px] text-white/70 underline underline-offset-4 decoration-white/40">從分享連結匯入</button>
@@ -536,7 +533,7 @@ export const EntryPage: React.FC<{
                         <div className="flex items-center justify-center gap-8 mt-6">
                             <button onClick={() => { setConfirmOpen(false); inputRef.current?.focus(); }}
                                 className="font-serif text-[13px] text-[#5A564C] underline underline-offset-4 decoration-[#B9B09A]">回去改</button>
-                            <button onClick={() => { setConfirmOpen(false); goNext(); }}
+                            <button onClick={() => { setConfirmOpen(false); playPageSound('tear', 0.5); hapticTap(); goNext(); }}
                                 className="relative font-serif text-[14px] font-bold text-[#232320] px-1 py-0.5">
                                 照這樣繼續
                                 {/* 紙上用墨（照片上才用金）——主要動作用手繪墨圈，與圈選同一種語言 */}
