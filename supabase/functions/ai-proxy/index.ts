@@ -83,6 +83,8 @@ Deno.serve(async (req) => {
         return json(await placeLookup(payload, user.id));
       case "cover-photo":
         return json(await coverPhoto(payload, user.id));
+      case "destination-intel":
+        return json(await destinationIntel(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -91,26 +93,121 @@ Deno.serve(async (req) => {
   }
 });
 
+// ---------- 目的地情報（destination-intel）----------
+// 生成表單重設計的資料管線：一次呼叫餵飽入口/縮圈/什麼時候/講究四頁。
+//   成本模型：**全域快取**（cached_destination_intel，TTL 35 天）——同一查詢全體使用者共用，
+//   第二次起零 LLM 成本；未命中才呼叫 Gemini 並計入每日限額（防有人用亂字串刷 API）。
+//   失敗策略：任何錯誤回 { intel: null }，前端有各自退位（通用標籤／不擋輸入）。
+const DEST_INTEL_TTL_DAYS = 35;
+
+function parseJsonLoose<T>(text: string): T | null {
+  if (!text) return null;
+  const clean = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const s = clean.indexOf("{"), e = clean.lastIndexOf("}");
+  if (s < 0 || e <= s) return null;
+  try {
+    return JSON.parse(clean.slice(s, e + 1)) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function destinationIntel(
+  payload: { query?: string },
+  userId: string,
+) {
+  const raw = (payload.query || "").trim();
+  // 前端已擋 <2 字元；後端再擋一次（省錢的第一道門）
+  if (raw.length < 2) return { intel: null };
+  const key = raw.toLowerCase().replace(/\s+/g, "");
+
+  // 1) 全域快取（命中＝免費、不計數）
+  const { data: cached } = await admin
+    .from("cached_destination_intel")
+    .select("data, created_at")
+    .eq("query", key)
+    .maybeSingle();
+  if (cached) {
+    const ageDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+    if (ageDays < DEST_INTEL_TTL_DAYS) return { intel: cached.data, cached: true };
+  }
+
+  // 2) 未命中：計入每日限額後才呼叫 LLM
+  if ((await bumpDailyOrLimit(userId)).limited) return { intel: null, limited: true };
+
+  const prompt = `你是旅遊資料庫。分析使用者輸入的目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
+
+規則：
+- granularity：country（國家）／region（區域或州省，如「關西」「北海道」「加州」）／city（城市或明確地點）／unknown（無法辨識）
+- 所有中文顯示名用繁體中文；不要使用 emoji
+- unknown 時：只需回 granularity 與 suggestions（最多 3 個最可能的目的地中文名）
+- zones 只在 granularity 為 country 或 region 時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤
+- tags：該目的地 8–10 個「玩法」標籤，名詞短語（例：市場與小吃、工藝與選物、庭園）
+- nearby：3–5 個**同一個國家內**的城市中文名（**絕不可跨國**）——granularity 為 country/region 時給該國/該區最值得去的城市；為 city 時給鄰近可順遊的城市
+- seasons：12 個月的一句話註記（**8–14 字**，描述當月最值得的景象或氣候）
+
+JSON 結構：
+{"granularity":"country|region|city|unknown","name":"正規中文名","nameEn":"English name","country":"ISO 3166-1 alpha-2 國碼","cityEn":"主要城市英文名(city 時給該城；其他給代表城市)","currency":"ISO 4217","zones":[{"name":"","en":"","cities":[""],"reason":"","tags":[""]}],"tags":[""],"nearby":[""],"seasons":{"1":"","2":"","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"","11":"","12":""},"suggestions":[""]}`;
+
+  // jsonMode（含關閉 thinking）＋放寬 token：兩者缺一都會讓長 JSON 拿不到內容
+  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 8192 });
+  if ("error" in res && res.error) {
+    console.error("[destination-intel] gemini error", raw, res.error);
+    return { intel: null, error: res.error };
+  }
+  const text = (res as { text?: string }).text || "";
+  const finishReason = (res as { finishReason?: string }).finishReason ?? null;
+  const intel = parseJsonLoose<Record<string, unknown>>(text);
+  if (!intel || !intel.granularity) {
+    // 診斷寫進 Edge Function 日誌（Dashboard → Edge Functions → ai-proxy → Logs）
+    console.error("[destination-intel] parse failed", { query: raw, finishReason, len: text.length, head: text.slice(0, 200) });
+    return { intel: null, reason: "parse", finishReason, len: text.length };
+  }
+  console.log("[destination-intel] ok", { query: raw, g: intel.granularity, nearby: (intel.nearby as string[] | undefined)?.length ?? 0 });
+
+  // 3) 寫入全域快取（unknown 也存——避免同一個錯字反覆打 LLM）
+  await admin.from("cached_destination_intel").upsert({
+    query: key,
+    data: intel,
+    created_at: new Date().toISOString(),
+  });
+  return { intel, cached: false };
+}
+
 // ---------- Gemini 文字 ----------
 async function geminiText(
-  { prompt, model = "gemini-3.1-flash-lite" }: {
+  { prompt, model = "gemini-3.1-flash-lite", jsonMode, maxOutputTokens }: {
     prompt: string;
     model?: string;
+    jsonMode?: boolean;        // 要求純 JSON 輸出（避免 markdown 包裹）
+    maxOutputTokens?: number;  // 長 JSON 必須放寬，否則被截斷 → 解析失敗
   },
 ) {
   if (!GEMINI_KEY) return { error: "伺服器未設定 GEMINI_KEY" };
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  const generationConfig: Record<string, unknown> = {};
+  if (jsonMode) generationConfig.responseMimeType = "application/json";
+  if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
+  // ⚠️ flash-lite 屬「思考型」模型：不關掉 thinking，輸出額度會被思考過程吃光、text 回空字串
+  //    （destination-intel 全數失敗、快取表零列的真因）。結構化任務不需要 thinking。
+  if (jsonMode) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+    }),
   });
   const data = await res.json();
   if (!res.ok) {
     return { error: data?.error?.message ?? `Gemini 錯誤 ${res.status}` };
   }
-  return { text: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
+  const cand = data.candidates?.[0];
+  // 有些回應把內容切成多段 parts；只取 [0] 會漏字 → 全部串起來
+  const text = (cand?.content?.parts || []).map((x: { text?: string }) => x?.text || "").join("") || "";
+  return { text, finishReason: cand?.finishReason ?? null };
 }
 
 // ---------- Gemini Vision ----------

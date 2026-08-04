@@ -8,7 +8,9 @@
 //   - 開關存 localStorage（預設開；'0'＝關）——會員中心的真開關讀寫這裡，無假按鈕鐵律。
 //   - 預載 lazy：首次呼叫才建 Audio（個人檔案分頁以外的使用者零成本）。
 
-export type PageSoundKind = 'flip' | 'riffle' | 'close';
+export type PageSoundKind =
+    | 'flip' | 'riffle' | 'close' | 'tear'
+    | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap';
 
 const SOUND_KEY = 'kt_pp_sound';   // 缺席或 '1' ＝開；'0' ＝關
 const VOLUME = 0.5;                // 質感音量：聽得到紙、不搶注意力
@@ -17,6 +19,16 @@ const SRC: Record<PageSoundKind, string> = {
     flip: '/sounds/page-flip.mp3',
     riffle: '/sounds/page-riffle.mp3',
     close: '/sounds/book-close.mp3',
+    tear: '/sounds/ticket-tear.mp3',   // 撕票（生成表單入口＋步間快撕；步間播放時音量另降）
+    // 🖋️ 生成表單的紙筆世界（Kelvin 自選素材，2026-08-04 裁齊）
+    penCircle: '/sounds/pen-circle.mp3',   // 畫圈＝選中
+    eraser: '/sounds/eraser.mp3',          // 橡皮擦＝取消
+    penWrite: '/sounds/pen-write.mp3',     // 逐字書寫（連續播放，音量最輕）
+    paperDrop: '/sounds/paper-drop.mp3',   // 紙張落桌
+    paperSlide: '/sounds/paper-slide.mp3', // 紙張滑動／票被遞過來
+    stamp: '/sounds/stamp.mp3',            // 蓋章（情感最高點）
+    penUncap: '/sounds/pen-uncap.mp3',     // 開筆蓋＝要開始寫了
+    penCap: '/sounds/pen-cap.mp3',         // 關筆蓋＝寫完擱筆
 };
 
 /** 翻頁音效目前是否開啟（預設開）。 */
@@ -55,12 +67,14 @@ export const hapticTap = (): void => {
     try { navigator.vibrate?.(10); } catch { /* ignore */ }
 };
 
-/** 播放翻頁音（永不 throw；關閉時靜默）。 */
-export const playPageSound = (kind: PageSoundKind): void => {
+/** 播放翻頁音（永不 throw；關閉時靜默）。
+ *  volumeScale：相對音量（撕票的「步間快撕」用 0.5＝約 -6dB，同一語言不同音量）。 */
+export const playPageSound = (kind: PageSoundKind, volumeScale = 1): void => {
     if (!isPageSoundOn()) return;
     const a = getAudio(kind);
     if (!a) return;
     try {
+        a.volume = Math.max(0, Math.min(1, VOLUME * volumeScale));
         a.currentTime = 0;
         void a.play().catch(() => { /* 自動播放政策擋下＝靜默 */ });
     } catch { /* ignore */ }

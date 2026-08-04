@@ -26,6 +26,24 @@ export function smallCoverUrl(url?: string): string | undefined {
     }
 }
 
+/** 滿版直式背景用（生成表單入口／未來全螢幕場景）：Pexels URL 參數要一張**直式大圖**。
+ *  與 smallCoverUrl（208px 卡片橫幅）分開——用橫幅去撐滿版會裁爛，用大圖去餵卡片則浪費解碼。 */
+export function heroCoverUrl(url?: string): string | undefined {
+    if (!url || !url.startsWith('http')) return url;
+    try {
+        const u = new URL(url);
+        if (!u.hostname.endsWith('images.pexels.com')) return url;
+        u.searchParams.set('auto', 'compress');
+        u.searchParams.set('cs', 'tinysrgb');
+        u.searchParams.set('w', '900');
+        u.searchParams.set('h', '1600');
+        u.searchParams.set('fit', 'crop');
+        return u.toString();
+    } catch {
+        return url;
+    }
+}
+
 /** 呼叫 ai-proxy 抓一張目的地橫幅照；任何失敗回 null（呼叫端不需 try/catch）。 */
 export async function fetchCoverPhoto(query: string): Promise<string | null> {
     try {

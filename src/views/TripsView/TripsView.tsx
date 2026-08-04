@@ -17,6 +17,8 @@ import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
+import { EntryPage, type EntryResult } from '../create/EntryPage';
+import { fetchProfileMeta, localeCountry } from '../../services/profile';
 import { ImportTripModal } from './modals/ImportTripModal';
 import { EditTripModal } from './modals/EditTripModal';
 
@@ -43,9 +45,45 @@ const dayTs = (dateStr: string): number => {
 };
 
 export const TripsView: React.FC<TripsViewProps> = ({
-    trips, activeTrip, onOpenActiveTrip, onAddTrip, onImportTrip, onSelectTrip,
+    trips, user, wishItems, activeTrip, onOpenActiveTrip, onAddTrip, onImportTrip, onSelectTrip,
     onUpdateTrip,
 }) => {
+  // 🎫 生成表單重設計：新入口頁（EntryPage）取代舊步驟①②；下一步交棒 CreateTripModal（帶入目的地與國內外）
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryResult, setEntryResult] = useState<EntryResult | null>(null);
+  const [residenceCountry, setResidenceCountry] = useState<string>(localeCountry());
+  // 櫥窗素材（三層個人化）：心願盒收藏照 → 護照回憶照 → 空（EntryPage 退回主題色底）。
+  //   label＝地名，可點直接加入（淡季鉤子閉環：看到收藏 → 一步出發）
+  const showcaseItems = useMemo(() => {
+      const wish = (wishItems || [])
+          .filter(w => !!w.customImage && w.customImage.startsWith('http'))
+          .map(w => {
+              const place = (w.city || '').trim();
+              return { url: w.customImage as string, caption: place ? `你收藏的 · ${place}` : undefined, place: place || undefined };
+          });
+      // 回憶照：caption 說明「這張照片來自哪一趟」；趟名不一定是地名，故不給 place（不可點加入）
+      const memories = trips
+          .filter(t => !t.isDeleted)
+          .flatMap(t => (t.memoryPhotoThumbs || t.memoryPhotos || []).slice(0, 2)
+              .map(url => ({ url, caption: `照片來自 · ${t.destination}` })));
+      return [...wish, ...memories].slice(0, 6);
+  }, [wishItems, trips]);
+
+  // 「再去一次」：過去去過的地方（去重、最近優先）——回頭客的高頻捷徑
+  const recentPlaces = useMemo(() => {
+      const seen = new Set<string>();
+      return trips
+          .filter(t => !t.isDeleted && !!t.destination)
+          .sort((a, b) => dayTs(b.startDate) - dayTs(a.startDate))
+          .map(t => t.destination.trim())
+          .filter(d => d && !seen.has(d) && (seen.add(d), true))
+          .slice(0, 4);
+  }, [trips]);
+  React.useEffect(() => {
+      let alive = true;
+      void fetchProfileMeta(user.id).then(m => { if (alive) setResidenceCountry(m.residenceCountry); });
+      return () => { alive = false; };
+  }, [user.id]);
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -80,7 +118,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
         {/* 🎟️ 開新旅程 CTA（票根式）：上移統一風格。匯入入口已移入建立流程 */}
         <div className="px-5 pt-4">
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={() => setEntryOpen(true)}
             className="w-full h-[66px] bg-white border border-black/[0.08] rounded-2xl flex items-stretch p-0 overflow-hidden active:scale-[0.99] transition-transform"
           >
             <span className="flex-1 flex flex-col justify-center items-start pl-[18px]">
@@ -144,11 +182,25 @@ export const TripsView: React.FC<TripsViewProps> = ({
       </div>
 
       {/* Modals */}
+      {entryOpen && (
+        <EntryPage
+          residenceCountry={residenceCountry}
+          showcaseItems={showcaseItems}
+          recentPlaces={recentPlaces}
+          onClose={() => setEntryOpen(false)}
+          onNext={(r) => { setEntryResult(r); setEntryOpen(false); setIsCreating(true); }}
+          onManualCreate={() => { setEntryOpen(false); setEntryResult(null); setIsCreating(true); }}
+          onImport={() => { setEntryOpen(false); setIsImporting(true); }}
+        />
+      )}
       {isCreating && (
         <CreateTripModal
-          onClose={() => setIsCreating(false)}
+          onClose={() => { setIsCreating(false); setEntryResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
+          initialDestinations={entryResult?.destinations}
+          initialIsDomestic={entryResult?.isDomestic}
+          initialStep={entryResult ? 3 : 1}
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}

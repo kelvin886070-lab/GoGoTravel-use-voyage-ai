@@ -71,8 +71,17 @@ const ORIGIN_OPTIONS = {
     ]
 };
 
-export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Trip) => void, onImport?: () => void }> = ({ onClose, onAddTrip, onImport }) => {
-    const [step, setStep] = useState(1);
+// 🎫 生成表單重設計（過渡期）：入口頁（views/create/EntryPage）已取代舊步驟①雙門與②目的地，
+//   以 initial* props 接手——舊步驟③交通起繼續走，後續頁面逐批換新。
+export const CreateTripModal: React.FC<{
+    onClose: () => void;
+    onAddTrip: (t: Trip) => void;
+    onImport?: () => void;
+    initialDestinations?: string[];
+    initialIsDomestic?: boolean;
+    initialStep?: number;
+}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep }) => {
+    const [step, setStep] = useState(initialStep ?? 1);
     const [loading, setLoading] = useState(false);
     
     // --- Step 1 Data ---
@@ -80,13 +89,13 @@ export const CreateTripModal: React.FC<{ onClose: () => void, onAddTrip: (t: Tri
     const IMG_DOMESTIC = "https://images.unsplash.com/photo-1708436746451-1444945ff61c?q=80&w=1974&auto=format&fit=crop";
 
     // --- Step 2 Data ---
-    const [tripType, setTripType] = useState<'international' | 'domestic'>('international'); 
-    const [destinations, setDestinations] = useState<string[]>([]); 
+    const [tripType, setTripType] = useState<'international' | 'domestic'>(initialIsDomestic ? 'domestic' : 'international');
+    const [destinations, setDestinations] = useState<string[]>(initialDestinations ?? []); 
     const [destinationInput, setDestinationInput] = useState(''); 
     const destinationInputRef = useRef<HTMLInputElement>(null);
     const [bgImage, setBgImage] = useState(IMG_INTL); 
 
-    const [origin, setOrigin] = useState('TPE');
+    const [origin, setOrigin] = useState(initialIsDomestic ? '台北' : 'TPE');
     const [isEditingOrigin, setIsEditingOrigin] = useState(false);
     const [showOriginMenu, setShowOriginMenu] = useState(false);
     

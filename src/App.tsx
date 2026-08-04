@@ -244,6 +244,7 @@ const App: React.FC = () => {
           } else if (event === 'SIGNED_OUT') {
               fetchedForUserRef.current = null;   // 換帳號重登要重抓
               clearSignedUrlCache();              // ② 換帳號不撿到上一位的照片鑰匙
+              void import('./services/destinationIntel').then(m => m.clearIntelCache());   // 目的地情報快取同理
               setUser(null);
               setCurrentView(AppView.TRIPS);
               setSelectedTrip(null);
