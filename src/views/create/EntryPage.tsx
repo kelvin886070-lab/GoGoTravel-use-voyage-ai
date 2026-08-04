@@ -393,23 +393,31 @@ export const EntryPage: React.FC<{
                         )
                     )}
 
-                    <div className="flex-1 flex flex-col justify-center px-6 pb-24 overflow-y-auto"
-                        style={{ animation: instant ? undefined : 'ktFadeUp .5s ease-out' }}>
-                        <div className="font-serif text-[25px] font-bold text-[#F6F1E7] text-center">這一趟，想去哪？</div>
-                        <div className="font-mono text-[9px] tracking-[0.34em] text-white/55 text-center mt-1.5 mb-6">DESTINATION</div>
+                    {/* 版面錨點（Kelvin 選 B）：**輸入線恆在畫面 42%**——上半往上長、下半往下長，
+                        內容再多也不會把輸入線推走；42% 略高於幾何中線＝人眼的視覺中心，且替鍵盤留出空間。 */}
+                    <div className="flex-1 relative" style={{ animation: instant ? undefined : 'ktFadeUp .5s ease-out' }}>
+                        {/* 上半：標題與已選——底邊貼齊 42% 那條線（bottom:58% ＝ 距頂 42%） */}
+                        <div className="absolute inset-x-0 top-0 px-6 flex flex-col justify-end overflow-y-auto"
+                            style={{ bottom: '58%', paddingBottom: 14 }}>
+                            <div className="font-serif text-[25px] font-bold text-[#F6F1E7] text-center">這一趟，想去哪？</div>
+                            <div className="font-mono text-[9px] tracking-[0.34em] text-white/55 text-center mt-1.5">DESTINATION</div>
 
-                        {/* 已選：金圈墨字（每行最多三個、間距足夠，圈與圈不打架） */}
-                        {picked.length > 0 && (
-                            <div className="flex flex-wrap justify-center mb-2 mx-auto" style={{ gap: '16px 20px', maxWidth: 260 }}>
-                                {picked.map(p => (
-                                    <PickedItem key={p.name} name={p.name} state={p.state} instant={instant}
-                                        onRemove={() => removeAt(p.name)} />
-                                ))}
-                            </div>
-                        )}
-                        {crowded && (
-                            <div className="text-center font-serif text-[10px] text-[#FAC775] mb-3">城市多——待會記得給足天數，或考慮拆成兩趟</div>
-                        )}
+                            {/* 已選：金圈墨字（每行最多三個、間距足夠，圈與圈不打架） */}
+                            {picked.length > 0 && (
+                                <div className="flex flex-wrap justify-center mt-6 mx-auto" style={{ gap: '16px 20px', maxWidth: 260 }}>
+                                    {picked.map(p => (
+                                        <PickedItem key={p.name} name={p.name} state={p.state} instant={instant}
+                                            onRemove={() => removeAt(p.name)} />
+                                    ))}
+                                </div>
+                            )}
+                            {crowded && (
+                                <div className="text-center font-serif text-[10px] text-[#FAC775] mt-3">城市多——待會記得給足天數，或考慮拆成兩趟</div>
+                            )}
+                        </div>
+
+                        {/* 下半：輸入線本體與其後的一切——頂邊貼齊同一條 42% 線 */}
+                        <div className="absolute inset-x-0 bottom-0 px-6 overflow-y-auto" style={{ top: '42%' }}>
 
                         {/* 輸入：金色髮絲線＋金游標；IME 組字中的 Enter 不送出 */}
                         <div className="flex items-end gap-2 mx-auto w-full max-w-[250px] pb-1.5"
@@ -483,6 +491,7 @@ export const EntryPage: React.FC<{
                                 </div>
                             </div>
                         )}
+                        </div>
                     </div>
 
                     <div className="px-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>

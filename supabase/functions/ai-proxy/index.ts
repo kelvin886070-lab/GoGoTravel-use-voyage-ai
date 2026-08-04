@@ -129,24 +129,55 @@ function parseJsonLoose<T>(text: string): T | null {
   }
 }
 
-/** 讀全域快取（未命中或過期回 null）。 */
+/**
+ * 快取存取一律套上逾時。
+ * ⚠️ 2026-08-04 實測教訓：`ok` 日誌印出來了、前端卻等兩分鐘——因為 return 之前還 `await` 了一次
+ *   快取寫入，那次寫入卡住就等於整個回應卡住。**快取是加速手段，不該有權力拖垮主流程**：
+ *   讀不到就當未命中、寫不進去就下次再說，兩者都不影響使用者拿到答案。
+ */
+function withDbTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T | null> {
+  return Promise.race([
+    Promise.resolve(p).catch((e) => {
+      console.error(`[cache] ${label} failed`, (e as Error)?.message ?? String(e));
+      return null;
+    }),
+    new Promise<null>((res) =>
+      setTimeout(() => {
+        console.error(`[cache] ${label} timeout`, { ms });
+        res(null);
+      }, ms)
+    ),
+  ]) as Promise<T | null>;
+}
+
+/** 讀全域快取（未命中、過期、逾時皆回 null）。 */
 async function readIntelCache(key: string): Promise<Record<string, unknown> | null> {
-  const { data } = await admin
-    .from("cached_destination_intel")
-    .select("data, created_at")
-    .eq("query", key)
-    .maybeSingle();
+  const res = await withDbTimeout(
+    admin.from("cached_destination_intel").select("data, created_at").eq("query", key).maybeSingle(),
+    2500,
+    `read ${key}`,
+  );
+  const data = res?.data;
   if (!data) return null;
   const ageDays = (Date.now() - new Date(data.created_at).getTime()) / 86400000;
   return ageDays < DEST_INTEL_TTL_DAYS ? data.data as Record<string, unknown> : null;
 }
 
-const writeIntelCache = (key: string, data: unknown) =>
-  admin.from("cached_destination_intel").upsert({
-    query: key,
-    data,
-    created_at: new Date().toISOString(),
-  });
+/** 寫全域快取（失敗或逾時只記日誌，**絕不擋回應**）。 */
+async function writeIntelCache(key: string, data: unknown): Promise<void> {
+  const t0 = Date.now();
+  const res = await withDbTimeout(
+    admin.from("cached_destination_intel").upsert({
+      query: key,
+      data,
+      created_at: new Date().toISOString(),
+    }),
+    3000,
+    `write ${key}`,
+  );
+  if (res?.error) console.error("[cache] write error", { key, message: res.error.message });
+  else console.log("[cache] write", { key, ms: Date.now() - t0, ok: !!res });
+}
 
 // ── 輕層：這是不是一個真的地方？（入口頁只等這個）────────────────────
 async function destinationIntel(
