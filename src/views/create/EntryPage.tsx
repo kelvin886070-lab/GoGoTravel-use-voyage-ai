@@ -152,6 +152,11 @@ export const EntryPage: React.FC<{
     const timersRef = useRef<Set<number>>(new Set());    // 逾時計時器：卸載一律清乾淨
 
     useEffect(() => {
+        // ⚠️ 必須在每次掛載時把旗標設回 true。React StrictMode（開發模式）會刻意
+        //    掛載→卸載→再掛載；只在 useRef 初值設 true 的話，那次假卸載會把它永久關掉，
+        //    之後所有非同步結果都會被 `if (!aliveRef.current) return` 擋掉——
+        //    症狀＝圈永遠畫不上、spinner 永遠不停（2026-08-04 追了兩輪的真兇）。
+        aliveRef.current = true;
         const timers = timersRef.current;
         return () => {
             aliveRef.current = false;
