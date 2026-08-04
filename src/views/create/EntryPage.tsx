@@ -418,8 +418,14 @@ export const EntryPage: React.FC<{
                         {/* 輸入列：**整條橫跨畫面正中線**（top 50% + translateY(-50%)）——
                             這是全頁唯一的錨點，上下內容各自往外長，永遠不會把它推走。 */}
                         <div className="absolute inset-x-0 px-6" style={{ top: '50%', transform: 'translateY(-50%)' }}>
-                        {/* 輸入：金色髮絲線＋金游標；IME 組字中的 Enter 不送出 */}
-                        <div className="flex items-end gap-2 mx-auto w-full max-w-[250px] pb-1.5"
+                        {/* 輸入：金色髮絲線＋金游標；IME 組字中的 Enter 不送出。
+                            ⚠️ 排版鐵則（2026-08-05 追到的水平偏移真因）：
+                              ①`<input>` 不可用 `flex-1` 排在圖示旁邊——flex 項目預設 `min-width:auto`，
+                                input 的固有寬度（約 20 字元）撐破容器往右溢出，圖示被擠到畫面外，
+                                「在輸入框內置中」的文字也跟著整段偏右。
+                              ②改成 input **獨佔整條線**（w-full＋min-w-0），圖示**絕對定位疊在線的右端**（不佔排版寬度）。
+                              ③左右內距必須**對稱**（各 28px）——不對稱的內距會再一次把文字中心推走。 */}
+                        <div className="relative mx-auto w-full max-w-[250px] pb-1.5"
                             style={{ borderBottom: '1px solid rgba(201,185,143,.75)' }}>
                             <input
                                 ref={inputRef}
@@ -431,20 +437,21 @@ export const EntryPage: React.FC<{
                                 }}
                                 enterKeyHint="done"
                                 placeholder="搜尋城市或地方…"
-                                className="flex-1 bg-transparent text-center font-serif text-[16px] text-[#F6F1E7] placeholder:text-white/45 outline-none py-1"
-                                style={{ caretColor: '#C9B98F' }}
+                                className="w-full min-w-0 bg-transparent text-center font-serif text-[16px] text-[#F6F1E7] placeholder:text-white/45 outline-none py-1"
+                                style={{ caretColor: '#C9B98F', paddingLeft: 28, paddingRight: 28 }}
                             />
-                            {loading ? (
-                                <Loader2 className="w-4 h-4 text-[#C9B98F] animate-spin mb-1.5" />
-                            ) : input.trim() ? (
-                                <button onClick={() => void commit()} aria-label="加入這個地方"
-                                    className="mb-1 w-6 h-6 rounded-full border border-[#C9B98F]/70 text-[#C9B98F] flex items-center justify-center text-[14px] leading-none">＋</button>
-                            ) : speechSupported ? (
-                                <button onClick={startVoice} aria-label="用說的"
-                                    className="mb-1 w-6 h-6 flex items-center justify-center">
-                                    <Mic className={`w-4 h-4 ${listening ? 'text-[#C9B98F] animate-pulse' : 'text-white/55'}`} />
-                                </button>
-                            ) : null}
+                            <span className="absolute right-0 bottom-1.5 flex items-center justify-center w-6 h-6">
+                                {loading ? (
+                                    <Loader2 className="w-4 h-4 text-[#C9B98F] animate-spin" />
+                                ) : input.trim() ? (
+                                    <button onClick={() => void commit()} aria-label="加入這個地方"
+                                        className="w-6 h-6 rounded-full border border-[#C9B98F]/70 text-[#C9B98F] flex items-center justify-center text-[14px] leading-none">＋</button>
+                                ) : speechSupported ? (
+                                    <button onClick={startVoice} aria-label="用說的" className="w-6 h-6 flex items-center justify-center">
+                                        <Mic className={`w-4 h-4 ${listening ? 'text-[#C9B98F] animate-pulse' : 'text-white/55'}`} />
+                                    </button>
+                                ) : null}
+                            </span>
                         </div>
                         </div>
 
