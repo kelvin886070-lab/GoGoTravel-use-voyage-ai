@@ -1,15 +1,20 @@
 // src/services/destinationIntel.ts
 // 🌍 目的地情報（生成表單重設計・資料管線；docs E3）
-//   一次呼叫餵飽四頁：入口（顆粒度判定／打錯猜測）、縮圈（地帶卡組）、什麼時候（季節註記）、
-//   講究（玩法標籤）、以及幣別旁註與 cityEn（封面照片管線沿用）。
-//   成本：ai-proxy 端**全域快取 90 天**（同一查詢全體使用者共用）＋未命中才計每日限額；
-//        本檔另有**前端兩層快取**（記憶體＋localStorage 7 天）與**同查詢併發去重**，
-//        使用者在表單裡來回上一步/下一步不會重打。
+//
+// ⏱️ 兩層架構（2026-08-04 延遲批的核心修正）：
+//   **輕層 destination-intel**（本檔 `fetchDestinationIntel`）：顆粒度／正規名／國碼／cityEn／幣別／
+//     順遊城市／打錯猜測——約 200 token，**入口頁只等這一層**（秒級）。
+//   **重層 destination-deep**（`fetchDestinationDeep`）：地帶卡組／玩法標籤／12 個月季節註記——
+//     輸出大得多，改在使用者填後面幾頁時**背景預取**，走到縮圈／什麼時候／講究頁時早就到了。
+//   為什麼要拆：舊版一顆呼叫要模型一次生出地帶＋標籤＋12 個月註記（maxOutputTokens 8192），
+//     **輸出長度＝等待時間**，實測入口頁要等兩分鐘——等的是三頁之後才用得到的資料。
+//   總 token 沒有變多，反而變少：城市級目的地根本不需要地帶卡，舊版每次照生。
+//
+//   成本：兩層各自在 ai-proxy 端**全域快取 35 天**（同一查詢字串全體使用者共用一筆）；
+//        本檔另有**前端兩層快取**（記憶體＋localStorage 7 天）與**同查詢併發去重**。
 //   失敗策略：任何情況回 null——呼叫端一律要有退位（通用標籤、不擋輸入、幣別保底）。
-//   防呆（2026-08 亂填批）：
-//     ①本地啟發式先篩（placeSanity）：明顯亂打**不打 API**（省錢，且畫面立刻能標未確認）
-//     ②資料衛生：granularity=unknown 一律清掉 country/currency/cityEn/zones/nearby，
-//       避免用錯幣別、抓錯封面照、把幻覺地帶帶進下游；country 非合法 ISO2 也視為未驗證。
+//   防呆（亂填批）：①本地啟發式先篩（placeSanity）：明顯亂打**不打 API**
+//        ②資料衛生：unknown 一律清掉 country/currency/cityEn/nearby，避免用錯幣別、抓錯封面照。
 import { supabase } from './supabase';
 import { localPlaceVerdict } from './placeSanity';
 
@@ -23,6 +28,7 @@ export interface IntelZone {
     tags?: string[];
 }
 
+/** 輕層：入口頁的驗證與交棒所需（**入口頁只等這個**） */
 export interface DestinationIntel {
     granularity: Granularity;
     name?: string;
@@ -30,51 +36,78 @@ export interface DestinationIntel {
     country?: string;    // ISO 3166-1 alpha-2（國內外推斷用）
     cityEn?: string;     // 封面照片查詢詞
     currency?: string;   // 幣別旁註
-    zones?: IntelZone[]; // 縮圈頁（country/region 才有）
-    tags?: string[];     // 講究頁標籤雲
-    nearby?: string[];   // 順遊城市
-    seasons?: Record<string, string>;  // '1'..'12' → 一句話
-    suggestions?: string[];            // unknown 時的猜測
+    nearby?: string[];   // 順遊城市（同國）
+    suggestions?: string[];   // unknown 時的猜測
 }
 
-const CACHE_KEY = 'kt_dest_intel_v3';   // v3：加入資料衛生與嚴格 unknown 判定 → 舊快取（可能含亂填誤判）一律失效
+/** 重層：後面三頁才用得到（背景預取，永不擋畫面） */
+export interface DestinationDeep {
+    zones?: IntelZone[];               // 縮圈頁（country/region 才有）
+    tags?: string[];                   // 講究頁標籤雲
+    seasons?: Record<string, string>;  // '1'..'12' → 一句話
+}
+
+// ── 前端快取（記憶體＋localStorage；兩層各自一份）────────────────────
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;   // 前端 7 天（伺服器端 35 天；前端短一點以便早日拿到修正）
 
-type CacheShape = Record<string, { d: DestinationIntel; e: number }>;
-let mem: CacheShape | null = null;
-const inflight = new Map<string, Promise<DestinationIntel | null>>();
+interface Entry<T> { d: T; e: number }
+
+/** 一個有 TTL 的小型持久快取（私密模式下自動退化為純記憶體）。 */
+const makeStore = <T>(storageKey: string) => {
+    let mem: Record<string, Entry<T>> | null = null;
+    const load = (): Record<string, Entry<T>> => {
+        if (mem) return mem;
+        try {
+            const raw = localStorage.getItem(storageKey);
+            const parsed = raw ? JSON.parse(raw) as Record<string, Entry<T>> : {};
+            const now = Date.now();
+            for (const k of Object.keys(parsed)) if (!parsed[k]?.d || parsed[k].e <= now) delete parsed[k];
+            mem = parsed;
+        } catch {
+            mem = {};
+        }
+        return mem;
+    };
+    return {
+        get(key: string): T | null {
+            const hit = load()[key];
+            return hit && hit.e > Date.now() ? hit.d : null;
+        },
+        set(key: string, value: T): void {
+            const store = load();
+            store[key] = { d: value, e: Date.now() + TTL_MS };
+            try { localStorage.setItem(storageKey, JSON.stringify(store)); } catch { /* 私密模式＝退化為記憶體快取 */ }
+        },
+        clear(): void {
+            mem = {};
+            try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+        },
+    };
+};
+
+// v4：拆成輕／重兩層，形狀改變 → 舊快取一律失效
+const intelStore = makeStore<DestinationIntel>('kt_dest_intel_v4');
+const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v1');
+
+const intelInflight = new Map<string, Promise<DestinationIntel | null>>();
+const deepInflight = new Map<string, Promise<DestinationDeep | null>>();
 
 const normalize = (q: string): string => q.trim().toLowerCase().replace(/\s+/g, '');
 
-const load = (): CacheShape => {
-    if (mem) return mem;
-    try {
-        const raw = localStorage.getItem(CACHE_KEY);
-        const parsed = raw ? JSON.parse(raw) as CacheShape : {};
-        const now = Date.now();
-        for (const k of Object.keys(parsed)) if (!parsed[k]?.d || parsed[k].e <= now) delete parsed[k];
-        mem = parsed;
-    } catch {
-        mem = {};
-    }
-    return mem;
-};
-const persist = (): void => {
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(load())); } catch { /* 私密模式＝退化為記憶體快取 */ }
-};
-
 /** 清除前端快取（登出時呼叫；避免帶著上一位使用者的查詢紀錄）。 */
 export const clearIntelCache = (): void => {
-    mem = {};
-    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    intelStore.clear();
+    deepStore.clear();
+    intelInflight.clear();
+    deepInflight.clear();
 };
 
 const ISO2 = /^[A-Za-z]{2}$/;
 
 /**
  * 資料衛生：把 LLM 回來的東西修剪成「可安全給下游用」的形狀。
- * - unknown：只留 granularity 與 suggestions——**不留** country/currency/cityEn/zones/nearby/tags，
- *   否則會用錯幣別、抓錯封面照、把幻覺地帶帶進縮圈頁。
+ * - unknown：只留 granularity 與 suggestions——**不留** country/currency/cityEn/nearby，
+ *   否則會用錯幣別、抓錯封面照、把幻覺順遊帶進下游。
  * - 非 unknown：country 統一大寫；不是合法 ISO2 就刪掉（寧可沒有，也不要錯的）。
  */
 const sanitize = (raw: DestinationIntel): DestinationIntel => {
@@ -82,7 +115,7 @@ const sanitize = (raw: DestinationIntel): DestinationIntel => {
         return {
             granularity: 'unknown',
             name: (raw.name || '').trim() || undefined,
-            suggestions: (raw.suggestions || []).filter(s => !!s && typeof s === 'string').slice(0, 3),
+            suggestions: (raw.suggestions || []).filter(s => typeof s === 'string' && !!s.trim()).slice(0, 3),
         };
     }
     const country = (raw.country || '').trim().toUpperCase();
@@ -97,36 +130,34 @@ const sanitize = (raw: DestinationIntel): DestinationIntel => {
 export const isVerifiedIntel = (intel: DestinationIntel | null): boolean =>
     !!intel && intel.granularity !== 'unknown' && ISO2.test(intel.country || '');
 
-/**
- * 取得目的地情報。
- * - 本地判定明顯亂填、或少於 2 字元：直接回 null，**不打 API**（省錢第一道門，與後端同規）。
- * - 前端快取命中：同步回傳（零延遲）。
- * - 併發去重：同一查詢同時被呼叫多次只發一個請求。
- */
-export async function fetchDestinationIntel(query: string): Promise<DestinationIntel | null> {
+/** 兩層共用的呼叫骨架：本地篩 → 前端快取 → 併發去重 → Edge Function。 */
+async function fetchLayer<T>(
+    action: 'destination-intel' | 'destination-deep',
+    query: string,
+    store: { get(k: string): T | null; set(k: string, v: T): void },
+    inflight: Map<string, Promise<T | null>>,
+    pick: (data: Record<string, unknown>) => T | null,
+): Promise<T | null> {
     const key = normalize(query);
     if (key.length < 2) return null;
     if (localPlaceVerdict(query) === 'junk') return null;   // 零成本第一道篩：亂碼不值得一次 LLM 呼叫
 
-    const cache = load();
-    const hit = cache[key];
-    if (hit && hit.e > Date.now()) return hit.d;
+    const hit = store.get(key);
+    if (hit) return hit;
 
     const running = inflight.get(key);
     if (running) return running;
 
-    const task = (async (): Promise<DestinationIntel | null> => {
+    const task = (async (): Promise<T | null> => {
         try {
             const { data, error } = await supabase.functions.invoke('ai-proxy', {
-                body: { action: 'destination-intel', payload: { query: query.trim() } },
+                body: { action, payload: { query: query.trim() } },
             });
-            if (error || !data || data.error) return null;
-            const rawIntel = data.intel as DestinationIntel | null;
-            if (!rawIntel?.granularity) return null;
-            const intel = sanitize(rawIntel);          // 先修剪再入快取：髒資料一次都不要留下
-            cache[key] = { d: intel, e: Date.now() + TTL_MS };
-            persist();
-            return intel;
+            if (error || !data || (data as { error?: unknown }).error) return null;
+            const value = pick(data as Record<string, unknown>);
+            if (!value) return null;
+            store.set(key, value);
+            return value;
         } catch {
             return null;
         } finally {
@@ -136,6 +167,37 @@ export async function fetchDestinationIntel(query: string): Promise<DestinationI
     inflight.set(key, task);
     return task;
 }
+
+/**
+ * 輕層：這是不是一個真的地方？（入口頁只等這個，約 200 token）
+ * - 本地判定亂填、或少於 2 字元：直接回 null，**不打 API**。
+ */
+export const fetchDestinationIntel = (query: string): Promise<DestinationIntel | null> =>
+    fetchLayer('destination-intel', query, intelStore, intelInflight, data => {
+        const raw = data.intel as DestinationIntel | null;
+        return raw?.granularity ? sanitize(raw) : null;   // 先修剪再入快取：髒資料一次都不要留下
+    });
+
+/**
+ * 重層：地帶卡組／玩法標籤／季節註記（縮圈、什麼時候、講究三頁用）。
+ * 呼叫端一律要能在它還沒到的時候正常顯示（退位）。
+ */
+export const fetchDestinationDeep = (query: string): Promise<DestinationDeep | null> =>
+    fetchLayer('destination-deep', query, deepStore, deepInflight, data => {
+        const raw = data.deep as DestinationDeep | null;
+        if (!raw) return null;
+        const ok = (raw.zones?.length || raw.tags?.length || raw.seasons);
+        return ok ? raw : null;
+    });
+
+/**
+ * 背景預取重層（fire-and-forget）：目的地一驗證通過就先熱起來，
+ * 使用者填完「什麼時候／想怎麼玩」走到縮圈頁時，資料通常已經在快取裡了。
+ * 永不 throw、永不阻塞畫面。
+ */
+export const prefetchDestinationDeep = (query: string): void => {
+    void fetchDestinationDeep(query).catch(() => null);
+};
 
 // ── 呼叫端的便利函式（全部對 null 安全，各自帶退位）──────────────────
 
@@ -147,18 +209,18 @@ export const needsZoneStep = (intel: DestinationIntel | null): boolean =>
 export const misspellSuggestions = (intel: DestinationIntel | null): string[] =>
     intel?.granularity === 'unknown' ? (intel.suggestions || []).slice(0, 3) : [];
 
-/** 玩法標籤（講究頁；查不到＝通用組退位，畫面不會空）。 */
+/** 玩法標籤（講究頁；重層還沒到或查不到＝通用組退位，畫面不會空）。 */
 const FALLBACK_TAGS = ['市場與小吃', '在地咖啡', '博物館與展覽', '老街散策', '自然風景', '選物與工藝', '夜景', '溫泉與放鬆'];
-export const intelTags = (intel: DestinationIntel | null): string[] => {
-    const t = (intel?.tags || []).filter(Boolean);
+export const intelTags = (deep: DestinationDeep | null): string[] => {
+    const t = (deep?.tags || []).filter(Boolean);
     return t.length >= 4 ? t.slice(0, 12) : FALLBACK_TAGS;
 };
 
-/** 某月的季節註記（「十月的金澤，楓正紅」的素材）；查不到回 null（該行不顯示）。 */
-export const seasonNote = (intel: DestinationIntel | null, month: number): string | null =>
-    (intel?.seasons?.[String(month)] || '').trim() || null;
+/** 某月的季節註記（「十月的金澤，楓正紅」的素材）；沒有回 null（該行不顯示）。 */
+export const seasonNote = (deep: DestinationDeep | null, month: number): string | null =>
+    (deep?.seasons?.[String(month)] || '').trim() || null;
 
-/** 最合適的季節（「還沒想法」時的專家時刻）：挑註記最像旺季的兩個月＝直接取 seasons 全表交給呼叫端顯示。 */
-export const seasonTable = (intel: DestinationIntel | null): Array<{ month: number; note: string }> =>
-    Array.from({ length: 12 }, (_, i) => ({ month: i + 1, note: seasonNote(intel, i + 1) || '' }))
+/** 12 個月的季節全表（「還沒想法」時的專家時刻）；沒有註記的月份自動略過。 */
+export const seasonTable = (deep: DestinationDeep | null): Array<{ month: number; note: string }> =>
+    Array.from({ length: 12 }, (_, i) => ({ month: i + 1, note: seasonNote(deep, i + 1) || '' }))
         .filter(x => !!x.note);

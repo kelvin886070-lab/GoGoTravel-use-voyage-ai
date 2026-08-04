@@ -61,8 +61,10 @@ const CONSONANT_RUN_LIMIT = 5;
 /** 中日韓字元（用來切換長度上限） */
 const CJK = /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]/u;
 
-/** 是否為純拉丁字母串（子音／鍵盤／bigram 規則只對它適用；中日韓一律不套用）。 */
-const isLatinWord = (s: string): boolean => /^[a-z]+$/.test(s);
+/** 是否為 ASCII 英數串（子音／鍵盤／bigram 規則的適用範圍；中日韓一律不套用）。
+ *  **必須允許夾帶數字**：`jrwv0wpnv` 只因為中間一個 0 就整組規則被跳過——
+ *  這是 2026-08-04 實測漏掉的真因。判斷時用「去掉數字後的字母投影」。 */
+const isLatinish = (s: string): boolean => /^[a-z0-9]+$/.test(s) && /[a-z]/.test(s);
 
 /** 最長連續子音長度。 */
 const maxConsonantRun = (s: string): number => {
@@ -104,13 +106,14 @@ export const localPlaceVerdict = (raw: string): LocalVerdict => {
     if (EXACT_JUNK.has(compact)) return 'junk';               // 公認的測試字串（完全相符）
     if (/(.)\1{2,}/u.test(compact)) return 'junk';            // 同一字元連續 3 次（aaa、哈哈哈）
 
-    if (isLatinWord(compact)) {
-        if (hasKeyboardRun(compact)) return 'junk';                                       // asdfgh
-        if (compact.length >= 4 && ![...compact].some(c => VOWELS.has(c))) return 'junk';  // 全無母音
-        if (maxConsonantRun(compact) >= CONSONANT_RUN_LIMIT) return 'junk';               // 5 個子音連在一起
-        if (/q[^uaeiou]/.test(compact)) return 'junk';                                    // q 後面不接母音（Qatar/Qingdao 皆通過）
-        for (let i = 0; i + 2 <= compact.length; i++) {
-            if (IMPOSSIBLE_BIGRAMS.has(compact.slice(i, i + 2))) return 'junk';            // 罕用子音相鄰
+    if (isLatinish(compact)) {
+        if (hasKeyboardRun(compact)) return 'junk';                    // asdfgh（含數字列，故用原字串判斷）
+        const letters = compact.replace(/[0-9]/g, '');                 // 字母投影：數字不影響「像不像一個字」
+        if (letters.length >= 4 && ![...letters].some(c => VOWELS.has(c))) return 'junk';  // 全無母音
+        if (maxConsonantRun(letters) >= CONSONANT_RUN_LIMIT) return 'junk';               // 5 個子音連在一起
+        if (/q[^uaeiou]/.test(letters)) return 'junk';                                    // q 後面不接母音（Qatar/Qingdao 皆通過）
+        for (let i = 0; i + 2 <= letters.length; i++) {
+            if (IMPOSSIBLE_BIGRAMS.has(letters.slice(i, i + 2))) return 'junk';            // 罕用子音相鄰
         }
     }
 

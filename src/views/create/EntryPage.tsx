@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, X, Loader2, Mic } from 'lucide-react';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
-import { fetchDestinationIntel, isVerifiedIntel, misspellSuggestions, type DestinationIntel } from '../../services/destinationIntel';
+import { fetchDestinationIntel, isVerifiedIntel, misspellSuggestions, prefetchDestinationDeep, type DestinationIntel } from '../../services/destinationIntel';
 import { localPlaceVerdict } from '../../services/placeSanity';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
@@ -250,6 +250,7 @@ export const EntryPage: React.FC<{
             setHint(h => (h && h.name === value ? null : h));
         }
         setIntel(got);                   // 候選字跟著「最新已驗證的目的地」走
+        prefetchDestinationDeep(value);  // 重層（地帶卡／標籤／季節）背景預熱——使用者填後面幾頁時就備好了
         if (silent) return;
         const url = await fetchCoverPhoto(`${got?.cityEn || value} travel`);
         const hero = heroCoverUrl(url || undefined);

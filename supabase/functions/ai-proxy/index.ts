@@ -85,6 +85,8 @@ Deno.serve(async (req) => {
         return json(await coverPhoto(payload, user.id));
       case "destination-intel":
         return json(await destinationIntel(payload, user.id));
+      case "destination-deep":
+        return json(await destinationDeep(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -93,12 +95,27 @@ Deno.serve(async (req) => {
   }
 });
 
-// ---------- 目的地情報（destination-intel）----------
-// 生成表單重設計的資料管線：一次呼叫餵飽入口/縮圈/什麼時候/講究四頁。
+// ---------- 目的地情報（兩層：destination-intel / destination-deep）----------
+// 生成表單重設計的資料管線。**刻意拆成兩層**（2026-08-04 延遲批）：
+//   輕層 destination-intel：顆粒度／正規名／國碼／cityEn／幣別／順遊／猜測——約 200 token，
+//     **入口頁只等這一層**（秒級）。
+//   重層 destination-deep：地帶卡組／玩法標籤／12 個月季節註記——輸出大得多，由前端在使用者
+//     填後面幾頁時**背景預取**。
+//   為什麼拆：輸出長度＝等待時間。舊版一顆呼叫連 12 個月註記都要一起生（maxOutputTokens 8192），
+//     實測入口頁要等兩分鐘——等的是三頁之後才用得到的資料。拆開後總 token 反而更少
+//     （城市級目的地不需要地帶卡，舊版每次照生）。
 //   成本模型：**全域快取**（cached_destination_intel，TTL 35 天）——同一查詢全體使用者共用，
 //   第二次起零 LLM 成本；未命中才呼叫 Gemini 並計入每日限額（防有人用亂字串刷 API）。
-//   失敗策略：任何錯誤回 { intel: null }，前端有各自退位（通用標籤／不擋輸入）。
+//   重層在同一張表用 `deep:` 前綴當 key（零 schema 變更）。
+//   失敗策略：任何錯誤回 null，前端有各自退位（通用標籤／不擋輸入）。
 const DEST_INTEL_TTL_DAYS = 35;
+/** Gemini 呼叫的**預設**硬上限：只是最後的安全網（行程生成本來就長，不能設太短）；
+ *  短任務一律自己傳 timeoutMs——見 destinationIntel(12s) / destinationDeep(45s)。 */
+const GEMINI_TIMEOUT_MS = 120000;
+/** 輕層：入口頁在等，超過這個時間就沒有等下去的意義（前端 8 秒也會自己放棄） */
+const INTEL_TIMEOUT_MS = 12000;
+/** 重層：背景預取，可以慢，但不能沒有上限 */
+const DEEP_TIMEOUT_MS = 45000;
 
 function parseJsonLoose<T>(text: string): T | null {
   if (!text) return null;
@@ -112,6 +129,26 @@ function parseJsonLoose<T>(text: string): T | null {
   }
 }
 
+/** 讀全域快取（未命中或過期回 null）。 */
+async function readIntelCache(key: string): Promise<Record<string, unknown> | null> {
+  const { data } = await admin
+    .from("cached_destination_intel")
+    .select("data, created_at")
+    .eq("query", key)
+    .maybeSingle();
+  if (!data) return null;
+  const ageDays = (Date.now() - new Date(data.created_at).getTime()) / 86400000;
+  return ageDays < DEST_INTEL_TTL_DAYS ? data.data as Record<string, unknown> : null;
+}
+
+const writeIntelCache = (key: string, data: unknown) =>
+  admin.from("cached_destination_intel").upsert({
+    query: key,
+    data,
+    created_at: new Date().toISOString(),
+  });
+
+// ── 輕層：這是不是一個真的地方？（入口頁只等這個）────────────────────
 async function destinationIntel(
   payload: { query?: string },
   userId: string,
@@ -121,69 +158,101 @@ async function destinationIntel(
   if (raw.length < 2) return { intel: null };
   const key = raw.toLowerCase().replace(/\s+/g, "");
 
-  // 1) 全域快取（命中＝免費、不計數）
-  const { data: cached } = await admin
-    .from("cached_destination_intel")
-    .select("data, created_at")
-    .eq("query", key)
-    .maybeSingle();
-  if (cached) {
-    const ageDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
-    if (ageDays < DEST_INTEL_TTL_DAYS) return { intel: cached.data, cached: true };
-  }
+  const cached = await readIntelCache(key);
+  if (cached) return { intel: cached, cached: true };
 
-  // 2) 未命中：計入每日限額後才呼叫 LLM
+  // 未命中：計入每日限額後才呼叫 LLM
   if ((await bumpDailyOrLimit(userId)).limited) return { intel: null, limited: true };
 
-  const prompt = `你是旅遊資料庫。分析使用者輸入的目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
+  const prompt = `你是旅遊資料庫。判斷使用者輸入的目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
 
 規則：
 - granularity：country（國家）／region（區域或州省，如「關西」「北海道」「加州」）／city（城市或明確地點）／unknown（無法辨識）
 - **嚴格判定 unknown**：若輸入不是真實地名（隨手打的字、一句話、無意義字串、人名、商品名），granularity **必須** 回 unknown——**不要勉強猜成某個地方**；suggestions 給最接近的真實地名（最多 3 個），完全無法聯想時給空陣列
 - **寧可說不知道**：只要你無法確定這個地方**真實存在於地圖上**，就回 unknown。猜錯的代價遠高於承認不知道
 - granularity 不是 unknown 時，**country 必填**且必須是合法的 ISO 3166-1 alpha-2 兩碼國碼；連國家都無法確定，代表你其實不認識這個地方——請改回 unknown
-- 所有中文顯示名用繁體中文；不要使用 emoji
-- unknown 時：只需回 granularity 與 suggestions（最多 3 個最可能的目的地中文名）
-- zones 只在 granularity 為 country 或 region 時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤
-- tags：該目的地 8–10 個「玩法」標籤，名詞短語（例：市場與小吃、工藝與選物、庭園）
+- unknown 時：只回 granularity 與 suggestions，其餘欄位一律省略
 - nearby：3–5 個**同一個國家內**的城市中文名（**絕不可跨國**）——granularity 為 country/region 時給該國/該區最值得去的城市；為 city 時給鄰近可順遊的城市
-- seasons：12 個月的一句話註記（**8–14 字**，描述當月最值得的景象或氣候）
+- 所有中文顯示名用繁體中文；不要使用 emoji；**回答務必簡短**，不要加任何額外欄位
 
 JSON 結構：
-{"granularity":"country|region|city|unknown","name":"正規中文名","nameEn":"English name","country":"ISO 3166-1 alpha-2 國碼","cityEn":"主要城市英文名(city 時給該城；其他給代表城市)","currency":"ISO 4217","zones":[{"name":"","en":"","cities":[""],"reason":"","tags":[""]}],"tags":[""],"nearby":[""],"seasons":{"1":"","2":"","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"","11":"","12":""},"suggestions":[""]}`;
+{"granularity":"country|region|city|unknown","name":"正規中文名","nameEn":"English name","country":"ISO 3166-1 alpha-2 國碼","cityEn":"主要城市英文名(city 時給該城；其他給代表城市)","currency":"ISO 4217","nearby":[""],"suggestions":[""]}`;
 
-  // jsonMode（含關閉 thinking）＋放寬 token：兩者缺一都會讓長 JSON 拿不到內容
-  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 8192 });
+  // 輕層輸出很短：512 token 綽綽有餘（token 上限＝等待時間上限）
+  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 512, timeoutMs: INTEL_TIMEOUT_MS });
   if ("error" in res && res.error) {
     console.error("[destination-intel] gemini error", raw, res.error);
     return { intel: null, error: res.error };
   }
   const text = (res as { text?: string }).text || "";
   const finishReason = (res as { finishReason?: string }).finishReason ?? null;
+  const ms = (res as { ms?: number }).ms ?? null;
   const intel = parseJsonLoose<Record<string, unknown>>(text);
   if (!intel || !intel.granularity) {
     // 診斷寫進 Edge Function 日誌（Dashboard → Edge Functions → ai-proxy → Logs）
-    console.error("[destination-intel] parse failed", { query: raw, finishReason, len: text.length, head: text.slice(0, 200) });
-    return { intel: null, reason: "parse", finishReason, len: text.length };
+    console.error("[destination-intel] parse failed", { query: raw, finishReason, ms, len: text.length, head: text.slice(0, 200) });
+    return { intel: null, reason: "parse", finishReason };
   }
-  console.log("[destination-intel] ok", { query: raw, g: intel.granularity, nearby: (intel.nearby as string[] | undefined)?.length ?? 0 });
+  console.log("[destination-intel] ok", { query: raw, g: intel.granularity, ms, len: text.length });
 
-  // 3) 寫入全域快取（unknown 也存——避免同一個錯字反覆打 LLM）
-  await admin.from("cached_destination_intel").upsert({
-    query: key,
-    data: intel,
-    created_at: new Date().toISOString(),
-  });
+  // 寫入全域快取（unknown 也存——避免同一個錯字反覆打 LLM）
+  await writeIntelCache(key, intel);
   return { intel, cached: false };
+}
+
+// ── 重層：地帶卡組／玩法標籤／季節註記（前端背景預取，不擋畫面）────────
+async function destinationDeep(
+  payload: { query?: string },
+  userId: string,
+) {
+  const raw = (payload.query || "").trim();
+  if (raw.length < 2) return { deep: null };
+  const key = `deep:${raw.toLowerCase().replace(/\s+/g, "")}`;   // 與輕層同表，前綴區分
+
+  const cached = await readIntelCache(key);
+  if (cached) return { deep: cached, cached: true };
+
+  if ((await bumpDailyOrLimit(userId)).limited) return { deep: null, limited: true };
+
+  const prompt = `你是旅遊資料庫。針對目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
+
+規則：
+- 若「${raw}」不是真實地名，三個欄位一律回空（zones: []、tags: []、seasons: {}）——不要編造
+- zones 只在「${raw}」是國家或區域時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤；若是城市則 zones 回空陣列
+- tags：該目的地 8–10 個「玩法」標籤，名詞短語（例：市場與小吃、工藝與選物、庭園）
+- seasons：12 個月的一句話註記（**8–14 字**，描述當月最值得的景象或氣候）
+- 繁體中文；不要使用 emoji
+
+JSON 結構：
+{"zones":[{"name":"","en":"","cities":[""],"reason":"","tags":[""]}],"tags":[""],"seasons":{"1":"","2":"","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"","11":"","12":""}}`;
+
+  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 4096, timeoutMs: DEEP_TIMEOUT_MS });
+  if ("error" in res && res.error) {
+    console.error("[destination-deep] gemini error", raw, res.error);
+    return { deep: null, error: res.error };
+  }
+  const text = (res as { text?: string }).text || "";
+  const finishReason = (res as { finishReason?: string }).finishReason ?? null;
+  const ms = (res as { ms?: number }).ms ?? null;
+  const deep = parseJsonLoose<Record<string, unknown>>(text);
+  if (!deep) {
+    console.error("[destination-deep] parse failed", { query: raw, finishReason, ms, len: text.length, head: text.slice(0, 200) });
+    return { deep: null, reason: "parse", finishReason };
+  }
+  console.log("[destination-deep] ok", { query: raw, zones: (deep.zones as unknown[] | undefined)?.length ?? 0, ms });
+
+  await writeIntelCache(key, deep);
+  return { deep, cached: false };
 }
 
 // ---------- Gemini 文字 ----------
 async function geminiText(
-  { prompt, model = "gemini-3.5-flash-lite", jsonMode, maxOutputTokens }: {
+  { prompt, model = "gemini-3.5-flash-lite", jsonMode, maxOutputTokens, timeoutMs }: {
     prompt: string;
     model?: string;
     jsonMode?: boolean;        // 要求純 JSON 輸出（避免 markdown 包裹）
-    maxOutputTokens?: number;  // 長 JSON 必須放寬，否則被截斷 → 解析失敗
+    maxOutputTokens?: number;  // ⚠️ 這個數字就是「最壞情況的等待時間」——輸出長度＝生成時間，勿隨手放寬
+    timeoutMs?: number;        // 硬逾時（預設 GEMINI_TIMEOUT_MS）：掛住一律放棄，不讓前端無限轉圈
   },
 ) {
   if (!GEMINI_KEY) return { error: "伺服器未設定 GEMINI_KEY" };
@@ -195,22 +264,37 @@ async function geminiText(
   // ⚠️ flash-lite 屬「思考型」模型：不關掉 thinking，輸出額度會被思考過程吃光、text 回空字串
   //    （destination-intel 全數失敗、快取表零列的真因）。結構化任務不需要 thinking。
   if (jsonMode) generationConfig.thinkingConfig = { thinkingBudget: 0 };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
-    }),
-  });
+
+  // 硬逾時：Gemini 若久久不回（或生成過長），一律放棄——上游全部有退位，等下去只會讓使用者盯著轉圈
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? GEMINI_TIMEOUT_MS);
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const aborted = (e as Error)?.name === "AbortError";
+    return { error: aborted ? `Gemini 逾時（${timeoutMs ?? GEMINI_TIMEOUT_MS}ms）` : ((e as Error)?.message ?? "Gemini 連線失敗"), ms: Date.now() - t0 };
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json();
+  const ms = Date.now() - t0;   // 進日誌：延遲要能被量測，才不會又靠猜的
   if (!res.ok) {
-    return { error: data?.error?.message ?? `Gemini 錯誤 ${res.status}` };
+    return { error: data?.error?.message ?? `Gemini 錯誤 ${res.status}`, ms };
   }
   const cand = data.candidates?.[0];
   // 有些回應把內容切成多段 parts；只取 [0] 會漏字 → 全部串起來
   const text = (cand?.content?.parts || []).map((x: { text?: string }) => x?.text || "").join("") || "";
-  return { text, finishReason: cand?.finishReason ?? null };
+  return { text, finishReason: cand?.finishReason ?? null, ms };
 }
 
 // ---------- Gemini Vision ----------

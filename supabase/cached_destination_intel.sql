@@ -6,8 +6,11 @@
 --   只有 edge function 的 service role 讀寫；前端無政策＝碰不到（與 cached_searches 同一套）。
 -- 於 Supabase SQL Editor 執行。可重複執行。
 
+-- 📌 2026-08-04 延遲批：情報拆成**兩層**，同一張表用 key 前綴區分（零 schema 變更，本檔不必重跑）：
+--    無前綴 "日本"        ＝輕層 destination-intel（顆粒度/國碼/cityEn/幣別/順遊；入口頁只等這層）
+--    "deep:日本"          ＝重層 destination-deep（地帶卡/玩法標籤/12 個月季節註記；背景預取）
 create table if not exists public.cached_destination_intel (
-    query       text primary key,            -- 正規化後的查詢字串（小寫去空白，例 "日本"、"金澤"）
+    query       text primary key,            -- 正規化後的查詢字串（小寫去空白，例 "日本"、"deep:日本"）
     data        jsonb not null,              -- DestinationIntel（見 services/destinationIntel.ts）
     created_at  timestamptz not null default now()
 );
