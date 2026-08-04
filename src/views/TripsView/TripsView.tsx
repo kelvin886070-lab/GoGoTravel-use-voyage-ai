@@ -187,6 +187,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
           residenceCountry={residenceCountry}
           showcaseItems={showcaseItems}
           recentPlaces={recentPlaces}
+          initialDestinations={entryResult?.destinations}
           onClose={() => setEntryOpen(false)}
           onNext={(r) => { setEntryResult(r); setEntryOpen(false); setIsCreating(true); }}
           onManualCreate={() => { setEntryOpen(false); setEntryResult(null); setIsCreating(true); }}
@@ -201,6 +202,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
           initialDestinations={entryResult?.destinations}
           initialIsDomestic={entryResult?.isDomestic}
           initialStep={entryResult ? 3 : 1}
+          onBackToEntry={() => { setIsCreating(false); setEntryOpen(true); }}
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}

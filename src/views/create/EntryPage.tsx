@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X, Loader2, Mic } from 'lucide-react';
 import { playPageSound, hapticTap } from '../../services/sounds';
+import { toast } from '../../components/Toast';
 import { fetchDestinationIntel, misspellSuggestions, type DestinationIntel } from '../../services/destinationIntel';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
@@ -100,14 +101,15 @@ export const EntryPage: React.FC<{
     residenceCountry: string;             // 批A：居住國（國內外推斷；表單永不問）
     showcaseItems?: ShowcaseItem[];       // 櫥窗：心願盒收藏／護照回憶（label 可點直接加入）
     recentPlaces?: string[];              // 「再去一次」：過去去過的地方
+    initialDestinations?: string[];       // 從下一步返回時復原（不必重打）
     onClose: () => void;
     onNext: (r: EntryResult) => void;
     onManualCreate: () => void;
     onImport: () => void;
-}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], onClose, onNext, onManualCreate, onImport }) => {
+}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, onClose, onNext, onManualCreate, onImport }) => {
     const instant = useMemo(() => reduceMotion(), []);
-    const [phase, setPhase] = useState<'tear' | 'open'>(instant ? 'open' : 'tear');
-    const [picked, setPicked] = useState<Picked[]>([]);
+    const [phase, setPhase] = useState<'tear' | 'open'>(instant || (initialDestinations?.length ?? 0) > 0 ? 'open' : 'tear');
+    const [picked, setPicked] = useState<Picked[]>(() => (initialDestinations || []).map(name => ({ name, confirmed: true })));
     const [input, setInput] = useState('');
     const [intel, setIntel] = useState<DestinationIntel | null>(null);   // 恆為「最新確認的目的地」的情報
     const [loading, setLoading] = useState(false);
@@ -133,7 +135,7 @@ export const EntryPage: React.FC<{
 
     // ① 撕票 → ② 開票
     useEffect(() => {
-        if (instant) return;
+        if (instant || phase === 'open') return;   // 返回情境不重播開場儀式（儀式只在前進時）
         playPageSound('tear');
         hapticTap();
         const t = window.setTimeout(() => setPhase('open'), 680);
@@ -207,6 +209,7 @@ export const EntryPage: React.FC<{
 
     const isDomestic = isDomesticTrip(intel?.country, residenceCountry);
     const suggestions = misspellSuggestions(intel);
+    const isUnknown = intel?.granularity === 'unknown';   // 亂填＝亮琥珀提醒（提醒但不擋）
     const pickedNames = picked.map(p => p.name);
     const candidates = (intel?.nearby || []).filter(n => !pickedNames.includes(n)).slice(0, 5);
     const recents = recentPlaces.filter(n => !pickedNames.includes(n)).slice(0, 4);
@@ -317,15 +320,19 @@ export const EntryPage: React.FC<{
                         </div>
 
                         {/* 打錯字：提醒但不擋 */}
-                        {suggestions.length > 0 && (
-                            <div className="text-center mt-4 font-serif text-[12px] text-white/80">
-                                找不到這個地方——你是不是想找：
-                                <span className="inline-flex gap-3 ml-1">
-                                    {suggestions.map(s => (
-                                        <button key={s} onClick={() => { removeAt(pickedNames[pickedNames.length - 1]); void commit(s); }}
-                                            className="underline underline-offset-4 decoration-white/50">{s}</button>
-                                    ))}
-                                </span>
+                        {isUnknown && (
+                            <div className="text-center mt-4 font-serif text-[12px]" style={{ color: '#FAC775' }}>
+                                {suggestions.length > 0 ? (
+                                    <>
+                                        這個地方我不太確定——你是不是想找：
+                                        <span className="inline-flex gap-3 ml-1">
+                                            {suggestions.map(s => (
+                                                <button key={s} onClick={() => { removeAt(pickedNames[pickedNames.length - 1]); void commit(s); }}
+                                                    className="underline underline-offset-4" style={{ textDecorationColor: 'rgba(250,199,117,.6)' }}>{s}</button>
+                                            ))}
+                                        </span>
+                                    </>
+                                ) : '這個地名我查不到——仍然可以照你寫的排，或換個寫法試試'}
                             </div>
                         )}
 
@@ -360,7 +367,7 @@ export const EntryPage: React.FC<{
                     <div className="px-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
                         <button
                             onClick={() => {
-                                if (!canNext) { inputRef.current?.focus(); return; }   // 永不 disabled
+                                if (!canNext) { toast('先寫下想去的地方，至少一個', 'info'); inputRef.current?.focus(); return; }   // 永不 disabled：給提示不給灰鈕
                                 playPageSound('tear', 0.5); hapticTap();
                                 onNext({ destinations: pickedNames, intel, isDomestic, coverUrl: active === 'A' ? layerA : layerB });
                             }}

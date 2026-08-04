@@ -139,6 +139,7 @@ async function destinationIntel(
 
 規則：
 - granularity：country（國家）／region（區域或州省，如「關西」「北海道」「加州」）／city（城市或明確地點）／unknown（無法辨識）
+- **嚴格判定 unknown**：若輸入不是真實地名（隨手打的字、一句話、無意義字串、人名、商品名），granularity **必須** 回 unknown——**不要勉強猜成某個地方**；suggestions 給最接近的真實地名（最多 3 個），完全無法聯想時給空陣列
 - 所有中文顯示名用繁體中文；不要使用 emoji
 - unknown 時：只需回 granularity 與 suggestions（最多 3 個最可能的目的地中文名）
 - zones 只在 granularity 為 country 或 region 時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤
@@ -176,7 +177,7 @@ JSON 結構：
 
 // ---------- Gemini 文字 ----------
 async function geminiText(
-  { prompt, model = "gemini-3.1-flash-lite", jsonMode, maxOutputTokens }: {
+  { prompt, model = "gemini-3.5-flash-lite", jsonMode, maxOutputTokens }: {
     prompt: string;
     model?: string;
     jsonMode?: boolean;        // 要求純 JSON 輸出（避免 markdown 包裹）
@@ -212,7 +213,7 @@ async function geminiText(
 
 // ---------- Gemini Vision ----------
 async function geminiVision(
-  { prompt, base64Image, model = "gemini-2.5-flash" }: {
+  { prompt, base64Image, model = "gemini-3.5-flash-lite" }: {
     prompt: string;
     base64Image: string;
     model?: string;

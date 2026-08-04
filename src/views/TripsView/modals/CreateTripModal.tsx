@@ -80,7 +80,9 @@ export const CreateTripModal: React.FC<{
     initialDestinations?: string[];
     initialIsDomestic?: boolean;
     initialStep?: number;
-}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep }) => {
+    /** 從新入口頁進來時：在起始步按「上一步」＝回入口頁（舊①雙門②目的地已退役，不可回頭） */
+    onBackToEntry?: () => void;
+}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, onBackToEntry }) => {
     const [step, setStep] = useState(initialStep ?? 1);
     const [loading, setLoading] = useState(false);
     
@@ -367,7 +369,7 @@ export const CreateTripModal: React.FC<{
                 <div className="bg-white/90 backdrop-blur-xl w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh] border border-white/20 animate-in zoom-in-95 duration-300">
                     <div className="pt-6 px-6 pb-2 border-b border-gray-100/50 bg-white/50 sticky top-0 z-20 backdrop-blur-md">
                         <div className="flex justify-between items-center mb-4">
-                            <button onClick={() => setStep(s => s - 1)} className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-gray-500 hover:bg-white transition-colors shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
+                            <button onClick={() => { if (initialStep && step <= initialStep && onBackToEntry) onBackToEntry(); else setStep(s => s - 1); }} className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-gray-500 hover:bg-white transition-colors shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
                             <h2 className="font-bold text-lg text-[#1D1D1B]">
                                 {step === 2 && (tripType === 'international' ? '準備起飛' : '探索在地')}
                                 {step === 3 && '交通安排'}
