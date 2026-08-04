@@ -18,6 +18,8 @@ import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
 import { EntryPage, type EntryResult } from '../create/EntryPage';
+import { ZonePage, type ZoneResult } from '../create/ZonePage';
+import { needsZoneStep } from '../../services/destinationIntel';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
 import { ImportTripModal } from './modals/ImportTripModal';
@@ -71,6 +73,23 @@ export const TripsView: React.FC<TripsViewProps> = ({
   /** 入口頁關閉（任何出口）＝票根回到票上，下次還能再撕一次 */
   const endTear = () => { setEntryOpen(false); setTearing(false); };
   const [entryResult, setEntryResult] = useState<EntryResult | null>(null);
+  // 🗺️ 縮圈頁：只有國家／區域級目的地才插進來（城市級＝已回答，直接跳過）
+  const [zoneOpen, setZoneOpen] = useState(false);
+  const [zoneResult, setZoneResult] = useState<ZoneResult | null>(null);
+  /** 入口頁交棒：需要縮圈就先進縮圈，否則直接進建立流程 */
+  const afterEntry = (r: EntryResult) => {
+    setEntryResult(r);
+    setZoneResult(null);
+    endTear();
+    if (needsZoneStep(r.intel)) setZoneOpen(true);
+    else setIsCreating(true);
+  };
+  /** 交給下游的目的地：縮圈選了地帶就把地帶短名接在後面（原始資料留在 zoneResult，不遺失） */
+  const flowDestinations = (): string[] => {
+    const base = entryResult?.destinations || [];
+    const labels = zoneResult?.labels || [];
+    return Array.from(new Set([...base, ...labels]));
+  };
   const [residenceCountry, setResidenceCountry] = useState<string>(localeCountry());
   // 櫥窗素材（三層個人化）：心願盒收藏照 → 護照回憶照 → 空（EntryPage 退回主題色底）。
   //   label＝地名，可點直接加入（淡季鉤子閉環：看到收藏 → 一步出發）
@@ -233,20 +252,35 @@ export const TripsView: React.FC<TripsViewProps> = ({
           recentPlaces={recentPlaces}
           initialDestinations={entryResult?.destinations}
           onClose={endTear}
-          onNext={(r) => { setEntryResult(r); endTear(); setIsCreating(true); }}
+          onNext={afterEntry}
           onManualCreate={() => { endTear(); setEntryResult(null); setIsCreating(true); }}
           onImport={() => { endTear(); setIsImporting(true); }}
         />
       )}
+      {zoneOpen && entryResult && (
+        <ZonePage
+          destinationName={entryResult.intel?.name || entryResult.destinations[0] || '這個地方'}
+          query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
+          coverUrl={entryResult.coverUrl}
+          isDomestic={entryResult.isDomestic}
+          onBack={() => { setZoneOpen(false); setEntryOpen(true); }}
+          onClose={() => { setZoneOpen(false); setEntryResult(null); setZoneResult(null); setTearing(false); }}
+          onNext={(z) => { setZoneResult(z); setZoneOpen(false); setIsCreating(true); }}
+        />
+      )}
       {isCreating && (
         <CreateTripModal
-          onClose={() => { setIsCreating(false); setEntryResult(null); }}
+          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
-          initialDestinations={entryResult?.destinations}
+          initialDestinations={entryResult ? flowDestinations() : undefined}
           initialIsDomestic={entryResult?.isDomestic}
           initialStep={entryResult ? 3 : 1}
-          onBackToEntry={() => { setIsCreating(false); setEntryOpen(true); }}
+          onBackToEntry={() => {
+            setIsCreating(false);
+            if (entryResult && needsZoneStep(entryResult.intel)) setZoneOpen(true);   // 有縮圈就退回縮圈，不是退回最前面
+            else setEntryOpen(true);
+          }}
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}

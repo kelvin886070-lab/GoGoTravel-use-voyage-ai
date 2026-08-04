@@ -23,16 +23,10 @@ import { localPlaceVerdict } from '../../services/placeSanity';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
 import { TicketNextButton } from './TicketNextButton';
+import { HandCircle, EraserBlock, seedOf, INK_GOLD, INK_AMBER, INK_KEYFRAMES } from './ink';
 
 const reduceMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
-};
-
-/** 地名 → 穩定 seed（同一個地方每次的筆跡一致，像同一個人寫的） */
-const seedOf = (s: string): number => {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return h % 1000;
 };
 
 /** 版面錨點：輸入列**橫跨畫面正中線**；此值＝輸入列高度的一半（上下兩塊各自貼齊它的邊） */
@@ -40,31 +34,6 @@ const INPUT_HALF = 26;
 
 /** 圈選的三種狀態：等情報／已驗證／未確認（查不到、逾時未定、或本地判定亂填） */
 type PickState = 'pending' | 'verified' | 'unverified';
-
-const INK_GOLD = '#C9B98F';     // 已驗證：燙金實線
-const INK_AMBER = '#E9BE7A';    // 未確認：琥珀虛線（同一支筆，遲疑的線）
-
-/** 手繪圈（筆跡帶 seed 抖動、永不重複）。
- *  dashed＝虛線：紙筆世界裡「暫定」的通用語彙——不確定的事不該畫成確定的線。 */
-const HandCircle: React.FC<{ seed: number; color: string; dashed?: boolean; instant?: boolean }> =
-    ({ seed, color, dashed, instant }) => {
-        const r = ((seed * 9301 + 49297) % 233280) / 233280;
-        const d = `M${(30 + r * 4).toFixed(1)} 3 C 51 ${(1 + r * 2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3 + r * 2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35 + r * 3).toFixed(1)} 4`;
-        const shadow = 'drop-shadow(0 1px 2px rgba(0,0,0,.45))';
-        return (
-            <svg viewBox="0 0 64 34" aria-hidden
-                style={{
-                    position: 'absolute', inset: '-7px -11px', width: 'calc(100% + 22px)', height: 'calc(100% + 14px)',
-                    overflow: 'visible', pointerEvents: 'none', transform: `rotate(${(r * 6 - 3).toFixed(1)}deg)`,
-                }}>
-                <path d={d} fill="none" stroke={color} strokeWidth={dashed ? 1.6 : 1.9} strokeLinecap="round" pathLength={100}
-                    style={dashed
-                        // 虛線無法用「畫出來」的 dash 動畫（dasharray 被拿去做虛線）→ 改用淡入
-                        ? { strokeDasharray: '4.5 4', opacity: instant ? 1 : 0, animation: instant ? undefined : 'ktInk .4s ease-out forwards', filter: shadow }
-                        : { strokeDasharray: 100, strokeDashoffset: instant ? 0 : 100, animation: instant ? undefined : 'ktDraw .45s ease-out forwards', filter: shadow }} />
-            </svg>
-        );
-    };
 
 /** 已選目的地：文字先在、圈後到；再點一下＝橡皮擦擦掉 */
 const PickedItem: React.FC<{ name: string; state: PickState; instant: boolean; onRemove: () => void }> =
@@ -91,11 +60,7 @@ const PickedItem: React.FC<{ name: string; state: PickState; instant: boolean; o
                 )}
                 {erasing && (
                     <>
-                        <span aria-hidden style={{
-                            position: 'absolute', top: '50%', left: -18, width: 20, height: 13, marginTop: -7, borderRadius: 3,
-                            background: 'linear-gradient(#F7EEDD,#DCCAAA 60%,#C9B38D)', boxShadow: '0 3px 5px rgba(0,0,0,.35)',
-                            animation: 'ktRub .43s cubic-bezier(.4,.05,.55,.95) forwards', zIndex: 4,
-                        }} />
+                        <EraserBlock />
                         <span aria-hidden style={{ position: 'absolute', inset: 0, animation: 'ktFadeOut .43s ease forwards' }}>
                             <HandCircle seed={seedOf(name)} color={unverified ? INK_AMBER : INK_GOLD} dashed={unverified} instant />
                         </span>
@@ -552,11 +517,7 @@ export const EntryPage: React.FC<{
             )}
 
             <style>{`
-                @keyframes ktFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
-                @keyframes ktDraw { to { stroke-dashoffset: 0 } }
-                @keyframes ktRub { 0%{transform:translate(0,0) rotate(-4deg)} 45%{transform:translate(96px,2px) rotate(3deg)} 70%{transform:translate(48px,-2px) rotate(-3deg)} 100%{transform:translate(118px,0) rotate(3deg)} }
-                @keyframes ktFadeOut { 0%{opacity:1} 60%{opacity:.12} 100%{opacity:0} }
-                @keyframes ktInk { to { opacity: 1 } }
+                ${INK_KEYFRAMES}
                 @keyframes ktDropIn { 0%{opacity:0;transform:translateY(-14px) rotate(-2.4deg)} 100%{opacity:1;transform:translateY(0) rotate(-.6deg)} }
             `}</style>
         </div>
