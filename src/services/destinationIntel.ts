@@ -6,7 +6,12 @@
 //        本檔另有**前端兩層快取**（記憶體＋localStorage 7 天）與**同查詢併發去重**，
 //        使用者在表單裡來回上一步/下一步不會重打。
 //   失敗策略：任何情況回 null——呼叫端一律要有退位（通用標籤、不擋輸入、幣別保底）。
+//   防呆（2026-08 亂填批）：
+//     ①本地啟發式先篩（placeSanity）：明顯亂打**不打 API**（省錢，且畫面立刻能標未確認）
+//     ②資料衛生：granularity=unknown 一律清掉 country/currency/cityEn/zones/nearby，
+//       避免用錯幣別、抓錯封面照、把幻覺地帶帶進下游；country 非合法 ISO2 也視為未驗證。
 import { supabase } from './supabase';
+import { localPlaceVerdict } from './placeSanity';
 
 export type Granularity = 'country' | 'region' | 'city' | 'unknown';
 
@@ -32,8 +37,8 @@ export interface DestinationIntel {
     suggestions?: string[];            // unknown 時的猜測
 }
 
-const CACHE_KEY = 'kt_dest_intel_v2';   // v2：prompt 改版（順遊限同國城市）→ 舊快取一律失效
-const TTL_MS = 7 * 24 * 60 * 60 * 1000;   // 前端 7 天（伺服器端 90 天；前端短一點以便早日拿到修正）
+const CACHE_KEY = 'kt_dest_intel_v3';   // v3：加入資料衛生與嚴格 unknown 判定 → 舊快取（可能含亂填誤判）一律失效
+const TTL_MS = 7 * 24 * 60 * 60 * 1000;   // 前端 7 天（伺服器端 35 天；前端短一點以便早日拿到修正）
 
 type CacheShape = Record<string, { d: DestinationIntel; e: number }>;
 let mem: CacheShape | null = null;
@@ -64,15 +69,44 @@ export const clearIntelCache = (): void => {
     try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
 };
 
+const ISO2 = /^[A-Za-z]{2}$/;
+
+/**
+ * 資料衛生：把 LLM 回來的東西修剪成「可安全給下游用」的形狀。
+ * - unknown：只留 granularity 與 suggestions——**不留** country/currency/cityEn/zones/nearby/tags，
+ *   否則會用錯幣別、抓錯封面照、把幻覺地帶帶進縮圈頁。
+ * - 非 unknown：country 統一大寫；不是合法 ISO2 就刪掉（寧可沒有，也不要錯的）。
+ */
+const sanitize = (raw: DestinationIntel): DestinationIntel => {
+    if (raw.granularity === 'unknown') {
+        return {
+            granularity: 'unknown',
+            name: (raw.name || '').trim() || undefined,
+            suggestions: (raw.suggestions || []).filter(s => !!s && typeof s === 'string').slice(0, 3),
+        };
+    }
+    const country = (raw.country || '').trim().toUpperCase();
+    return { ...raw, country: ISO2.test(country) ? country : undefined };
+};
+
+/**
+ * 這筆情報是否**可信到能當作已驗證的地點**。
+ * 條件：顆粒度不是 unknown，且拿得到合法的 ISO2 國碼（模型連國家都說不出來＝它其實不認識這裡）。
+ * null（逾時／網路失敗／本地判定亂填）一律不算驗證通過——「不知道」永遠不能冒充「沒問題」。
+ */
+export const isVerifiedIntel = (intel: DestinationIntel | null): boolean =>
+    !!intel && intel.granularity !== 'unknown' && ISO2.test(intel.country || '');
+
 /**
  * 取得目的地情報。
- * - 少於 2 字元：直接回 null，**不打 API**（省錢第一道門，與後端同規）。
+ * - 本地判定明顯亂填、或少於 2 字元：直接回 null，**不打 API**（省錢第一道門，與後端同規）。
  * - 前端快取命中：同步回傳（零延遲）。
  * - 併發去重：同一查詢同時被呼叫多次只發一個請求。
  */
 export async function fetchDestinationIntel(query: string): Promise<DestinationIntel | null> {
     const key = normalize(query);
     if (key.length < 2) return null;
+    if (localPlaceVerdict(query) === 'junk') return null;   // 零成本第一道篩：亂碼不值得一次 LLM 呼叫
 
     const cache = load();
     const hit = cache[key];
@@ -87,8 +121,9 @@ export async function fetchDestinationIntel(query: string): Promise<DestinationI
                 body: { action: 'destination-intel', payload: { query: query.trim() } },
             });
             if (error || !data || data.error) return null;
-            const intel = data.intel as DestinationIntel | null;
-            if (!intel?.granularity) return null;
+            const rawIntel = data.intel as DestinationIntel | null;
+            if (!rawIntel?.granularity) return null;
+            const intel = sanitize(rawIntel);          // 先修剪再入快取：髒資料一次都不要留下
             cache[key] = { d: intel, e: Date.now() + TTL_MS };
             persist();
             return intel;

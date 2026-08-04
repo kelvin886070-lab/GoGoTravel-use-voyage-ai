@@ -4,13 +4,22 @@
 //   全頁零膠囊、零框線——唯一有框的是底部「下一步」票券鈕（票券＝前進的專屬物件）。
 //   四拍：①撕票 ②開票 ③櫥窗（心願盒／回憶照輪播，**地名可點直接加入**＝淡季鉤子閉環）
 //        ④浮現（確認目的地→主題色先變臉、照片預載完成才交班，永不見黑）。
-//   誠實等待：目的地文字**先出現**，情報回來（或逾時）才**畫上金圈**——筆跡落下＝確認完成。
+//   誠實等待：目的地文字**先出現**，情報回來才**畫上金圈**——筆跡落下＝確認完成。
 //   候選字**跟著最新的目的地更新**（加了大阪→候選換成大阪的順遊）。
+//   🛡️ 亂填防線（2026-08 批，四層＋本地篩）：
+//     ⓪本地啟發式：明顯亂打不打 API，直接進「未確認」。
+//     ①修競態：逾時**只改畫面**（先畫虛線圈＝暫定），情報回來才定案——
+//       舊版逾時就畫實線金圈，等於把「我不等了」誤當成「驗證通過」，這是漏接的真因。
+//     ②三態視覺：實線金圈＝已驗證／虛線琥珀圈＝查不到或還沒定案（紙筆世界裡虛線天生就是「暫定」）。
+//     ③出口攔截：按下一步時若還有未確認的地點，紙卡確認（回去改／照這樣繼續）——
+//       偵測可以不完美，但**絕不無聲接受**：亂填必定被使用者親眼看見並親手放行。
+//     ④資料衛生：未驗證的地點不換主題色、不抓封面照、不寫入 intel（見 services/destinationIntel）。
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X, Loader2, Mic } from 'lucide-react';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
-import { fetchDestinationIntel, misspellSuggestions, type DestinationIntel } from '../../services/destinationIntel';
+import { fetchDestinationIntel, isVerifiedIntel, misspellSuggestions, type DestinationIntel } from '../../services/destinationIntel';
+import { localPlaceVerdict } from '../../services/placeSanity';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
 
@@ -25,30 +34,37 @@ const seedOf = (s: string): number => {
     return h % 1000;
 };
 
-/** 燙金手繪圈（照片上用金；筆跡帶 seed 抖動、永不重複） */
-const GoldCircle: React.FC<{ seed: number; instant?: boolean }> = ({ seed, instant }) => {
-    const r = ((seed * 9301 + 49297) % 233280) / 233280;
-    const d = `M${(30 + r * 4).toFixed(1)} 3 C 51 ${(1 + r * 2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3 + r * 2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35 + r * 3).toFixed(1)} 4`;
-    return (
-        <svg viewBox="0 0 64 34" aria-hidden
-            style={{
-                position: 'absolute', inset: '-7px -11px', width: 'calc(100% + 22px)', height: 'calc(100% + 14px)',
-                overflow: 'visible', pointerEvents: 'none', transform: `rotate(${(r * 6 - 3).toFixed(1)}deg)`,
-            }}>
-            <path d={d} fill="none" stroke="#C9B98F" strokeWidth={1.9} strokeLinecap="round" pathLength={100}
-                style={{
-                    strokeDasharray: 100,
-                    strokeDashoffset: instant ? 0 : 100,
-                    animation: instant ? undefined : 'ktDraw .45s ease-out forwards',
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.45))',
-                }} />
-        </svg>
-    );
-};
+/** 圈選的三種狀態：等情報／已驗證／未確認（查不到、逾時未定、或本地判定亂填） */
+type PickState = 'pending' | 'verified' | 'unverified';
 
-/** 已選目的地：文字先在、金圈後到；再點一下＝橡皮擦擦掉 */
-const PickedItem: React.FC<{ name: string; confirmed: boolean; instant: boolean; onRemove: () => void }> =
-    ({ name, confirmed, instant, onRemove }) => {
+const INK_GOLD = '#C9B98F';     // 已驗證：燙金實線
+const INK_AMBER = '#E9BE7A';    // 未確認：琥珀虛線（同一支筆，遲疑的線）
+
+/** 手繪圈（筆跡帶 seed 抖動、永不重複）。
+ *  dashed＝虛線：紙筆世界裡「暫定」的通用語彙——不確定的事不該畫成確定的線。 */
+const HandCircle: React.FC<{ seed: number; color: string; dashed?: boolean; instant?: boolean }> =
+    ({ seed, color, dashed, instant }) => {
+        const r = ((seed * 9301 + 49297) % 233280) / 233280;
+        const d = `M${(30 + r * 4).toFixed(1)} 3 C 51 ${(1 + r * 2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3 + r * 2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35 + r * 3).toFixed(1)} 4`;
+        const shadow = 'drop-shadow(0 1px 2px rgba(0,0,0,.45))';
+        return (
+            <svg viewBox="0 0 64 34" aria-hidden
+                style={{
+                    position: 'absolute', inset: '-7px -11px', width: 'calc(100% + 22px)', height: 'calc(100% + 14px)',
+                    overflow: 'visible', pointerEvents: 'none', transform: `rotate(${(r * 6 - 3).toFixed(1)}deg)`,
+                }}>
+                <path d={d} fill="none" stroke={color} strokeWidth={dashed ? 1.6 : 1.9} strokeLinecap="round" pathLength={100}
+                    style={dashed
+                        // 虛線無法用「畫出來」的 dash 動畫（dasharray 被拿去做虛線）→ 改用淡入
+                        ? { strokeDasharray: '4.5 4', opacity: instant ? 1 : 0, animation: instant ? undefined : 'ktInk .4s ease-out forwards', filter: shadow }
+                        : { strokeDasharray: 100, strokeDashoffset: instant ? 0 : 100, animation: instant ? undefined : 'ktDraw .45s ease-out forwards', filter: shadow }} />
+            </svg>
+        );
+    };
+
+/** 已選目的地：文字先在、圈後到；再點一下＝橡皮擦擦掉 */
+const PickedItem: React.FC<{ name: string; state: PickState; instant: boolean; onRemove: () => void }> =
+    ({ name, state, instant, onRemove }) => {
         const [erasing, setErasing] = useState(false);
         const ref = useRef<HTMLButtonElement>(null);
         const handle = () => {
@@ -59,11 +75,16 @@ const PickedItem: React.FC<{ name: string; confirmed: boolean; instant: boolean;
             hapticTap();
             window.setTimeout(onRemove, 450);
         };
+        const unverified = state === 'unverified';
         return (
-            <button ref={ref} onClick={handle} aria-label={`移除 ${name}`}
-                className="relative font-serif text-[17px] text-[#F6F1E7] px-1 py-0.5">
+            <button ref={ref} onClick={handle}
+                aria-label={unverified ? `移除 ${name}（未確認的地點）` : `移除 ${name}`}
+                className="relative font-serif text-[17px] px-1 py-0.5"
+                style={{ color: unverified ? '#F0E6D2' : '#F6F1E7' }}>
                 {name}
-                {confirmed && !erasing && <GoldCircle seed={seedOf(name)} instant={instant} />}
+                {state !== 'pending' && !erasing && (
+                    <HandCircle seed={seedOf(name)} color={unverified ? INK_AMBER : INK_GOLD} dashed={unverified} instant={instant} />
+                )}
                 {erasing && (
                     <>
                         <span aria-hidden style={{
@@ -72,7 +93,7 @@ const PickedItem: React.FC<{ name: string; confirmed: boolean; instant: boolean;
                             animation: 'ktRub .43s cubic-bezier(.4,.05,.55,.95) forwards', zIndex: 4,
                         }} />
                         <span aria-hidden style={{ position: 'absolute', inset: 0, animation: 'ktFadeOut .43s ease forwards' }}>
-                            <GoldCircle seed={seedOf(name)} instant />
+                            <HandCircle seed={seedOf(name)} color={unverified ? INK_AMBER : INK_GOLD} dashed={unverified} instant />
                         </span>
                     </>
                 )}
@@ -90,12 +111,14 @@ export interface ShowcaseItem {
 
 export interface EntryResult {
     destinations: string[];
+    /** 其中「查不到／未驗證」的地點（下游要誠實對待：不猜幣別、不硬排景點、生成前再核對一次） */
+    unverified: string[];
     intel: DestinationIntel | null;
     isDomestic: boolean;
     coverUrl: string | null;
 }
 
-interface Picked { name: string; confirmed: boolean }
+interface Picked { name: string; state: PickState }
 
 export const EntryPage: React.FC<{
     residenceCountry: string;             // 批A：居住國（國內外推斷；表單永不問）
@@ -109,10 +132,14 @@ export const EntryPage: React.FC<{
 }> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, onClose, onNext, onManualCreate, onImport }) => {
     const instant = useMemo(() => reduceMotion(), []);
     const [phase, setPhase] = useState<'tear' | 'open'>(instant || (initialDestinations?.length ?? 0) > 0 ? 'open' : 'tear');
-    const [picked, setPicked] = useState<Picked[]>(() => (initialDestinations || []).map(name => ({ name, confirmed: true })));
+    // 返回情境：先復原成 pending，再靜默重驗一次（快取命中＝零延遲零成本；不重驗就等於相信上一輪的畫面）
+    const [picked, setPicked] = useState<Picked[]>(() => (initialDestinations || []).map(name => ({ name, state: 'pending' as PickState })));
     const [input, setInput] = useState('');
-    const [intel, setIntel] = useState<DestinationIntel | null>(null);   // 恆為「最新確認的目的地」的情報
-    const [loading, setLoading] = useState(false);
+    const [intel, setIntel] = useState<DestinationIntel | null>(null);   // 恆為「最新**已驗證**目的地」的情報
+    const [pendingCount, setPendingCount] = useState(0);                 // 進行中的查詢數（多筆同時輸入也不會亂）
+    /** 最近一筆未通過驗證的提醒（琥珀字跟著**那一筆**走，不再靠全域 intel 判斷） */
+    const [hint, setHint] = useState<{ name: string; suggestions: string[] } | null>(null);
+    const [confirmOpen, setConfirmOpen] = useState(false);               // 出口攔截卡
     const [listening, setListening] = useState(false);
     const [showcaseIdx, setShowcaseIdx] = useState(0);
     const [layerA, setLayerA] = useState<string | null>(null);
@@ -121,6 +148,17 @@ export const EntryPage: React.FC<{
     const [hasPhoto, setHasPhoto] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const activeRef = useRef<'A' | 'B'>('A');
+    const aliveRef = useRef(true);                       // 卸載後不再 setState（非同步回來時的守門）
+    const timersRef = useRef<Set<number>>(new Set());    // 逾時計時器：卸載一律清乾淨
+
+    useEffect(() => {
+        const timers = timersRef.current;
+        return () => {
+            aliveRef.current = false;
+            timers.forEach(id => window.clearTimeout(id));
+            timers.clear();
+        };
+    }, []);
 
     // 背景：預載完成才交班（永不見黑、永不見空白）
     const swapBackground = useCallback((url: string) => {
@@ -151,27 +189,84 @@ export const EntryPage: React.FC<{
         return () => window.clearInterval(t);
     }, [picked.length, showcaseItems, showcaseIdx, instant, swapBackground]);
 
-    // ④ 確認目的地：文字先進場 → 情報回來（或 1.6s 逾時）才畫金圈 → 背景換照片
-    const commit = useCallback(async (raw?: string) => {
+    /** 只改「這一筆」的狀態（同時多筆在飛也互不干擾；已被擦掉的筆自動失效） */
+    const settle = useCallback((name: string, state: PickState) => {
+        setPicked(prev => prev.map(p => (p.name === name ? { ...p, state } : p)));
+    }, []);
+
+    /**
+     * 送出一個地點並驗證（可由輸入框、候選字、櫥窗地名、語音呼叫）。
+     * 關鍵約定：**逾時只改畫面、不下結論**——先畫虛線圈表示「暫定」，情報真的回來才定案。
+     * @param silent 靜默模式（返回時的背景重驗）：不出聲、不換背景、不搶 hint。
+     */
+    const commit = useCallback(async (raw?: string, silent = false) => {
         const value = (raw ?? input).trim();
-        if (!value || picked.some(p => p.name === value)) return;
-        setPicked(prev => [...prev, { name: value, confirmed: false }]);
-        setInput('');
-        setLoading(true);
-        const timeout = new Promise<null>(res => window.setTimeout(() => res(null), 1600));
-        const got = await Promise.race([fetchDestinationIntel(value), timeout]);
-        setLoading(false);
-        setPicked(prev => prev.map(p => (p.name === value ? { ...p, confirmed: true } : p)));
-        playPageSound('penCircle');   // 筆跡落下＝確認完成（與金圈同幀）
-        hapticTap();
-        if (got) setIntel(got);                       // 候選字改跟「最新確認的目的地」走
-        const query = `${got?.cityEn || value} travel`;
-        const url = await fetchCoverPhoto(query);
+        if (!value) return;
+        if (!silent) {
+            if (picked.some(p => p.name === value)) { setInput(''); return; }   // 重複＝靜默忽略（已經在紙上了）
+            setInput('');
+            // ⓪本地啟發式：明顯亂打就不花這一次 LLM 呼叫，直接進未確認
+            if (localPlaceVerdict(value) === 'junk') {
+                setPicked(prev => [...prev, { name: value, state: 'unverified' }]);
+                setHint({ name: value, suggestions: [] });
+                hapticTap();
+                return;
+            }
+            setPicked(prev => [...prev, { name: value, state: 'pending' }]);
+        }
+        setPendingCount(c => c + 1);
+
+        // ①競態修正：1.6s 後先畫**虛線**圈（讓字有著落、不空等），但結論仍未定
+        const soft = window.setTimeout(() => {
+            if (!aliveRef.current) return;
+            setPicked(prev => prev.map(p => (p.name === value && p.state === 'pending' ? { ...p, state: 'unverified' } : p)));
+        }, 1600);
+        timersRef.current.add(soft);
+
+        // 硬上限：請求若整個掛住（無網路、Edge Function 卡死），8 秒後一律當作查不到——
+        //   否則 pendingCount 永遠不歸零，「下一步」會變成永久按不動的死路。
+        const hard = new Promise<'timeout'>(res => {
+            const id = window.setTimeout(() => res('timeout'), 8000);
+            timersRef.current.add(id);
+        });
+        const outcome = await Promise.race([fetchDestinationIntel(value).catch(() => null), hard]);
+        const got: DestinationIntel | null = outcome === 'timeout' ? null : outcome;
+        window.clearTimeout(soft);
+        timersRef.current.delete(soft);
+        if (!aliveRef.current) return;
+
+        setPendingCount(c => Math.max(0, c - 1));
+        const ok = isVerifiedIntel(got);
+        settle(value, ok ? 'verified' : 'unverified');
+
+        if (!ok) {
+            // ④資料衛生：查不到就不換主題色、不抓封面照、不寫進 intel（錯的資訊比沒有更貴）
+            if (!silent) setHint({ name: value, suggestions: misspellSuggestions(got) });
+            return;
+        }
+        if (!silent) {
+            playPageSound('penCircle');   // 筆跡落下＝驗證通過（與實線金圈同幀）
+            hapticTap();
+            setHint(h => (h && h.name === value ? null : h));
+        }
+        setIntel(got);                   // 候選字跟著「最新已驗證的目的地」走
+        if (silent) return;
+        const url = await fetchCoverPhoto(`${got?.cityEn || value} travel`);
         const hero = heroCoverUrl(url || undefined);
-        if (hero) swapBackground(hero);
-    }, [input, picked, swapBackground]);
+        if (aliveRef.current && hero) swapBackground(hero);
+    }, [input, picked, settle, swapBackground]);
+
+    // 返回時復原的目的地：靜默重驗一次（快取命中＝零延遲、零成本；也順便把 intel 補回來）
+    const revalidatedRef = useRef(false);
+    useEffect(() => {
+        if (revalidatedRef.current) return;
+        revalidatedRef.current = true;
+        (initialDestinations || []).forEach(name => { void commit(name, true); });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const removeAt = (name: string) => {
+        setHint(h => (h && h.name === name ? null : h));
         setPicked(prev => {
             const next = prev.filter(p => p.name !== name);
             if (next.length === 0) { setIntel(null); setHasPhoto(false); }
@@ -208,14 +303,39 @@ export const EntryPage: React.FC<{
     };
 
     const isDomestic = isDomesticTrip(intel?.country, residenceCountry);
-    const suggestions = misspellSuggestions(intel);
-    const isUnknown = intel?.granularity === 'unknown';   // 亂填＝亮琥珀提醒（提醒但不擋）
     const pickedNames = picked.map(p => p.name);
+    const unverifiedNames = picked.filter(p => p.state === 'unverified').map(p => p.name);
+    const loading = pendingCount > 0;
     const candidates = (intel?.nearby || []).filter(n => !pickedNames.includes(n)).slice(0, 5);
     const recents = recentPlaces.filter(n => !pickedNames.includes(n)).slice(0, 4);
     const showcase = showcaseItems[showcaseIdx % Math.max(showcaseItems.length, 1)];
     const canNext = picked.length > 0;
     const crowded = picked.length >= 5;
+
+    /** 真的往下一步（已通過出口攔截） */
+    const goNext = useCallback(() => {
+        playPageSound('tear', 0.5);
+        hapticTap();
+        onNext({
+            destinations: picked.map(p => p.name),
+            unverified: picked.filter(p => p.state === 'unverified').map(p => p.name),
+            intel, isDomestic,
+            coverUrl: activeRef.current === 'A' ? layerA : layerB,
+        });
+    }, [picked, intel, isDomestic, layerA, layerB, onNext]);
+
+    /** ③出口攔截：永不 disabled——沒填給提示、還在查請他等、有未確認的先讓他親眼看見 */
+    const handleNext = () => {
+        if (!canNext) { toast('先寫下想去的地方，至少一個', 'info'); inputRef.current?.focus(); return; }
+        if (pendingCount > 0) { toast('正在確認地點，稍等一下', 'info'); return; }
+        if (unverifiedNames.length > 0) {
+            setConfirmOpen(true);
+            playPageSound('paperDrop');
+            hapticTap();
+            return;
+        }
+        goNext();
+    };
 
     return (
         <div className="fixed inset-0 z-[90] overflow-hidden" style={{ backgroundColor: '#1b1510' }}>
@@ -281,7 +401,7 @@ export const EntryPage: React.FC<{
                         {picked.length > 0 && (
                             <div className="flex flex-wrap justify-center mb-2 mx-auto" style={{ gap: '16px 20px', maxWidth: 260 }}>
                                 {picked.map(p => (
-                                    <PickedItem key={p.name} name={p.name} confirmed={p.confirmed} instant={instant}
+                                    <PickedItem key={p.name} name={p.name} state={p.state} instant={instant}
                                         onRemove={() => removeAt(p.name)} />
                                 ))}
                             </div>
@@ -319,20 +439,20 @@ export const EntryPage: React.FC<{
                             ) : null}
                         </div>
 
-                        {/* 打錯字：提醒但不擋 */}
-                        {isUnknown && (
-                            <div className="text-center mt-4 font-serif text-[12px]" style={{ color: '#FAC775' }}>
-                                {suggestions.length > 0 ? (
+                        {/* ②未確認提醒：跟著**那一筆**走（不再靠全域 intel 判斷，逾時也一定會說話）；提醒但不擋 */}
+                        {hint && pickedNames.includes(hint.name) && (
+                            <div className="text-center mt-4 font-serif text-[12px]" style={{ color: INK_AMBER }}>
+                                {hint.suggestions.length > 0 ? (
                                     <>
-                                        這個地方我不太確定——你是不是想找：
+                                        「{hint.name}」我不太確定——你是不是想找：
                                         <span className="inline-flex gap-3 ml-1">
-                                            {suggestions.map(s => (
-                                                <button key={s} onClick={() => { removeAt(pickedNames[pickedNames.length - 1]); void commit(s); }}
-                                                    className="underline underline-offset-4" style={{ textDecorationColor: 'rgba(250,199,117,.6)' }}>{s}</button>
+                                            {hint.suggestions.map(s => (
+                                                <button key={s} onClick={() => { removeAt(hint.name); void commit(s); }}
+                                                    className="underline underline-offset-4" style={{ textDecorationColor: 'rgba(233,190,122,.6)' }}>{s}</button>
                                             ))}
                                         </span>
                                     </>
-                                ) : '這個地名我查不到——仍然可以照你寫的排，或換個寫法試試'}
+                                ) : `「${hint.name}」我查不到——仍然可以照你寫的排，或換個寫法試試`}
                             </div>
                         )}
 
@@ -366,11 +486,7 @@ export const EntryPage: React.FC<{
 
                     <div className="px-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
                         <button
-                            onClick={() => {
-                                if (!canNext) { toast('先寫下想去的地方，至少一個', 'info'); inputRef.current?.focus(); return; }   // 永不 disabled：給提示不給灰鈕
-                                playPageSound('tear', 0.5); hapticTap();
-                                onNext({ destinations: pickedNames, intel, isDomestic, coverUrl: active === 'A' ? layerA : layerB });
-                            }}
+                            onClick={handleNext}
                             className="w-full flex items-stretch active:scale-[0.99] transition-transform"
                         >
                             <span className="flex-1 bg-[#F6F1E7] rounded-l-full pl-5 pr-3 py-2.5 flex items-center justify-between">
@@ -389,6 +505,43 @@ export const EntryPage: React.FC<{
                 </div>
             )}
 
+            {/* ③出口攔截：一張落在桌上的便條紙。偵測可以不完美，但絕不無聲放行——
+                使用者必須親眼看見「哪幾個地方我查不到」，再親手決定。仍然尊重自由：堅持就放行。 */}
+            {confirmOpen && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center px-8"
+                    style={{ backgroundColor: 'rgba(15,14,13,.58)' }}
+                    onClick={() => setConfirmOpen(false)}>
+                    <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="有查不到的地點"
+                        className="w-full max-w-[300px] bg-[#F6F1E7] px-6 py-6 text-center"
+                        style={{
+                            borderRadius: 3, boxShadow: '0 18px 42px rgba(0,0,0,.5)', transform: 'rotate(-.6deg)',
+                            animation: instant ? undefined : 'ktDropIn .34s cubic-bezier(.2,.9,.3,1)',
+                        }}>
+                        <div className="font-mono text-[9px] tracking-[0.28em] text-[#8A8266]">UNCONFIRMED</div>
+                        <div className="font-serif text-[16px] font-bold text-[#232320] mt-2">
+                            有 {unverifiedNames.length} 個地方我查不到
+                        </div>
+                        <div className="font-serif text-[14px] text-[#3F3B33] mt-2 leading-relaxed">
+                            {unverifiedNames.join('、')}
+                        </div>
+                        <div className="font-serif text-[11px] text-[#8A8266] mt-3 leading-relaxed">
+                            可能是打錯字，也可能只是很小的地方。<br />
+                            照這樣繼續的話，這幾個地方的建議會少一些。
+                        </div>
+                        <div className="flex items-center justify-center gap-8 mt-6">
+                            <button onClick={() => { setConfirmOpen(false); inputRef.current?.focus(); }}
+                                className="font-serif text-[13px] text-[#5A564C] underline underline-offset-4 decoration-[#B9B09A]">回去改</button>
+                            <button onClick={() => { setConfirmOpen(false); goNext(); }}
+                                className="relative font-serif text-[14px] font-bold text-[#232320] px-1 py-0.5">
+                                照這樣繼續
+                                {/* 紙上用墨（照片上才用金）——主要動作用手繪墨圈，與圈選同一種語言 */}
+                                <HandCircle seed={seedOf('continue')} color="#232320" instant={instant} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style>{`
                 @keyframes ktTearStub { 0%{transform:translate(0,0) rotate(0)} 18%{transform:translate(3px,0) rotate(0)} 100%{transform:translate(52px,34px) rotate(18deg);opacity:0} }
                 @keyframes ktTearBody { 0%{transform:scale(1);opacity:1} 55%{transform:scale(1.02)} 100%{transform:scale(1.06);opacity:0} }
@@ -396,6 +549,8 @@ export const EntryPage: React.FC<{
                 @keyframes ktDraw { to { stroke-dashoffset: 0 } }
                 @keyframes ktRub { 0%{transform:translate(0,0) rotate(-4deg)} 45%{transform:translate(96px,2px) rotate(3deg)} 70%{transform:translate(48px,-2px) rotate(-3deg)} 100%{transform:translate(118px,0) rotate(3deg)} }
                 @keyframes ktFadeOut { 0%{opacity:1} 60%{opacity:.12} 100%{opacity:0} }
+                @keyframes ktInk { to { opacity: 1 } }
+                @keyframes ktDropIn { 0%{opacity:0;transform:translateY(-14px) rotate(-2.4deg)} 100%{opacity:1;transform:translateY(0) rotate(-.6deg)} }
             `}</style>
         </div>
     );

@@ -140,6 +140,8 @@ async function destinationIntel(
 規則：
 - granularity：country（國家）／region（區域或州省，如「關西」「北海道」「加州」）／city（城市或明確地點）／unknown（無法辨識）
 - **嚴格判定 unknown**：若輸入不是真實地名（隨手打的字、一句話、無意義字串、人名、商品名），granularity **必須** 回 unknown——**不要勉強猜成某個地方**；suggestions 給最接近的真實地名（最多 3 個），完全無法聯想時給空陣列
+- **寧可說不知道**：只要你無法確定這個地方**真實存在於地圖上**，就回 unknown。猜錯的代價遠高於承認不知道
+- granularity 不是 unknown 時，**country 必填**且必須是合法的 ISO 3166-1 alpha-2 兩碼國碼；連國家都無法確定，代表你其實不認識這個地方——請改回 unknown
 - 所有中文顯示名用繁體中文；不要使用 emoji
 - unknown 時：只需回 granularity 與 suggestions（最多 3 個最可能的目的地中文名）
 - zones 只在 granularity 為 country 或 region 時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤
