@@ -5,7 +5,7 @@
 //         → 接下來（次 hero，按出發日）。回憶已遷居個人檔案護照內頁（批④）。
 //   排序：按出發日（最近的當主角），取代手動拖曳。旅途中的行程只出現在捷徑、不重複進清單。
 //   「從分享連結匯入」已移入 CreateTripModal（暫存），保持首頁乾淨。精彩回憶移出（改個人頁）。
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ArrowRight } from 'lucide-react';
 
 import type { Trip, User, WishItem } from '../../types';
@@ -18,6 +18,7 @@ import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 // --- Modals ---
 import { CreateTripModal } from './modals/CreateTripModal';
 import { EntryPage, type EntryResult } from '../create/EntryPage';
+import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
 import { ImportTripModal } from './modals/ImportTripModal';
 import { EditTripModal } from './modals/EditTripModal';
@@ -50,6 +51,25 @@ export const TripsView: React.FC<TripsViewProps> = ({
 }) => {
   // 🎫 生成表單重設計：新入口頁（EntryPage）取代舊步驟①②；下一步交棒 CreateTripModal（帶入目的地與國內外）
   const [entryOpen, setEntryOpen] = useState(false);
+  // 🎫 撕票：**直接撕真的那顆 CTA**（不做座標分身）。
+  //   先前用 getBoundingClientRect() 在入口頁擺一個分身，但外層容器有自己的座標系與縮放，
+  //   `fixed` 的座標與視窗不一致 → 分身一出現就整張票位移＋放大（Kelvin 錄影逐格量到 +65px）。
+  //   讓真按鈕自己演，座標永遠正確，也不可能出現兩張票。
+  const [tearing, setTearing] = useState(false);
+  const tearTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (tearTimer.current) window.clearTimeout(tearTimer.current); }, []);
+  const openEntry = () => {
+    if (tearing || entryOpen) return;
+    let reduce = false;
+    try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* ignore */ }
+    if (reduce) { setEntryOpen(true); return; }   // 無障礙：不演出，直接開
+    setTearing(true);
+    playPageSound('tear');
+    hapticTap();
+    tearTimer.current = window.setTimeout(() => setEntryOpen(true), 620);   // 票根落到一半就交棒，不空等
+  };
+  /** 入口頁關閉（任何出口）＝票根回到票上，下次還能再撕一次 */
+  const endTear = () => { setEntryOpen(false); setTearing(false); };
   const [entryResult, setEntryResult] = useState<EntryResult | null>(null);
   const [residenceCountry, setResidenceCountry] = useState<string>(localeCountry());
   // 櫥窗素材（三層個人化）：心願盒收藏照 → 護照回憶照 → 空（EntryPage 退回主題色底）。
@@ -117,17 +137,41 @@ export const TripsView: React.FC<TripsViewProps> = ({
 
         {/* 🎟️ 開新旅程 CTA（票根式）：上移統一風格。匯入入口已移入建立流程 */}
         <div className="px-5 pt-4">
+          {/* 🎫 撕票：靜止時是**一張卡**（白底＋圓角在 button 上）；撕的瞬間變成**兩張各自帶白底的紙**——
+              否則飛走的只是一顆圓鈕、票身也沒有撕痕，讀起來像「按鈕掉了」而不是「票被撕下」。
+              ⚠️ 撕票期間必須解除 overflow-hidden（票根要飛出卡外）與 active:scale（票身零位移）。 */}
           <button
-            onClick={() => setEntryOpen(true)}
-            className="w-full h-[66px] bg-white border border-black/[0.08] rounded-2xl flex items-stretch p-0 overflow-hidden active:scale-[0.99] transition-transform"
+            onClick={openEntry}
+            className={`w-full h-[66px] rounded-2xl flex items-stretch p-0 transition-transform ${
+              tearing ? 'bg-transparent' : 'bg-white border border-black/[0.08] overflow-hidden active:scale-[0.99]'
+            }`}
           >
-            <span className="flex-1 flex flex-col justify-center items-start pl-[18px]">
+            {/* 票身：撕票時自帶白紙與右緣齒孔虛線（＝撕痕留在票上），全程零位移 */}
+            <span className="flex-1 flex flex-col justify-center items-start pl-[18px] relative"
+              style={tearing ? {
+                backgroundColor: '#fff',
+                borderRadius: '16px 3px 3px 16px',
+                border: '1px solid rgba(0,0,0,.08)',
+                borderRight: '2px dashed #D6CDB8',
+              } : undefined}>
               <span className="font-mono text-[10px] tracking-[0.2em] text-[#3F6B52] mb-0.5">START A NEW TRIP</span>
               <span className="font-serif text-[19px] font-bold text-[#232320]">規劃新的一趟</span>
+              {/* 齒孔缺口：留在票身上（缺口是撕痕，不會跟著票根走） */}
+              <span aria-hidden className="absolute -right-[7px] -top-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
+              <span aria-hidden className="absolute -right-[7px] -bottom-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
             </span>
-            <span className="w-[66px] border-l-2 border-dashed border-[#D6CDB8] flex items-center justify-center relative">
-              <span className="absolute -left-[7px] -top-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
-              <span className="absolute -left-[7px] -bottom-[7px] w-3.5 h-3.5 rounded-full bg-[#E4E2DD]" />
+            {/* 票根：撕票時自帶白紙與右圓角，繞左下角由上而下掀起 → 隨重力墜離 */}
+            <span className={`w-[66px] flex items-center justify-center relative ${tearing ? '' : 'border-l-2 border-dashed border-[#D6CDB8]'}`}
+              style={tearing ? {
+                backgroundColor: '#fff',
+                borderRadius: '3px 16px 16px 3px',
+                border: '1px solid rgba(0,0,0,.08)',
+                borderLeft: 'none',
+                transformOrigin: 'left bottom',
+                animation: 'ktCtaStub .68s cubic-bezier(.34,.05,.5,1) forwards',
+                boxShadow: '0 6px 14px rgba(0,0,0,.18)',
+                zIndex: 1,
+              } : undefined}>
               <span className="w-11 h-11 rounded-full bg-[#232320] text-white flex items-center justify-center"><ArrowRight className="w-5 h-5" /></span>
             </span>
           </button>
@@ -188,10 +232,10 @@ export const TripsView: React.FC<TripsViewProps> = ({
           showcaseItems={showcaseItems}
           recentPlaces={recentPlaces}
           initialDestinations={entryResult?.destinations}
-          onClose={() => setEntryOpen(false)}
-          onNext={(r) => { setEntryResult(r); setEntryOpen(false); setIsCreating(true); }}
-          onManualCreate={() => { setEntryOpen(false); setEntryResult(null); setIsCreating(true); }}
-          onImport={() => { setEntryOpen(false); setIsImporting(true); }}
+          onClose={endTear}
+          onNext={(r) => { setEntryResult(r); endTear(); setIsCreating(true); }}
+          onManualCreate={() => { endTear(); setEntryResult(null); setIsCreating(true); }}
+          onImport={() => { endTear(); setIsImporting(true); }}
         />
       )}
       {isCreating && (
@@ -206,6 +250,18 @@ export const TripsView: React.FC<TripsViewProps> = ({
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}
+
+      {/* 撕票：票根繞左下角掀起（上緣先離＝齒孔由上而下斷開）→ 脫離後隨重力墜落。票身零位移。 */}
+      <style>{`
+        @keyframes ktCtaStub {
+          0%{transform:translate(0,0) rotate(0deg);opacity:1}
+          14%{transform:translate(2px,0) rotate(-1.5deg)}
+          34%{transform:translate(3px,0) rotate(4deg)}
+          54%{transform:translate(6px,1px) rotate(9deg)}
+          64%{transform:translate(12px,8px) rotate(12deg);opacity:1}
+          100%{transform:translate(38px,140px) rotate(24deg);opacity:0}
+        }
+      `}</style>
 
       {editingTrip && onUpdateTrip && (
         <EditTripModal

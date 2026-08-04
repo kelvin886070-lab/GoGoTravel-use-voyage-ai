@@ -131,7 +131,7 @@ export const EntryPage: React.FC<{
     onImport: () => void;
 }> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, onClose, onNext, onManualCreate, onImport }) => {
     const instant = useMemo(() => reduceMotion(), []);
-    const [phase, setPhase] = useState<'tear' | 'open'>(instant || (initialDestinations?.length ?? 0) > 0 ? 'open' : 'tear');
+    const [entered, setEntered] = useState(instant);   // 背景淡入（撕票在首頁演完才掛載本頁）
     // 返回情境：先復原成 pending，再靜默重驗一次（快取命中＝零延遲零成本；不重驗就等於相信上一輪的畫面）
     const [picked, setPicked] = useState<Picked[]>(() => (initialDestinations || []).map(name => ({ name, state: 'pending' as PickState })));
     const [input, setInput] = useState('');
@@ -176,16 +176,14 @@ export const EntryPage: React.FC<{
         img.src = url;
     }, []);
 
-    // ① 撕票 → ② 開票
+    // ① 撕票已改由**首頁那顆真的 CTA** 自己演（見 TripsView：ktCtaStub）——
+    //    本頁在票根落到一半時才掛載，只負責把新世界淡進來（背景 opacity 0→1）。
     useEffect(() => {
-        if (instant || phase === 'open') return;   // 返回情境不重播開場儀式（儀式只在前進時）
-        playPageSound('tear');
-        hapticTap();
-        const t = window.setTimeout(() => setPhase('open'), 680);
-        return () => window.clearTimeout(t);
-    }, [instant]);
+        const t = window.requestAnimationFrame(() => setEntered(true));
+        return () => window.cancelAnimationFrame(t);
+    }, []);
 
-    // ③ 櫥窗輪播（尚未選目的地時）
+    // ② 櫥窗輪播（尚未選目的地時）
     useEffect(() => {
         if (picked.length > 0 || showcaseItems.length === 0) return;
         swapBackground(showcaseItems[showcaseIdx % showcaseItems.length].url);
@@ -344,41 +342,31 @@ export const EntryPage: React.FC<{
     };
 
     return (
-        <div className="fixed inset-0 z-[90] overflow-hidden" style={{ backgroundColor: '#1b1510' }}>
-            {/* 背景三層（只用長寫屬性：混用 background 簡寫會洗掉 backgroundSize＝平鋪 bug） */}
-            <div className="absolute inset-0" style={{
-                backgroundImage: isDomestic ? 'linear-gradient(165deg,#4a5c48,#222b21)' : 'linear-gradient(165deg,#3A6350,#22372a)',
-                transition: 'background-image .6s ease',
-            }} />
-            <div className="absolute inset-0" style={{
-                backgroundImage: layerA ? `url("${layerA}")` : undefined,
-                backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-                opacity: active === 'A' && layerA ? 1 : 0, transition: 'opacity 1s ease',
-            }} />
-            <div className="absolute inset-0" style={{
-                backgroundImage: layerB ? `url("${layerB}")` : undefined,
-                backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-                opacity: active === 'B' && layerB ? 1 : 0, transition: 'opacity 1s ease',
-            }} />
-            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.42), rgba(15,14,13,.72))' }} />
+        <div className="fixed inset-0 z-[90] overflow-hidden">
+            {/* 背景四層：掛載時由透明淡入＝**接住首頁撕票的最後一拍**（票根還在落，世界才換）。
+                只用長寫屬性：混用 background 簡寫會洗掉 backgroundSize＝平鋪 bug。 */}
+            <div className="absolute inset-0"
+                style={{ opacity: entered ? 1 : 0, transition: instant ? undefined : 'opacity .38s ease' }}>
+                <div className="absolute inset-0" style={{ backgroundColor: '#1b1510' }} />
+                <div className="absolute inset-0" style={{
+                    backgroundImage: isDomestic ? 'linear-gradient(165deg,#4a5c48,#222b21)' : 'linear-gradient(165deg,#3A6350,#22372a)',
+                    transition: 'background-image .6s ease',
+                }} />
+                <div className="absolute inset-0" style={{
+                    backgroundImage: layerA ? `url("${layerA}")` : undefined,
+                    backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+                    opacity: active === 'A' && layerA ? 1 : 0, transition: 'opacity 1s ease',
+                }} />
+                <div className="absolute inset-0" style={{
+                    backgroundImage: layerB ? `url("${layerB}")` : undefined,
+                    backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+                    opacity: active === 'B' && layerB ? 1 : 0, transition: 'opacity 1s ease',
+                }} />
+                <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.42), rgba(15,14,13,.72))' }} />
+            </div>
 
-            {phase === 'tear' && (
-                <div className="absolute inset-x-4 top-24 h-[66px] bg-[#F6F1E7] rounded-2xl flex items-stretch overflow-hidden"
-                    style={{ animation: 'ktTearBody .68s cubic-bezier(.22,.9,.3,1) forwards' }}>
-                    <span className="flex-1 flex flex-col justify-center pl-[18px]">
-                        <span className="font-mono text-[10px] tracking-[0.2em] text-[#3F6B52]">START A NEW TRIP</span>
-                        <span className="font-serif text-[19px] font-bold text-[#232320]">規劃新的一趟</span>
-                    </span>
-                    <span className="w-[66px] border-l-2 border-dashed border-[#D6CDB8] flex items-center justify-center"
-                        style={{ animation: 'ktTearStub .68s cubic-bezier(.4,.1,.7,1) forwards' }}>
-                        <span className="w-11 h-11 rounded-full bg-[#232320] text-white flex items-center justify-center"><ArrowRight className="w-5 h-5" /></span>
-                    </span>
-                </div>
-            )}
-
-            {phase === 'open' && (
-                <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-                    <button onClick={onClose} aria-label="關閉" className="absolute right-4 p-2 z-10" style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
+            <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+                    <button onClick={onClose} aria-label="關閉" className="absolute right-4 p-2 z-30" style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
                         <X className="w-5 h-5 text-white/80" />
                     </button>
 
@@ -386,12 +374,12 @@ export const EntryPage: React.FC<{
                     {picked.length === 0 && hasPhoto && showcase?.caption && (
                         showcase.place ? (
                             <button onClick={() => void commit(showcase.place!)}
-                                className="absolute left-6 font-serif text-[11px] text-white/75 underline underline-offset-4 decoration-white/35"
+                                className="absolute left-6 z-30 font-serif text-[11px] text-white/75 underline underline-offset-4 decoration-white/35"
                                 style={{ top: 'calc(env(safe-area-inset-top) + 24px)' }}>
                                 {showcase.caption}
                             </button>
                         ) : (
-                            <div className="absolute left-6 font-serif text-[11px] text-white/60"
+                            <div className="absolute left-6 z-30 font-serif text-[11px] text-white/60"
                                 style={{ top: 'calc(env(safe-area-inset-top) + 24px)' }}>
                                 {showcase.caption}
                             </div>
@@ -399,8 +387,11 @@ export const EntryPage: React.FC<{
                     )}
 
                     {/* 版面錨點（Kelvin 選 B）：**輸入線恆在畫面 42%**——上半往上長、下半往下長，
-                        內容再多也不會把輸入線推走；42% 略高於幾何中線＝人眼的視覺中心，且替鍵盤留出空間。 */}
-                    <div className="flex-1 relative" style={{ animation: instant ? undefined : 'ktFadeUp .5s ease-out' }}>
+                        內容再多也不會把輸入線推走；42% 略高於幾何中線＝人眼的視覺中心，且替鍵盤留出空間。
+                        ⚠️ 基準必須是**整個畫面**：先前錨在 flex-1 內容區，而內容區已扣掉底部票券鈕，
+                        手機上那塊佔比更大 → 錨點被往上推（Kelvin 實測「還是沒置中」的真因）。
+                        故本層 absolute inset-0 脫離 flex 流，底部票券鈕改用 mt-auto 自行貼底。 */}
+                    <div className="absolute inset-0" style={{ animation: instant ? undefined : 'ktFadeUp .5s ease-out' }}>
                         {/* 上半：標題與已選——底邊貼齊 42% 那條線（bottom:58% ＝ 距頂 42%） */}
                         <div className="absolute inset-x-0 top-0 px-6 flex flex-col justify-end overflow-y-auto"
                             style={{ bottom: '58%', paddingBottom: 14 }}>
@@ -421,8 +412,8 @@ export const EntryPage: React.FC<{
                             )}
                         </div>
 
-                        {/* 下半：輸入線本體與其後的一切——頂邊貼齊同一條 42% 線 */}
-                        <div className="absolute inset-x-0 bottom-0 px-6 overflow-y-auto" style={{ top: '42%' }}>
+                        {/* 下半：輸入線本體與其後的一切——頂邊貼齊同一條 42% 線；底部留出票券鈕的位置 */}
+                        <div className="absolute inset-x-0 px-6 overflow-y-auto" style={{ top: '42%', bottom: 118 }}>
 
                         {/* 輸入：金色髮絲線＋金游標；IME 組字中的 Enter 不送出 */}
                         <div className="flex items-end gap-2 mx-auto w-full max-w-[250px] pb-1.5"
@@ -499,7 +490,7 @@ export const EntryPage: React.FC<{
                         </div>
                     </div>
 
-                    <div className="px-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
+                    <div className="px-4 mt-auto relative z-10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
                         <button
                             onClick={handleNext}
                             className="w-full flex items-stretch active:scale-[0.99] transition-transform"
@@ -517,8 +508,7 @@ export const EntryPage: React.FC<{
                             <button onClick={onImport} className="font-serif text-[12px] text-white/70 underline underline-offset-4 decoration-white/40">從分享連結匯入</button>
                         </div>
                     </div>
-                </div>
-            )}
+            </div>
 
             {/* ③出口攔截：一張落在桌上的便條紙。偵測可以不完美，但絕不無聲放行——
                 使用者必須親眼看見「哪幾個地方我查不到」，再親手決定。仍然尊重自由：堅持就放行。 */}
@@ -558,8 +548,6 @@ export const EntryPage: React.FC<{
             )}
 
             <style>{`
-                @keyframes ktTearStub { 0%{transform:translate(0,0) rotate(0)} 18%{transform:translate(3px,0) rotate(0)} 100%{transform:translate(52px,34px) rotate(18deg);opacity:0} }
-                @keyframes ktTearBody { 0%{transform:scale(1);opacity:1} 55%{transform:scale(1.02)} 100%{transform:scale(1.06);opacity:0} }
                 @keyframes ktFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
                 @keyframes ktDraw { to { stroke-dashoffset: 0 } }
                 @keyframes ktRub { 0%{transform:translate(0,0) rotate(-4deg)} 45%{transform:translate(96px,2px) rotate(3deg)} 70%{transform:translate(48px,-2px) rotate(-3deg)} 100%{transform:translate(118px,0) rotate(3deg)} }
