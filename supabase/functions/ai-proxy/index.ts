@@ -260,7 +260,9 @@ async function destinationDeep(
 JSON 結構：
 {"zones":[{"name":"","en":"","cities":[""],"reason":"","tags":[""]}],"tags":[""],"seasons":{"1":"","2":"","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"","11":"","12":""},"seasonKeys":{"1":"","2":"","3":"","4":"","5":"","6":"","7":"","8":"","9":"","10":"","11":"","12":""}}`;
 
-  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 4096, timeoutMs: DEEP_TIMEOUT_MS });
+  // ⚠️ 加了 seasonKeys（12 個欄位）之後額度要放寬：模型為了塞進上限會自行省略欄位，
+  //    那種「安靜地少一塊」比整個失敗更難查。重層是背景預取，多一點時間可以接受。
+  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 6144, timeoutMs: DEEP_TIMEOUT_MS });
   if ("error" in res && res.error) {
     console.error("[destination-deep] gemini error", raw, res.error);
     return { deep: null, error: res.error };
@@ -273,7 +275,13 @@ JSON 結構：
     console.error("[destination-deep] parse failed", { query: raw, finishReason, ms, len: text.length, head: text.slice(0, 200) });
     return { deep: null, reason: "parse", finishReason };
   }
-  console.log("[destination-deep] ok", { query: raw, zones: (deep.zones as unknown[] | undefined)?.length ?? 0, ms });
+  console.log("[destination-deep] ok", {
+    query: raw,
+    zones: (deep.zones as unknown[] | undefined)?.length ?? 0,
+    seasons: Object.keys((deep.seasons ?? {}) as Record<string, string>).length,
+    keys: Object.keys((deep.seasonKeys ?? {}) as Record<string, string>).length,   // 0＝模型沒生關鍵詞
+    ms,
+  });
 
   await writeIntelCache(key, deep);
   return { deep, cached: false };

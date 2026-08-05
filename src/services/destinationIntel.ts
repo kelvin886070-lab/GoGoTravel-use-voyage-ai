@@ -88,7 +88,7 @@ const makeStore = <T>(storageKey: string) => {
 
 // v4：拆成輕／重兩層，形狀改變 → 舊快取一律失效
 const intelStore = makeStore<DestinationIntel>('kt_dest_intel_v4');
-const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v2');   // v2：新增 seasonKeys
+const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v3');   // v3：seasonKeys 上線前的舊資料一律作廢
 
 const intelInflight = new Map<string, Promise<DestinationIntel | null>>();
 const deepInflight = new Map<string, Promise<DestinationDeep | null>>();
