@@ -60,6 +60,8 @@ const SEASON_ROWS: Array<{ label: string; months: number[] }> = [
 ];
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const MONTH_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+/** 日曆每一格的固定高度：補白的格子也必須佔這個高度，否則 5 排／6 排的月份會讓整張紙忽高忽低 */
+const CELL_H = 30;
 /** 出發章紅：週末與連假的標記色（與全站「出發／準備家族＝紅」同一支） */
 const STAMP_RED = '#A23B2E';
 /** 冬季高山的風險提示關鍵字（只給通用、查得到的建議，不編造路況） */
@@ -278,12 +280,17 @@ export const WhenPage: React.FC<{
         return isoOf(y, m, d);
     }, [month, thisMonth, thisYear, now, yearOfMonth]);
 
+    /**
+     * 日曆格：**固定 6 週 42 格**。
+     * 有的月份 5 排、有的 6 排，若照實際排數渲染，換月時整張紙會忽高忽低——
+     * 使用者的手指停在同一個位置，畫面卻在腳下移動。日曆的尺寸必須是常數。
+     */
     const grid = useMemo(() => {
         const lead = firstWeekday(calYear, calMonth);
         const total = daysInMonth(calYear, calMonth);
         const cells: Array<string | null> = Array(lead).fill(null);
         for (let d = 1; d <= total; d++) cells.push(isoOf(calYear, calMonth, d));
-        while (cells.length % 7 !== 0) cells.push(null);
+        while (cells.length < 42) cells.push(null);
         return cells;
     }, [calYear, calMonth]);
 
@@ -398,14 +405,14 @@ export const WhenPage: React.FC<{
                     {/* ── ①月份層：品牌年曆（有確切日期並關閉日曆後收起） ───────── */}
                     {!coarseHidden && (
                     <div className="relative mx-auto" style={{
-                        animation: collapsing && !instant ? 'ktFadeAway .26s ease-in forwards' : undefined,
+                        animation: collapsing && !instant ? 'ktFadeAway .40s ease-in forwards' : undefined,
                         maxWidth: 300,
                         backgroundColor: PAPER,
                         borderRadius: PAPER_RADIUS,
                         boxShadow: paperShadow('rest'),
                         padding: '12px 12px 10px',
                     }}>
-                        <PaperTexture keyline={false} dense />
+                        <PaperTexture keyline={false} dense seal={false} />
                         {/* 頂部兩枚裝訂孔：打穿紙、看得到底下的照片 */}
                         <span aria-hidden className="absolute w-[9px] h-[9px] rounded-full"
                             style={{ top: -4, left: '32%', backgroundColor: 'rgba(18,15,12,.62)', boxShadow: 'inset 0 1px 1px rgba(0,0,0,.5)' }} />
@@ -506,7 +513,7 @@ export const WhenPage: React.FC<{
                     {!coarseHidden && (
                     <div className="mt-7 mx-auto" style={{
                         maxWidth: 300,
-                        animation: collapsing && !instant ? 'ktFadeAway .26s ease-in forwards' : undefined,
+                        animation: collapsing && !instant ? 'ktFadeAway .40s ease-in forwards' : undefined,
                     }}>
                         <div className="text-center">
                             {editingDays ? (
@@ -627,7 +634,7 @@ export const WhenPage: React.FC<{
                                         ⚠️ 形狀刻意保留可以「翻面」的比例——未來背面可放那幾天的天氣或在地活動，
                                            屆時不必重新設計（先留形式，不先做功能）。 */}
                                     <div className="relative" style={{
-                                        animation: instant ? undefined : 'ktCardDrop .42s cubic-bezier(.2,.9,.3,1) .12s backwards',
+                                        animation: instant ? undefined : 'ktCardDrop .58s cubic-bezier(.2,.9,.3,1) .1s backwards',
                                         width: 250,
                                         backgroundColor: PAPER,
                                         borderRadius: PAPER_RADIUS,
@@ -677,7 +684,7 @@ export const WhenPage: React.FC<{
                                             所以放在齒孔線之下（撕下來的這一段時間），不跟日期旁的節日直排搶。 */}
                                         {tripHoliday && (
                                             <div className="relative text-center font-serif text-[11px] mb-2.5" style={{ color: STAMP_RED }}>
-                                                這幾天遇上 {tripHoliday.name}
+                                                {tripHoliday.name}
                                             </div>
                                         )}
 
@@ -718,13 +725,13 @@ export const WhenPage: React.FC<{
 
                         {(exactOpen || collapsing) && (
                             <div className="relative" style={{
-                                animation: collapsing && !instant ? 'ktTearOff .34s cubic-bezier(.4,0,.9,.6) forwards' : undefined,
+                                animation: collapsing && !instant ? 'ktTearOff .52s cubic-bezier(.4,0,.9,.6) forwards' : undefined,
                                 backgroundColor: PAPER,
                                 borderRadius: PAPER_RADIUS,
                                 boxShadow: paperShadow('rest'),
                                 padding: '12px 12px 10px',
                             }}>
-                                <PaperTexture keyline={false} dense />
+                                <PaperTexture keyline={false} dense seal={false} />
                                 {/* 左上一枚撕頁孔（與年曆的裝訂孔同一套語彙） */}
                                 <span aria-hidden className="absolute w-[9px] h-[9px] rounded-full"
                                     style={{ top: -4, left: 18, backgroundColor: 'rgba(18,15,12,.62)', boxShadow: 'inset 0 1px 1px rgba(0,0,0,.5)' }} />
@@ -732,7 +739,9 @@ export const WhenPage: React.FC<{
                                 <div className="relative flex items-center justify-between py-1.5 mb-2"
                                     style={{ borderTop: '1px solid rgba(35,35,32,.45)', borderBottom: '1px solid rgba(35,35,32,.18)' }}>
                                     <button onClick={() => shiftCalendar(-1)} aria-label="上個月" className="px-2 text-[13px]" style={{ color: 'rgba(35,35,32,.5)' }}>‹</button>
-                                    <span className="font-mono text-[10px] tracking-[0.18em]" style={{ color: INK_PRINT }}>{calYear} · {pad2(calMonth)}</span>
+                                    <span className="font-mono text-[9px] tracking-[0.16em] whitespace-nowrap" style={{ color: INK_PRINT }}>
+                                        KELVIN TRIP · {calYear} · {pad2(calMonth)}
+                                    </span>
                                     <button onClick={() => shiftCalendar(1)} aria-label="下個月" className="px-2 text-[13px]" style={{ color: 'rgba(35,35,32,.5)' }}>›</button>
                                 </div>
 
@@ -744,7 +753,9 @@ export const WhenPage: React.FC<{
 
                                 <div className="relative grid grid-cols-7 gap-y-1">
                                     {grid.map((iso, i) => {
-                                        if (!iso) return <span key={`b${i}`} />;
+                                        // ⚠️ 補白的格子要**有高度**：空的 <span /> 高度為零，第六排會整排塌掉，
+                                        //    等於沒有補——這是「補到 42 格卻還是會跳」的真因。
+                                        if (!iso) return <span key={`b${i}`} style={{ height: CELL_H }} />;
                                         const d = Number(iso.slice(8));
                                         const isStart = iso === startDate;
                                         const isEnd = iso === endDate;
@@ -753,8 +764,8 @@ export const WhenPage: React.FC<{
                                         return (
                                             <button key={iso} onClick={() => pickDay(iso)} disabled={past}
                                                 aria-label={`${iso}${isStart ? ' 出發' : isEnd ? ' 回程' : ''}`}
-                                                className="relative py-1.5 flex items-center justify-center"
-                                                style={{ backgroundColor: inRange ? 'rgba(35,35,32,.09)' : undefined }}>
+                                                className="relative flex items-center justify-center"
+                                                style={{ height: CELL_H, backgroundColor: inRange ? 'rgba(35,35,32,.09)' : undefined }}>
                                                 {/* 圈住數字（不是圈住格子）——與年曆同一個比例，畫面才一致 */}
                                                 <span className="relative inline-block">
                                                     <span className="font-serif text-[13px]" style={{
@@ -774,26 +785,26 @@ export const WhenPage: React.FC<{
                                     })}
                                 </div>
 
-                                {/* 當月的連假：**大部分人的日期是被假期決定的**，這一行比季節更影響決策 */}
-                                {hasHolidayData(calYear) && holidaysInMonth(calYear, calMonth).length > 0 && (
-                                    <div className="relative mt-2 text-center">
-                                        {holidaysInMonth(calYear, calMonth).slice(0, 2).map(h => (
-                                            <div key={h.name} className="font-serif text-[10px]" style={{ color: STAMP_RED }}>
-                                                {h.start.slice(5).replace('-', '/')}
-                                                {h.end !== h.start ? `–${h.end.slice(5).replace('-', '/')}` : ''} {h.name}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                {/* 當月的連假：**大部分人的日期是被假期決定的**，這一行比季節更影響決策。
+                                    ⚠️ 高度固定保留兩行——有連假、兩個連假、沒連假都一樣高，
+                                    否則換月時紙會上上下下跳。這塊空間本來就是日曆的頁尾註記區。 */}
+                                <div className="relative mt-2 text-center" style={{ minHeight: 30 }}>
+                                    {hasHolidayData(calYear) && holidaysInMonth(calYear, calMonth).slice(0, 2).map(h => (
+                                        <div key={h.name} className="font-serif text-[10px] leading-[15px]" style={{ color: STAMP_RED }}>
+                                            {h.start.slice(5).replace('-', '/')}
+                                            {h.end !== h.start ? `–${h.end.slice(5).replace('-', '/')}` : ''} {h.name}
+                                        </div>
+                                    ))}
+                                </div>
 
                                 {/* 起點常駐顯示：舊版選完起點就失憶，使用者不知道下一步要點什麼 */}
-                                <div className="relative text-center font-serif text-[10px] mt-2.5" style={{ color: 'rgba(35,35,32,.62)' }}>
+                                <div className="relative text-center font-serif text-[10px] mt-2" style={{ color: 'rgba(35,35,32,.62)', minHeight: 15 }}>
                                     {!startDate && '選擇出發日'}
                                     {startDate && !endDate && `${startDate.slice(5).replace('-', '.')} 出發 → 選擇回程日`}
                                     {startDate && endDate && `${startDate.slice(5).replace('-', '.')} – ${endDate.slice(5).replace('-', '.')} · ${days} 天`}
                                 </div>
 
-                                <div className="relative flex items-center justify-center gap-5 mt-2">
+                                <div className="relative flex items-center justify-center gap-5 mt-2" style={{ minHeight: 20 }}>
                                     {!startDate && (
                                         <button onClick={() => {
                                             const s = suggestStart();
@@ -812,27 +823,30 @@ export const WhenPage: React.FC<{
                                         還是先不指定
                                     </button>
                                     {exact && (
-                                        <button onClick={() => {
+                                        <button className="relative font-serif text-[14px] font-bold px-1 py-0.5"
+                                            style={{ color: INK_INK }}
+                                            onClick={() => {
                                             setExactOpen(false);
                                             setCollapsing(true);
                                             const done = window.setTimeout(() => {
                                                 if (!aliveRef.current) return;
                                                 setCollapsing(false);          // 舊的演完才卸載，新的接著落下
                                                 playPageSound('paperDrop');
-                                            }, 260);
+                                            }, 420);
                                             timersRef.current.add(done);
                                             hapticTap();
                                             // 收束的編曲（兩段式）：
                                             //   0ms   撕下那一頁（pageTear）＋年曆/拉桿/日曆往上收走
-                                            //   260ms 舊的演完卸載，撕下來的那頁從上方落定（paperDrop）
+                                            //   420ms 舊的演完卸載，撕下來的那頁從上方落定（paperDrop）
                                             // 兩個不同物件的兩種聲音，不違反「一次動作只播一聲」（那條是防同一物件重複發聲）。
                                             playPageSound('pageTear');
                                             // 捲動歸位：收起後內容變短，若停在半空會看到一片黑
                                             scrollRef.current?.scrollTo({ top: 0, behavior: instant ? 'auto' : 'smooth' });
-                                        }}
-                                            className="font-serif text-[11px] font-bold underline underline-offset-4"
-                                            style={{ color: INK_INK, textDecorationColor: 'rgba(35,35,32,.4)' }}>
-                                            就這樣
+                                        }}>
+                                            撕下這一天
+                                            {/* 主要動作用手繪墨圈（紙上用墨）——與圈選同一種語言，且刻意不用票券樣式：
+                                                票券是「離開這一頁」的專屬物件，這裡是「把這一天留下來」。 */}
+                                            <HandCircle seed={seedOf('tearday')} color={INK_INK} instant={instant} />
                                         </button>
                                     )}
                                 </div>
@@ -841,7 +855,14 @@ export const WhenPage: React.FC<{
                     </div>
                 </div>
 
-                <div className="relative px-4 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
+                {/* 日曆展開時**收起票券鈕**：票券＝撕票＝離開這一頁，與「確認這幾天」不是同一件事。
+                    同一個畫面上兩個前進動作會讓人猶豫該按哪一個——這時候只該有一個。 */}
+                <div className="relative px-4 pt-2" style={{
+                    paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)',
+                    opacity: exactOpen ? 0 : 1,
+                    pointerEvents: exactOpen ? 'none' : undefined,
+                    transition: 'opacity .28s ease',
+                }}>
                     {/* A：底部漸層——內容被切在空白處時，這道漸層說明「下面還有」。
                         捲到底自動收起；pointer-events none，不吃點擊。 */}
                     <div aria-hidden className="absolute left-0 right-0 pointer-events-none"
