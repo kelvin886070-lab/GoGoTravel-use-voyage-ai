@@ -111,6 +111,9 @@ export const WhenPage: React.FC<{
     const [startDate, setStartDate] = useState<string | null>(null);
     const [endDate, setEndDate] = useState<string | null>(null);
     const [scrolled, setScrolled] = useState(false);      // 捲過年曆之後，標題換成常駐摘要
+    const [atBottom, setAtBottom] = useState(false);     // 已經捲到底＝底部漸層收起來
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const exactRef = useRef<HTMLDivElement>(null);
     const aliveRef = useRef(true);
     const daysInputRef = useRef<HTMLInputElement>(null);
 
@@ -192,6 +195,12 @@ export const WhenPage: React.FC<{
         setExactOpen(true);
         playPageSound('paperSlide');
         hapticTap();
+        // 展開的東西自己走到眼前：等一幀讓 DOM 先長出來再捲
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                exactRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'center' });
+            });
+        });
     };
 
     const shiftCalendar = (delta: number) => {
@@ -266,6 +275,16 @@ export const WhenPage: React.FC<{
     const density = densityWarning(placeCount, days);
     const rulerValue = Math.min(RULER_MAX, days);
     const exact = !!(startDate && endDate);
+    /**
+     * 粗略層（年曆＋拉桿＋專家清單）收起的時機：**有確切日期且日曆已關閉**。
+     *   - 為什麼不是「選完第二個日期就收」：上面的內容瞬間變短，日曆會從使用者指頭底下往上跳。
+     *   - 為什麼要收而不是淡出：半透明但仍可拖的拉桿是陷阱——看起來停用，手滑碰到卻會默默改掉回程日。
+     *     **要嘛能動、要嘛收起來，不該有中間狀態。**
+     */
+    const coarseHidden = exact && !exactOpen;
+    /** 跨月的旅程要說兩句季節（天氣真的會變）——但年曆不必顯示兩個月，那是輸入工具，已經不是輸入了 */
+    const endMonth = endDate ? Number(endDate.slice(5, 7)) : null;
+    const noteEnd = exact && endMonth && endMonth !== month ? seasonNote(deep, endMonth) : null;
 
     const guardNext = (): boolean => {
         if (!month) {
@@ -331,9 +350,14 @@ export const WhenPage: React.FC<{
                     )}
                 </div>
 
-                <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-3 pb-3"
-                    onScroll={e => setScrolled(e.currentTarget.scrollTop > 130)}>
-                    {/* ── ①月份層：品牌年曆 ─────────────────────────────── */}
+                <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 pt-3 pb-3"
+                    onScroll={e => {
+                        const el = e.currentTarget;
+                        setScrolled(el.scrollTop > 130);
+                        setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 24);
+                    }}>
+                    {/* ── ①月份層：品牌年曆（有確切日期並關閉日曆後收起） ───────── */}
+                    {!coarseHidden && (
                     <div className="relative mx-auto" style={{
                         maxWidth: 300,
                         backgroundColor: PAPER,
@@ -374,7 +398,7 @@ export const WhenPage: React.FC<{
                                             <span className="relative inline-block">
                                                 <span className="font-serif text-[13px]"
                                                     style={{ color: past ? 'rgba(35,35,32,.24)' : INK_PRINT, letterSpacing: '.02em' }}>{m}</span>
-                                                {on && <HandCircle seed={seedOf(`m${m}`)} color={INK_INK} instant={instant} tight />}
+                                                {on && <HandCircle seed={seedOf(`m${m}`)} color={INK_INK} instant={instant} />}
                                             </span>
                                             {/* 「今天」記號絕對定位：不佔高度，四排才會等高 */}
                                             {isNow && (
@@ -387,11 +411,19 @@ export const WhenPage: React.FC<{
                             </div>
                         ))}
                     </div>
+                    )}
 
-                    {/* 季節回應行：那個月的那個地方長什麼樣（deep.seasons，零額外成本） */}
+                    {/* 季節回應行：那個月的那個地方長什麼樣（deep.seasons，零額外成本）。
+                        **收起粗略層之後這一行留著**——它不是輸入控制項，是回報：你剛決定了日期，
+                        它告訴你那時候的那個地方長什麼樣。這是這一頁唯一的情感產物。 */}
                     {note && (
                         <div className="text-center font-serif text-[11px] mt-3" style={{ color: INK_GOLD, textShadow: ON_PHOTO_SHADOW }}>
                             {note}
+                        </div>
+                    )}
+                    {noteEnd && (
+                        <div className="text-center font-serif text-[11px] mt-1" style={{ color: INK_GOLD, textShadow: ON_PHOTO_SHADOW }}>
+                            {noteEnd}
                         </div>
                     )}
                     {risk && (
@@ -407,7 +439,7 @@ export const WhenPage: React.FC<{
                     )}
 
                     {/* 專家時刻：還沒想法時，把整年攤開讓他挑（點一列＝直接圈那個月） */}
-                    {!month && expertRows.length > 0 && (
+                    {!coarseHidden && !month && expertRows.length > 0 && (
                         <div className="text-center mt-3">
                             <button onClick={() => { setExpertOpen(o => !o); hapticTap(); }}
                                 className="font-serif text-[12px] font-bold underline underline-offset-4"
@@ -431,11 +463,8 @@ export const WhenPage: React.FC<{
                     )}
 
                     {/* ── ②天數層：尺規拉桿 ─────────────────────────────── */}
-                    <div className="mt-7 mx-auto" style={{
-                        maxWidth: 300,
-                        opacity: exact ? 0.4 : 1,          // 有確切日期＝日期說了算，拉桿退居次要（仍可調，會帶動回程日）
-                        transition: 'opacity .35s ease',
-                    }}>
+                    {!coarseHidden && (
+                    <div className="mt-7 mx-auto" style={{ maxWidth: 300 }}>
                         <div className="text-center">
                             {editingDays ? (
                                 <input
@@ -519,9 +548,10 @@ export const WhenPage: React.FC<{
                             <div className="text-center font-serif text-[10px] mt-2" style={{ color: INK_AMBER, textShadow: ON_PHOTO_SHADOW }}>{density}</div>
                         )}
                     </div>
+                    )}
 
                     {/* ── ③精確層：可展開的日曆 ─────────────────────────── */}
-                    <div className="mt-7 mx-auto" style={{ maxWidth: 300 }}>
+                    <div ref={exactRef} className="mt-7 mx-auto" style={{ maxWidth: 300 }}>
                         {!exactOpen && !exact && (
                             <button onClick={openExact}
                                 className="w-full font-serif text-[12px] text-white/80 underline underline-offset-4 decoration-white/40 py-1" style={{ textShadow: ON_PHOTO_SHADOW }}>
@@ -530,12 +560,29 @@ export const WhenPage: React.FC<{
                         )}
 
                         {exact && !exactOpen && (
-                            <div className="flex items-center justify-center gap-3">
-                                <span className="font-mono text-[12px]" style={{ color: INK_GOLD, textShadow: ON_PHOTO_SHADOW }}>
-                                    {startDate!.slice(5).replace('-', '.')} – {endDate!.slice(5).replace('-', '.')}
-                                </span>
-                                <span className="font-serif text-[11px] text-white/70" style={{ textShadow: ON_PHOTO_SHADOW }}>· {days} 天</span>
-                                <button onClick={openExact} className="font-serif text-[11px] text-white/78 underline underline-offset-4 decoration-white/40" style={{ textShadow: ON_PHOTO_SHADOW }}>修改</button>
+                            <div className="flex flex-col items-center">
+                                {/* 摘要籤（定稿：精確日期選定→摺疊成摘要籤）：**事實印在紙上**，
+                                    照片再花也吃不掉；也讓「已經決定」這件事有一個實體的落點。 */}
+                                <div className="relative px-4 py-2" style={{
+                                    backgroundColor: PAPER,
+                                    borderRadius: PAPER_RADIUS,
+                                    boxShadow: paperShadow('picked'),
+                                }}>
+                                    <PaperTexture keyline={false} seal={false} />
+                                    <span className="relative font-serif text-[14px]" style={{ color: INK_PRINT, letterSpacing: '.02em' }}>
+                                        {startDate!.replace(/-/g, '.')} – {endDate!.slice(5).replace('-', '.')}
+                                    </span>
+                                    <span className="relative font-serif text-[12px] ml-2" style={{ color: '#6B665C' }}>· {days} 天</span>
+                                </div>
+                                {/* 兩條回頭路都明講，不會有人被鎖在裡面 */}
+                                <div className="flex items-center gap-6 mt-3">
+                                    <button onClick={openExact}
+                                        className="font-serif text-[11px] text-white/78 underline underline-offset-4 decoration-white/40"
+                                        style={{ textShadow: ON_PHOTO_SHADOW }}>改日期</button>
+                                    <button onClick={() => { dropExact(); hapticTap(); }}
+                                        className="font-serif text-[11px] text-white/78 underline underline-offset-4 decoration-white/40"
+                                        style={{ textShadow: ON_PHOTO_SHADOW }}>改用月份與天數</button>
+                                </div>
                             </div>
                         )}
 
@@ -577,17 +624,20 @@ export const WhenPage: React.FC<{
                                                 aria-label={`${iso}${isStart ? ' 出發' : isEnd ? ' 回程' : ''}`}
                                                 className="relative py-1.5 flex items-center justify-center"
                                                 style={{ backgroundColor: inRange ? 'rgba(35,35,32,.09)' : undefined }}>
-                                                <span className="font-serif text-[13px]" style={{
-                                                    color: past
-                                                        ? 'rgba(35,35,32,.26)'
-                                                        : (holidayOf(iso) || isWeekend(iso)) ? STAMP_RED : INK_PRINT,
-                                                }}>{d}</span>
+                                                {/* 圈住數字（不是圈住格子）——與年曆同一個比例，畫面才一致 */}
+                                                <span className="relative inline-block">
+                                                    <span className="font-serif text-[13px]" style={{
+                                                        color: past
+                                                            ? 'rgba(35,35,32,.26)'
+                                                            : (holidayOf(iso) || isWeekend(iso)) ? STAMP_RED : INK_PRINT,
+                                                    }}>{d}</span>
+                                                    {(isStart || isEnd) && <HandCircle seed={seedOf(iso)} color={INK_INK} instant />}
+                                                </span>
                                                 {/* 連假：數字下面一點紅——週末已經是紅字，連假再多一個記號 */}
                                                 {!past && holidayOf(iso) && (
                                                     <span aria-hidden className="absolute rounded-full"
                                                         style={{ bottom: 2, width: 3, height: 3, backgroundColor: STAMP_RED }} />
                                                 )}
-                                                {(isStart || isEnd) && <HandCircle seed={seedOf(iso)} color={INK_INK} instant tight />}
                                             </button>
                                         );
                                     })}
@@ -643,7 +693,15 @@ export const WhenPage: React.FC<{
                     </div>
                 </div>
 
-                <div className="px-4 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
+                <div className="relative px-4 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
+                    {/* A：底部漸層——內容被切在空白處時，這道漸層說明「下面還有」。
+                        捲到底自動收起；pointer-events none，不吃點擊。 */}
+                    <div aria-hidden className="absolute left-0 right-0 pointer-events-none"
+                        style={{
+                            bottom: '100%', height: 42,
+                            backgroundImage: 'linear-gradient(rgba(15,14,13,0), rgba(15,14,13,.82))',
+                            opacity: atBottom ? 0 : 1, transition: 'opacity .3s ease',
+                        }} />
                     <TicketNextButton onPress={guardNext} onNext={submit} />
                 </div>
             </div>
