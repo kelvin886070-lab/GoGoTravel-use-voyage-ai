@@ -843,7 +843,7 @@ export const WhenPage: React.FC<{
                                             // 捲動歸位：收起後內容變短，若停在半空會看到一片黑
                                             scrollRef.current?.scrollTo({ top: 0, behavior: instant ? 'auto' : 'smooth' });
                                         }}>
-                                            撕下這一天
+                                            就這幾天
                                             {/* 主要動作用手繪墨圈（紙上用墨）——與圈選同一種語言，且刻意不用票券樣式：
                                                 票券是「離開這一頁」的專屬物件，這裡是「把這一天留下來」。 */}
                                             <HandCircle seed={seedOf('tearday')} color={INK_INK} instant={instant} />
