@@ -251,6 +251,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
           showcaseItems={showcaseItems}
           recentPlaces={recentPlaces}
           initialDestinations={entryResult?.destinations}
+          initialCoverUrl={entryResult?.coverUrl}
           onClose={endTear}
           onNext={afterEntry}
           onManualCreate={() => { endTear(); setEntryResult(null); setIsCreating(true); }}

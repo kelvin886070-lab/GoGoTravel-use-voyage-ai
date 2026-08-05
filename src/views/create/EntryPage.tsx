@@ -23,7 +23,7 @@ import { localPlaceVerdict } from '../../services/placeSanity';
 import { fetchCoverPhoto, heroCoverUrl } from '../../services/coverPhoto';
 import { isDomesticTrip } from '../../services/tripBrief';
 import { TicketNextButton } from './TicketNextButton';
-import { HandCircle, EraserBlock, seedOf, INK_GOLD, INK_AMBER, INK_KEYFRAMES } from './ink';
+import { HandCircle, EraserBlock, PaperTexture, paperShadow, seedOf, PAPER, PAPER_RADIUS, INK_GOLD, INK_AMBER, INK_KEYFRAMES } from './ink';
 
 const reduceMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -94,11 +94,12 @@ export const EntryPage: React.FC<{
     showcaseItems?: ShowcaseItem[];       // 櫥窗：心願盒收藏／護照回憶（label 可點直接加入）
     recentPlaces?: string[];              // 「再去一次」：過去去過的地方
     initialDestinations?: string[];       // 從下一步返回時復原（不必重打）
+    initialCoverUrl?: string | null;      // 返回時把上一輪的背景照直接交回來（不重抓＝零延遲零成本）
     onClose: () => void;
     onNext: (r: EntryResult) => void;
     onManualCreate: () => void;
     onImport: () => void;
-}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, onClose, onNext, onManualCreate, onImport }) => {
+}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, initialCoverUrl, onClose, onNext, onManualCreate, onImport }) => {
     const instant = useMemo(() => reduceMotion(), []);
     const [entered, setEntered] = useState(instant);   // 背景淡入（撕票在首頁演完才掛載本頁）
     // 返回情境：先復原成 pending，再靜默重驗一次（快取命中＝零延遲零成本；不重驗就等於相信上一輪的畫面）
@@ -111,10 +112,10 @@ export const EntryPage: React.FC<{
     const [confirmOpen, setConfirmOpen] = useState(false);               // 出口攔截卡
     const [listening, setListening] = useState(false);
     const [showcaseIdx, setShowcaseIdx] = useState(0);
-    const [layerA, setLayerA] = useState<string | null>(null);
+    const [layerA, setLayerA] = useState<string | null>(initialCoverUrl ?? null);
     const [layerB, setLayerB] = useState<string | null>(null);
     const [active, setActive] = useState<'A' | 'B'>('A');
-    const [hasPhoto, setHasPhoto] = useState(false);
+    const [hasPhoto, setHasPhoto] = useState(!!initialCoverUrl);
     const inputRef = useRef<HTMLInputElement>(null);
     const activeRef = useRef<'A' | 'B'>('A');
     const aliveRef = useRef(true);                       // 卸載後不再 setState（非同步回來時的守門）
@@ -486,23 +487,27 @@ export const EntryPage: React.FC<{
                     style={{ backgroundColor: 'rgba(15,14,13,.58)' }}
                     onClick={() => setConfirmOpen(false)}>
                     <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="有查不到的地點"
-                        className="w-full max-w-[300px] bg-[#F6F1E7] px-6 py-6 text-center"
+                        className="relative w-full max-w-[300px] px-6 py-6 text-center"
                         style={{
-                            borderRadius: 3, boxShadow: '0 18px 42px rgba(0,0,0,.5)', transform: 'rotate(-.6deg)',
+                            backgroundColor: PAPER,
+                            borderRadius: PAPER_RADIUS,
+                            boxShadow: `${paperShadow('rest')}, 0 18px 42px rgba(0,0,0,.5)`,
+                            transform: 'rotate(-.6deg)',
                             animation: instant ? undefined : 'ktDropIn .34s cubic-bezier(.2,.9,.3,1)',
                         }}>
-                        <div className="font-mono text-[9px] tracking-[0.28em] text-[#8A8266]">UNCONFIRMED</div>
-                        <div className="font-serif text-[16px] font-bold text-[#232320] mt-2">
+                        <PaperTexture />
+                        <div className="relative font-mono text-[9px] tracking-[0.28em] text-[#8A8266]">UNCONFIRMED</div>
+                        <div className="relative font-serif text-[16px] font-bold text-[#232320] mt-2">
                             有 {unverifiedNames.length} 個地方我查不到
                         </div>
-                        <div className="font-serif text-[14px] text-[#3F3B33] mt-2 leading-relaxed">
+                        <div className="relative font-serif text-[14px] text-[#3F3B33] mt-2 leading-relaxed">
                             {unverifiedNames.join('、')}
                         </div>
-                        <div className="font-serif text-[11px] text-[#8A8266] mt-3 leading-relaxed">
+                        <div className="relative font-serif text-[11px] text-[#8A8266] mt-3 leading-relaxed">
                             可能是打錯字，也可能只是很小的地方。<br />
                             照這樣繼續的話，這幾個地方的建議會少一些。
                         </div>
-                        <div className="flex items-center justify-center gap-8 mt-6">
+                        <div className="relative flex items-center justify-center gap-8 mt-6">
                             <button onClick={() => { setConfirmOpen(false); inputRef.current?.focus(); }}
                                 className="font-serif text-[13px] text-[#5A564C] underline underline-offset-4 decoration-[#B9B09A]">回去改</button>
                             <button onClick={() => { setConfirmOpen(false); playPageSound('tear', 0.5); hapticTap(); goNext(); }}

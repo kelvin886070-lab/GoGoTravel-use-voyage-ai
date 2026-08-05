@@ -12,6 +12,48 @@ export const INK_INK = '#232320';   // 紙上的墨
 export const INK_GOLD = '#C9B98F';  // 照片上的燙金
 export const INK_AMBER = '#E9BE7A'; // 未確認／軟提醒的琥珀
 
+// ── 紙 ────────────────────────────────────────────────────────────────
+// **音效是紙的，視覺就必須對得起那個聲音**（Kelvin 定案）：耳朵聽到紙、眼睛看到色塊＝儀式會垮。
+// 紙的真實感來自三層，全部**程序生成**（零圖檔、零授權風險、解析度無限、不吃 egress）：
+//   ①纖維紋：feTurbulence 高頻噪點，不透明度 5.5%——**摸得到、看不見**（遠看與純色紙無異，湊近有顆粒）
+//   ②厚度：上緣受光的白線＋下緣壓陰的暗線＋外投影（紙是有厚度的物件，不是一塊填色）
+//   ③手裁邊：四角半徑刻意不等（3/2/4/2）——機器切的邊才會四角一致
+// 刻意不做「復古仿舊」：斑駁紋理會壓垮 10–11px 的繁體中文，而且那是羊皮紙的年代感，
+//   與護照證件紙／票券卡紙不同代——同一個 app 裡不該有兩個年代。
+
+const GRAIN_SVG =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'>` +
+    `<filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/></filter>` +
+    `<rect width='140' height='140' filter='url(#g)'/></svg>`;
+
+/** 紙纖維的背景圖（同一個 URL 全站共用＝瀏覽器只解碼一次） */
+export const PAPER_GRAIN_URL = `url("data:image/svg+xml,${encodeURIComponent(GRAIN_SVG)}")`;
+
+/** 手裁邊的四角（機器切的邊才會四角一致） */
+export const PAPER_RADIUS = '3px 2px 4px 2px';
+
+/** 紙的立體感（依狀態變厚薄）：rest＝躺在桌上／press＝被指尖按住／picked＝被圈起來後留在桌面上 */
+export const paperShadow = (state: 'rest' | 'press' | 'picked'): string => {
+    const edge = 'inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(35,35,32,.06)';
+    if (state === 'press') return `${edge}, 0 1px 2px rgba(0,0,0,.28)`;
+    if (state === 'picked') return `${edge}, 0 1px 3px rgba(0,0,0,.30)`;
+    return `${edge}, 0 3px 8px rgba(0,0,0,.24)`;
+};
+
+/** 紙面的兩層紋理（放進任何鋪紙的容器裡當第一個子元素；容器要 position:relative） */
+export const PaperTexture: React.FC<{ radius?: string | number }> = ({ radius = PAPER_RADIUS }) => (
+    <>
+        <span aria-hidden style={{
+            position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+            opacity: 0.055, backgroundImage: PAPER_GRAIN_URL,
+        }} />
+        <span aria-hidden style={{
+            position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+            backgroundImage: 'radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0) 55%, rgba(150,120,70,.10) 100%)',
+        }} />
+    </>
+);
+
 /** 文字 → 穩定 seed（同一個詞每次的筆跡一致，像同一個人寫的） */
 export const seedOf = (s: string): number => {
     let h = 0;

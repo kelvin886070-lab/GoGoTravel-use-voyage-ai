@@ -19,7 +19,7 @@ import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchDestinationDeep, type IntelZone } from '../../services/destinationIntel';
 import { suggestedDays } from '../../services/tripBrief';
 import { TicketNextButton } from './TicketNextButton';
-import { HandCircle, EraserBlock, seedOf, PAPER, INK_INK, INK_AMBER, INK_KEYFRAMES } from './ink';
+import { HandCircle, EraserBlock, PaperTexture, paperShadow, seedOf, PAPER, PAPER_RADIUS, INK_INK, INK_AMBER, INK_KEYFRAMES } from './ink';
 
 const reduceMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -60,6 +60,7 @@ export const ZonePage: React.FC<{
     const [expanded, setExpanded] = useState(false);
     const [picked, setPicked] = useState<string[]>([]);      // 以地帶名為 key
     const [erasing, setErasing] = useState<string | null>(null);
+    const [pressed, setPressed] = useState<string | null>(null);   // 指尖按住的那張紙（會沉下去）
     const aliveRef = useRef(true);
     const timersRef = useRef<Set<number>>(new Set());
 
@@ -184,14 +185,21 @@ export const ZonePage: React.FC<{
                         return (
                             <button key={z.name} onClick={() => toggle(z)}
                                 aria-pressed={on}
-                                className="w-full text-left mb-2.5 px-3.5 py-3 block"
+                                onPointerDown={() => setPressed(z.name)}
+                                onPointerUp={() => setPressed(null)}
+                                onPointerLeave={() => setPressed(null)}
+                                onPointerCancel={() => setPressed(null)}
+                                className="w-full text-left mb-2.5 px-3.5 py-3 block relative"
                                 style={{
                                     backgroundColor: PAPER,
-                                    borderRadius: 3,                                  // 紙不會有圓角（3px＝裁切邊）
-                                    boxShadow: on ? '0 6px 16px rgba(0,0,0,.32)' : '0 2px 6px rgba(0,0,0,.22)',
-                                    transition: 'box-shadow .25s ease',
+                                    borderRadius: PAPER_RADIUS,                        // 手裁邊：四角刻意不等
+                                    boxShadow: paperShadow(pressed === z.name ? 'press' : on ? 'picked' : 'rest'),
+                                    // 按住＝紙被指尖壓在桌面上（位移 1px＋陰影收緊）；圈起來之後就留在那個高度
+                                    transform: (pressed === z.name || on) ? 'translateY(1px)' : undefined,
+                                    transition: 'box-shadow .18s ease, transform .18s ease',
                                     animation: instant ? undefined : `ktPaperDrop .42s cubic-bezier(.2,.85,.35,1) ${i * 90}ms backwards`,
                                 }}>
+                                <PaperTexture />
                                 <span className="relative inline-block">
                                     <span className="font-serif text-[15px]" style={{ color: INK_INK }}>{z.name}</span>
                                     {on && !wiping && <HandCircle seed={seedOf(z.name)} color={INK_INK} instant={instant} />}
@@ -205,10 +213,10 @@ export const ZonePage: React.FC<{
                                     )}
                                 </span>
                                 {z.reason && (
-                                    <span className="block font-serif text-[11px] mt-2" style={{ color: '#6B665C' }}>{z.reason}</span>
+                                    <span className="relative block font-serif text-[11px] mt-2" style={{ color: '#6B665C' }}>{z.reason}</span>
                                 )}
                                 {(z.cities?.length ?? 0) > 0 && (
-                                    <span className="block font-serif text-[10px] mt-1" style={{ color: '#8A8266' }}>
+                                    <span className="relative block font-serif text-[10px] mt-1" style={{ color: '#8A8266' }}>
                                         {z.cities!.slice(0, 4).join(' · ')}
                                     </span>
                                 )}
