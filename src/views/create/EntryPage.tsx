@@ -495,7 +495,7 @@ export const EntryPage: React.FC<{
                             transform: 'rotate(-.6deg)',
                             animation: instant ? undefined : 'ktDropIn .34s cubic-bezier(.2,.9,.3,1)',
                         }}>
-                        <PaperTexture />
+                        <PaperTexture keyline={false} />
                         <div className="relative font-mono text-[9px] tracking-[0.28em] text-[#8A8266]">UNCONFIRMED</div>
                         <div className="relative font-serif text-[16px] font-bold text-[#232320] mt-2">
                             有 {unverifiedNames.length} 個地方我查不到

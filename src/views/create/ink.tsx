@@ -8,7 +8,9 @@
 import React from 'react';
 
 export const PAPER = '#F6F1E7';     // 品牌紙色（唯一）
-export const INK_INK = '#232320';   // 紙上的墨
+export const INK_INK = '#232320';   // 紙上的墨（**手寫筆跡**：濕的、深的——畫圈、劃除、簽名用）
+/** 印在紙上的字：印刷的墨會被纖維吃掉一點，從來不是純黑。內文一律用它，才不會像螢幕在發光。 */
+export const INK_PRINT = '#2A2723';
 export const INK_GOLD = '#C9B98F';  // 照片上的燙金
 export const INK_AMBER = '#E9BE7A'; // 未確認／軟提醒的琥珀
 
@@ -26,31 +28,127 @@ const GRAIN_SVG =
     `<filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/></filter>` +
     `<rect width='140' height='140' filter='url(#g)'/></svg>`;
 
+// 做舊：**低頻**斑塊（不是高頻噪點）——老紙的味道來自大片不均勻的水漬與氧化，不是顆粒。
+//   feColorMatrix 把噪點整片染成暖褐（R.55 G.42 B.22），alpha 取噪點自身 → 天然的不規則斑塊。
+//   以 multiply 疊在紙上：只會讓紙變暗變黃，**不會壓過墨字**（乘法對深色幾乎無作用）。
+const AGE_SVG =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'>` +
+    `<filter id='a'>` +
+    `<feTurbulence type='fractalNoise' baseFrequency='0.021' numOctaves='4' seed='7'/>` +
+    `<feColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.6 0'/>` +
+    `</filter>` +
+    `<rect width='320' height='320' filter='url(#a)'/></svg>`;
+
+// 皺褶：**真的折痕**，不是把斑塊調濃。
+//   成因模擬——feTurbulence 造出高低起伏的表面，feDiffuseLighting 用一盞遠方的燈去照它：
+//   折痕的一側受光變亮、另一側落影變暗，這才是眼睛認得的皺紋（與護照紙同一套技法）。
+//   baseFrequency 刻意各向異性（x 低、y 高）＝拉長的折痕，而不是均勻的凹凸。
+//   光的方位角 225°／仰角 55° ＝ 與紙面受光層同一個左上光源（全站光源只有一個）。
+const CREASE_SVG =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'>` +
+    `<filter id='c'>` +
+    `<feTurbulence type='fractalNoise' baseFrequency='0.009 0.042' numOctaves='3' seed='11' result='t'/>` +
+    `<feDiffuseLighting in='t' surface-scale='2.4' diffuseConstant='1' lighting-color='#ffffff'>` +
+    `<feDistantLight azimuth='225' elevation='55'/>` +
+    `</feDiffuseLighting>` +
+    `</filter>` +
+    `<rect width='400' height='400' filter='url(#c)'/></svg>`;
+
 /** 紙纖維的背景圖（同一個 URL 全站共用＝瀏覽器只解碼一次） */
 export const PAPER_GRAIN_URL = `url("data:image/svg+xml,${encodeURIComponent(GRAIN_SVG)}")`;
+/** 做舊斑塊（低頻、暖褐、以 multiply 疊加） */
+export const PAPER_AGE_URL = `url("data:image/svg+xml,${encodeURIComponent(AGE_SVG)}")`;
+/** 皺褶（受光／落影的折痕，以 overlay 疊加） */
+export const PAPER_CREASE_URL = `url("data:image/svg+xml,${encodeURIComponent(CREASE_SVG)}")`;
 
 /** 手裁邊的四角（機器切的邊才會四角一致） */
 export const PAPER_RADIUS = '3px 2px 4px 2px';
 
-/** 紙的立體感（依狀態變厚薄）：rest＝躺在桌上／press＝被指尖按住／picked＝被圈起來後留在桌面上 */
+/**
+ * 🎚️ 紙的四個旋鈕（全站唯一調整處；要更舊就往上、要更乾淨就往下）。
+ *   grain 顆粒感：0.05 幾乎看不見／0.07 現值／0.10 開始吃字
+ *   age   斑塊做舊：0 全新／0.24 現值／0.40 明顯的老紙（10px 小字開始吃力）
+ *   edge  邊角氧化：0.10 微／0.18 現值／0.30 像燒過邊
+ *   seal  騎縫小印墨度：0.13 極淡／0.24 現值／0.35 明顯到會搶戲
+ *   crease 皺褶深度（被揉過壓過的不規則起伏）：0.20 隱約／0.38 看得出起伏／0.60 現值（揉過再攤平）
+ */
+export const PAPER_TUNING = { grain: 0.07, age: 0.24, edge: 0.18, seal: 0.24, crease: 0.60 } as const;
+
+// ❌ 幾何摺線（對摺的痕跡）已退役（2026-08-05 Kelvin 裁決）：
+//    一道直線把紙分成兩個亮度不同的面，在小卡片上讀起來是「顏色不均」而不是「被摺過」——
+//    紙必須是同一個顏色。只保留**有機皺褶**（下面的 crease 層）。
+
+/**
+ * 紙的立體感（依狀態變厚薄）：rest＝躺在桌上／press＝被指尖按住／picked＝圈起來後留在桌面上。
+ * ⚠️ **陰影必須兩層**（2026-08-05 Kelvin 指出「還是像卡片」的第一個原因）：
+ *   - 接觸陰影：很緊、很深、貼在紙的下緣 → 說明「紙**壓在**桌面上」
+ *   - 環境陰影：很寬、很淡、往下擴散 → 說明「這裡有一盞燈」
+ *   單層 8px 模糊＝Material Design 的浮起卡片，那是 UI 的語彙不是紙的。
+ */
 export const paperShadow = (state: 'rest' | 'press' | 'picked'): string => {
-    const edge = 'inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(35,35,32,.06)';
-    if (state === 'press') return `${edge}, 0 1px 2px rgba(0,0,0,.28)`;
-    if (state === 'picked') return `${edge}, 0 1px 3px rgba(0,0,0,.30)`;
-    return `${edge}, 0 3px 8px rgba(0,0,0,.24)`;
+    // 紙的厚度：上緣受光的白線＋下緣壓陰的暗線
+    const edge = 'inset 0 1px 0 rgba(255,255,255,.72), inset 0 -1px 0 rgba(35,35,32,.07)';
+    if (state === 'press') return `${edge}, 0 1px 1px rgba(0,0,0,.32), 0 3px 6px -2px rgba(0,0,0,.24)`;
+    if (state === 'picked') return `${edge}, 0 1px 2px rgba(0,0,0,.34), 0 5px 10px -4px rgba(0,0,0,.26)`;
+    return `${edge}, 0 1px 2px rgba(0,0,0,.34), 0 10px 20px -6px rgba(0,0,0,.30)`;
 };
 
-/** 紙面的兩層紋理（放進任何鋪紙的容器裡當第一個子元素；容器要 position:relative） */
-export const PaperTexture: React.FC<{ radius?: string | number }> = ({ radius = PAPER_RADIUS }) => (
+/**
+ * 紙面紋理（放進任何鋪紙的容器裡當第一個子元素；容器要 `position: relative`）。
+ * 全部程序生成，依序疊六層：
+ *   ①纖維紋（高頻顆粒）②做舊斑塊（低頻暖褐、multiply）③皺褶（有機起伏、overlay）
+ *   ④受光（全站同一個光源方向）⑤邊角氧化
+ *   ⑥印刷痕跡：凹版內框線 ＋ 右下角 KELVIN TRIP 騎縫小印（憲章：全步驟每張紙統一）
+ */
+export const PaperTexture: React.FC<{
+    radius?: string | number;
+    /** 凹版內框線（票券卡紙才有；便條紙可關掉） */
+    keyline?: boolean;
+    /** 右下角騎縫小印（憲章：全步驟每張紙統一） */
+    seal?: boolean;
+}> = ({ radius = PAPER_RADIUS, keyline = true, seal = true }) => (
     <>
+        {/* ①纖維紋（高頻顆粒） */}
         <span aria-hidden style={{
             position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
-            opacity: 0.055, backgroundImage: PAPER_GRAIN_URL,
+            opacity: PAPER_TUNING.grain, backgroundImage: PAPER_GRAIN_URL,
         }} />
+        {/* ②做舊斑塊（低頻、暖褐、multiply——只讓紙變黃變暗，不吃墨字） */}
         <span aria-hidden style={{
             position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
-            backgroundImage: 'radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0) 55%, rgba(150,120,70,.10) 100%)',
+            opacity: PAPER_TUNING.age, backgroundImage: PAPER_AGE_URL,
+            backgroundSize: '320px 320px', mixBlendMode: 'multiply',
         }} />
+        {/* ③皺褶：真的起伏被光照到（折痕一側受光、一側落影），不是把斑塊調濃。
+            overlay 混色＝只改明暗不改色相，紙不會變髒；紋理隨紙張大小平鋪。 */}
+        <span aria-hidden style={{
+            position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+            opacity: PAPER_TUNING.crease, backgroundImage: PAPER_CREASE_URL,
+            backgroundSize: '400px 400px', mixBlendMode: 'overlay',
+        }} />
+        {/* ④受光：光從左上來（與陰影往下落的方向一致，物理上才說得通） */}
+        <span aria-hidden style={{
+            position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+            backgroundImage: 'linear-gradient(158deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,0) 38%, rgba(120,95,55,.05) 100%)',
+        }} />
+        {/* ⑤邊角氧化：老紙從邊緣開始黃 */}
+        <span aria-hidden style={{
+            position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+            backgroundImage: `radial-gradient(118% 88% at 50% 50%, rgba(0,0,0,0) 42%, rgba(150,118,66,${PAPER_TUNING.edge}) 100%)`,
+        }} />
+        {keyline && (
+            <span aria-hidden style={{
+                position: 'absolute', inset: 6, borderRadius: 1, pointerEvents: 'none',
+                border: '1px solid rgba(35,35,32,.06)',
+            }} />
+        )}
+        {seal && (
+            <span aria-hidden style={{
+                position: 'absolute', right: 9, bottom: 6, pointerEvents: 'none',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                fontSize: 6.5, letterSpacing: '0.14em', color: `rgba(35,35,32,${PAPER_TUNING.seal})`,
+            }}>KELVIN TRIP</span>
+        )}
     </>
 );
 

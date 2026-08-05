@@ -19,7 +19,7 @@ import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchDestinationDeep, type IntelZone } from '../../services/destinationIntel';
 import { suggestedDays } from '../../services/tripBrief';
 import { TicketNextButton } from './TicketNextButton';
-import { HandCircle, EraserBlock, PaperTexture, paperShadow, seedOf, PAPER, PAPER_RADIUS, INK_INK, INK_AMBER, INK_KEYFRAMES } from './ink';
+import { HandCircle, EraserBlock, PaperTexture, paperShadow, seedOf, PAPER, PAPER_RADIUS, INK_INK, INK_PRINT, INK_AMBER, INK_KEYFRAMES } from './ink';
 
 const reduceMotion = (): boolean => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -199,9 +199,11 @@ export const ZonePage: React.FC<{
                                     transition: 'box-shadow .18s ease, transform .18s ease',
                                     animation: instant ? undefined : `ktPaperDrop .42s cubic-bezier(.2,.85,.35,1) ${i * 90}ms backwards`,
                                 }}>
+                                {/* 摺痕位置依地名 hash 決定：**版面維持整齊，但紙的紋理本來就該張張不同**
+                                    （同一張紙每次重繪都在同一個位置，不會閃爍） */}
                                 <PaperTexture />
                                 <span className="relative inline-block">
-                                    <span className="font-serif text-[15px]" style={{ color: INK_INK }}>{z.name}</span>
+                                    <span className="font-serif text-[15px]" style={{ color: INK_PRINT, letterSpacing: '0.012em' }}>{z.name}</span>
                                     {on && !wiping && <HandCircle seed={seedOf(z.name)} color={INK_INK} instant={instant} />}
                                     {wiping && (
                                         <>
@@ -216,7 +218,7 @@ export const ZonePage: React.FC<{
                                     <span className="relative block font-serif text-[11px] mt-2" style={{ color: '#6B665C' }}>{z.reason}</span>
                                 )}
                                 {(z.cities?.length ?? 0) > 0 && (
-                                    <span className="relative block font-serif text-[10px] mt-1" style={{ color: '#8A8266' }}>
+                                    <span className="relative block font-serif text-[10px] mt-1 pr-16" style={{ color: '#6E6858' }}>
                                         {z.cities!.slice(0, 4).join(' · ')}
                                     </span>
                                 )}
