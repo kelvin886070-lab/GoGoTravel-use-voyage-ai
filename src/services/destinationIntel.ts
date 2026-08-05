@@ -44,7 +44,8 @@ export interface DestinationIntel {
 export interface DestinationDeep {
     zones?: IntelZone[];               // 縮圈頁（country/region 才有）
     tags?: string[];                   // 講究頁標籤雲
-    seasons?: Record<string, string>;  // '1'..'12' → 一句話
+    seasons?: Record<string, string>;     // '1'..'12' → 一句話（8–14 字）
+    seasonKeys?: Record<string, string>;  // '1'..'12' → 2–6 字關鍵詞（「楓紅・百岳」）
 }
 
 // ── 前端快取（記憶體＋localStorage；兩層各自一份）────────────────────
@@ -87,7 +88,7 @@ const makeStore = <T>(storageKey: string) => {
 
 // v4：拆成輕／重兩層，形狀改變 → 舊快取一律失效
 const intelStore = makeStore<DestinationIntel>('kt_dest_intel_v4');
-const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v1');
+const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v2');   // v2：新增 seasonKeys
 
 const intelInflight = new Map<string, Promise<DestinationIntel | null>>();
 const deepInflight = new Map<string, Promise<DestinationDeep | null>>();
@@ -220,7 +221,7 @@ export const intelTags = (deep: DestinationDeep | null): string[] => {
 export const seasonNote = (deep: DestinationDeep | null, month: number): string | null =>
     (deep?.seasons?.[String(month)] || '').trim() || null;
 
-/** 12 個月的季節全表（「還沒想法」時的專家時刻）；沒有註記的月份自動略過。 */
-export const seasonTable = (deep: DestinationDeep | null): Array<{ month: number; note: string }> =>
-    Array.from({ length: 12 }, (_, i) => ({ month: i + 1, note: seasonNote(deep, i + 1) || '' }))
-        .filter(x => !!x.note);
+/** 某月的關鍵詞（2–6 字，「楓紅・百岳」）；沒有就回 null——呼叫端退位成整句。 */
+export const seasonKey = (deep: DestinationDeep | null, month: number): string | null =>
+    (deep?.seasonKeys?.[String(month)] || '').trim() || null;
+

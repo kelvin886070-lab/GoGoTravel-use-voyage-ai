@@ -12,7 +12,7 @@ export type PageSoundKind =
     | 'flip' | 'riffle' | 'close' | 'tear'
     | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap'
     // ── 2026-08-05 補齊（Kelvin 提供素材，ffmpeg 裁切：tick 0.10s／release 0.29s／tear 0.34s／unfold 0.65s）
-    | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'pageTear';
+    | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'paperFold' | 'pageTear';
 
 const SOUND_KEY = 'kt_pp_sound';   // 缺席或 '1' ＝開；'0' ＝關
 const VOLUME = 0.5;                // 質感音量：聽得到紙、不搶注意力
@@ -34,6 +34,7 @@ const SRC: Record<PageSoundKind, string> = {
     rulerTick: '/sounds/ruler-tick.mp3',       // 尺規每一格（0.10s、-4dB；連放十幾次也不吵）
     rulerRelease: '/sounds/ruler-release.mp3', // 放開拉桿的收尾（噠噠噠噠…咚）
     paperUnfold: '/sounds/paper-unfold.mp3',   // 攤開一張紙（展開日曆／攤開整年）
+    paperFold: '/sounds/paper-fold.mp3',       // 收起一張紙（攤開的相反方向，不共用滑動聲）
     pageTear: '/sounds/page-tear.mp3',         // 撕下日曆的一頁（比票券撕更薄更脆）
 };
 

@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, ChevronLeft } from 'lucide-react';
 import { playPageSound, playOverlapping, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
-import { fetchDestinationDeep, seasonNote, seasonTable, type DestinationDeep } from '../../services/destinationIntel';
+import { fetchDestinationDeep, seasonNote, seasonKey, type DestinationDeep } from '../../services/destinationIntel';
 import { densityWarning } from '../../services/tripBrief';
 import { holidayOf, festivalOf, isWeekend, holidaysInMonth, hasHolidayData } from '../../services/twHolidays';
 import { lunarLabel, preloadLunar } from '../../services/lunar';
@@ -59,6 +59,9 @@ const SEASON_ROWS: Array<{ label: string; months: number[] }> = [
     { label: '冬', months: [12, 1, 2] },
 ];
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+/** 月份 → 季節（年曆與「一年的樣子」共用同一套語彙） */
+const seasonOf = (m: number): string =>
+    m >= 3 && m <= 5 ? '春' : m >= 6 && m <= 8 ? '夏' : m >= 9 && m <= 11 ? '秋' : '冬';
 const MONTH_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
 /** 日曆每一格的固定高度：補白的格子也必須佔這個高度，否則 5 排／6 排的月份會讓整張紙忽高忽低 */
 const CELL_H = 30;
@@ -310,7 +313,34 @@ export const WhenPage: React.FC<{
         return null;
     }, [month, breadcrumb]);
     const note = month ? seasonNote(deep, month) : null;
-    const expertRows = useMemo(() => seasonTable(deep), [deep]);
+    /**
+     * 「一年的樣子」的資料模型（2026-08-06 Kelvin 三點優化）：
+     *   ①**從當月開始輪轉**——已經過去的月份根本不出現。
+     *     舊版十二行有七行是灰的：那是「我留了一個你不能用的東西給你看」，比刪掉更費神。
+     *   ②**按季節分塊**——人的眼睛不是逐行讀，是分塊掃描。十二行變成四五塊，一次只處理三個選項。
+     *     輪轉之後季節不會剛好整組，那是對的：它呈現的是**接下來的季節會怎麼來**。
+     *   ③**關鍵詞優先**——平常只給 2–6 字（「楓紅・百岳」），整句留給選定之後的季節回應行。
+     *     不是把字變小，是把不必馬上讀的字收起來。
+     */
+    const expertGroups = useMemo(() => {
+        const rows: Array<{ month: number; year: number; note: string; key: string | null }> = [];
+        for (let i = 0; i < 12; i++) {
+            const m = ((thisMonth - 1 + i) % 12) + 1;
+            const y = thisMonth + i > 12 ? thisYear + 1 : thisYear;
+            const note = seasonNote(deep, m);
+            if (!note) continue;
+            rows.push({ month: m, year: y, note, key: seasonKey(deep, m) });
+        }
+        const groups: Array<{ season: string; rows: typeof rows }> = [];
+        for (const r of rows) {
+            const season = seasonOf(r.month);
+            const last = groups[groups.length - 1];
+            if (last && last.season === season) last.rows.push(r);
+            else groups.push({ season, rows: [r] });
+        }
+        return groups;
+    }, [deep, thisMonth, thisYear]);
+    const expertCount = useMemo(() => expertGroups.reduce((n, g) => n + g.rows.length, 0), [expertGroups]);
     const density = densityWarning(placeCount, days);
     const rulerValue = Math.min(RULER_MAX, days);
     const exact = !!(startDate && endDate);
@@ -328,8 +358,8 @@ export const WhenPage: React.FC<{
     const guardNext = (): boolean => {
         if (!month) {
             // 只有真的有季節建議可看時才叫他去點——沒有資料卻叫人去點一行不存在的字＝失信
-            toast(expertRows.length > 0 ? '先圈一個月份——還沒想法的話，點下面那行我給你建議' : '先圈一個月份', 'info');
-            if (expertRows.length > 0) setExpertOpen(true);
+            toast(expertCount > 0 ? '先圈一個月份——還沒想法的話，點下面那行我給你建議' : '先圈一個月份', 'info');
+            if (expertCount > 0) setExpertOpen(true);
             return false;
         }
         return true;
@@ -486,23 +516,68 @@ export const WhenPage: React.FC<{
                     )}
 
                     {/* 專家時刻：還沒想法時，把整年攤開讓他挑（點一列＝直接圈那個月） */}
-                    {!coarseHidden && !month && expertRows.length > 0 && (
+                    {!coarseHidden && !month && expertCount > 0 && (
                         <div className="text-center mt-3">
-                            <button onClick={() => { const next = !expertOpen; setExpertOpen(next); playPageSound(next ? 'riffle' : 'paperSlide', .55); hapticTap(); }}
-                                className="font-serif text-[12px] font-bold underline underline-offset-4"
-                                style={{ color: '#F6F1E7', textDecorationColor: 'rgba(246,241,231,.5)', textShadow: '0 1px 4px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.6)' }}>
-                                {expertOpen ? '收起來' : '還沒想法？看看每個月的樣子'}
+                            {/* ⚠️ 底線用 border-bottom 而不是 text-decoration：
+                                iOS Safari 在 text-shadow 疊加下有時不畫底線（Kelvin 手機上沒底線、電腦上有的真因）。
+                                邊框是幾何、不是文字裝飾，跨引擎一致。 */}
+                            <button onClick={() => {
+                                const next = !expertOpen;
+                                setExpertOpen(next);
+                                // 攤開一張大紙／闔起來——兩個方向要有各自的聲音，不能共用一個滑動聲
+                                playPageSound(next ? 'paperUnfold' : 'paperFold');
+                                hapticTap();
+                            }}
+                                className="inline-block font-serif text-[12px] font-bold pb-0.5"
+                                style={{
+                                    color: '#F6F1E7',
+                                    textShadow: '0 1px 4px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.6)',
+                                    borderBottom: '1px solid rgba(246,241,231,.55)',
+                                }}>
+                                {expertOpen ? '收起來' : '還沒想法？點開來看每個月的樣子'}
                             </button>
+
+                            {/* 攤開的是**一張紙**（年度一覽表）：紙上用墨、橫線分隔，字級放大到讀起來無負擔 */}
                             {expertOpen && (
-                                <div className="mt-3 mx-auto text-left" style={{ maxWidth: 300 }}>
-                                    {expertRows.map(r => (
-                                        <button key={r.month} onClick={() => pickMonth(r.month)} disabled={isPastMonth(r.month)}
-                                            className="w-full flex items-baseline gap-2 py-1.5"
-                                            style={{ borderBottom: '1px solid rgba(201,185,143,.14)' }}>
-                                            <span className="font-mono text-[11px] shrink-0 whitespace-nowrap text-right"
-                                                style={{ width: 34, color: INK_GOLD, textShadow: ON_PHOTO_SHADOW }}>{r.month} 月</span>
-                                            <span className="font-serif text-[11px] text-white/80" style={{ textShadow: ON_PHOTO_SHADOW }}>{r.note}</span>
-                                        </button>
+                                <div className="relative mx-auto mt-4 text-left" style={{
+                                    maxWidth: 340,
+                                    backgroundColor: PAPER,
+                                    borderRadius: PAPER_RADIUS,
+                                    boxShadow: paperShadow('rest'),
+                                    padding: '10px 12px 12px',
+                                    animation: instant ? undefined : 'ktPaperDrop .42s cubic-bezier(.2,.85,.35,1)',
+                                }}>
+                                    <PaperTexture keyline={false} dense seal="top" />
+                                    <div className="relative text-center font-mono text-[9px] tracking-[0.2em] pt-2.5 pb-2"
+                                        style={{ color: INK_PRINT, borderBottom: '1px solid rgba(35,35,32,.28)' }}>
+                                        接下來的一年
+                                    </div>
+                                    {expertGroups.map((g, gi) => (
+                                        <div key={`${g.season}${gi}`} className="relative flex"
+                                            style={{ marginTop: gi === 0 ? 4 : 14 }}>
+                                            {/* 季節側標：與年曆同一套語彙，把十二行切成幾塊 */}
+                                            <span className="font-serif shrink-0 pt-2"
+                                                style={{ width: 20, fontSize: 11, letterSpacing: '.08em', color: 'rgba(35,35,32,.4)' }}>
+                                                {g.season}
+                                            </span>
+                                            <div className="flex-1">
+                                                {g.rows.map((r, i) => (
+                                                    <button key={`${r.year}-${r.month}`} onClick={() => pickMonth(r.month)}
+                                                        className="relative w-full flex items-baseline gap-2.5 py-2 text-left"
+                                                        style={{ borderTop: i === 0 ? undefined : '1px solid rgba(35,35,32,.1)' }}>
+                                                        <span className="font-serif shrink-0 whitespace-nowrap text-right"
+                                                            style={{ width: 34, fontSize: 'clamp(11.5px, 3.4vw, 13px)', color: INK_PRINT }}>
+                                                            {r.month} 月
+                                                        </span>
+                                                        {/* 關鍵詞優先：整句留給選定之後的季節回應行（同一個資訊不必說兩次） */}
+                                                        <span className="font-serif whitespace-nowrap"
+                                                            style={{ fontSize: 'clamp(11.5px, 3.4vw, 13px)', color: '#4A463E' }}>
+                                                            {r.key || r.note}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             )}
