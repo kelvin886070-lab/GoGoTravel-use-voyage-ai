@@ -106,7 +106,13 @@ export const PaperTexture: React.FC<{
     keyline?: boolean;
     /** 右下角騎縫小印（憲章：全步驟每張紙統一） */
     seal?: boolean;
-}> = ({ radius = PAPER_RADIUS, keyline = true, seal = true }) => (
+    /**
+     * 大張的紙用 dense：紋理貼圖縮小一半。
+     * 為什麼需要：斑塊與皺褶是低頻的，貼圖 320/400px 攤在 300px 寬的月曆上往往只落在平坦的區域，
+     * 於是大紙看起來比小卡片「新」。縮小貼圖＝同一張紙上看得到更多起伏。
+     */
+    dense?: boolean;
+}> = ({ radius = PAPER_RADIUS, keyline = true, seal = true, dense = false }) => (
     <>
         {/* ①纖維紋（高頻顆粒） */}
         <span aria-hidden style={{
@@ -117,14 +123,14 @@ export const PaperTexture: React.FC<{
         <span aria-hidden style={{
             position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
             opacity: PAPER_TUNING.age, backgroundImage: PAPER_AGE_URL,
-            backgroundSize: '320px 320px', mixBlendMode: 'multiply',
+            backgroundSize: dense ? '170px 170px' : '320px 320px', mixBlendMode: 'multiply',
         }} />
         {/* ③皺褶：真的起伏被光照到（折痕一側受光、一側落影），不是把斑塊調濃。
             overlay 混色＝只改明暗不改色相，紙不會變髒；紋理隨紙張大小平鋪。 */}
         <span aria-hidden style={{
             position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
             opacity: PAPER_TUNING.crease, backgroundImage: PAPER_CREASE_URL,
-            backgroundSize: '400px 400px', mixBlendMode: 'overlay',
+            backgroundSize: dense ? '210px 210px' : '400px 400px', mixBlendMode: 'overlay',
         }} />
         {/* ④受光：光從左上來（與陰影往下落的方向一致，物理上才說得通） */}
         <span aria-hidden style={{
@@ -152,6 +158,9 @@ export const PaperTexture: React.FC<{
     </>
 );
 
+/** 直接印在照片上的字：規格化陰影，讓照片再花也吃不掉字（浮在照片上的每一段文案都要用） */
+export const ON_PHOTO_SHADOW = '0 1px 3px rgba(0,0,0,.82)';
+
 /** 文字 → 穩定 seed（同一個詞每次的筆跡一致，像同一個人寫的） */
 export const seedOf = (s: string): number => {
     let h = 0;
@@ -161,8 +170,14 @@ export const seedOf = (s: string): number => {
 
 /** 手繪圈（筆跡帶 seed 抖動、永不重複）。
  *  dashed＝虛線：紙筆世界裡「暫定」的通用語彙——不確定的事不該畫成確定的線。 */
-export const HandCircle: React.FC<{ seed: number; color: string; dashed?: boolean; instant?: boolean }> =
-    ({ seed, color, dashed, instant }) => {
+export const HandCircle: React.FC<{
+    seed: number;
+    color: string;
+    dashed?: boolean;
+    instant?: boolean;
+    /** 圈得緊一點：一兩個字（月份數字、日期）用預設的大圈會明顯過大 */
+    tight?: boolean;
+}> = ({ seed, color, dashed, instant, tight }) => {
         const r = ((seed * 9301 + 49297) % 233280) / 233280;
         const d = `M${(30 + r * 4).toFixed(1)} 3 C 51 ${(1 + r * 2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3 + r * 2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35 + r * 3).toFixed(1)} 4`;
         const shadow = color === INK_INK
@@ -171,10 +186,13 @@ export const HandCircle: React.FC<{ seed: number; color: string; dashed?: boolea
         return (
             <svg viewBox="0 0 64 34" aria-hidden
                 style={{
-                    position: 'absolute', inset: '-7px -11px', width: 'calc(100% + 22px)', height: 'calc(100% + 14px)',
+                    position: 'absolute',
+                    inset: tight ? '-4px -7px' : '-7px -11px',
+                    width: tight ? 'calc(100% + 14px)' : 'calc(100% + 22px)',
+                    height: tight ? 'calc(100% + 8px)' : 'calc(100% + 14px)',
                     overflow: 'visible', pointerEvents: 'none', transform: `rotate(${(r * 6 - 3).toFixed(1)}deg)`,
                 }}>
-                <path d={d} fill="none" stroke={color} strokeWidth={dashed ? 1.6 : 1.9} strokeLinecap="round" pathLength={100}
+                <path d={d} fill="none" stroke={color} strokeWidth={dashed ? 1.6 : tight ? 1.5 : 1.9} strokeLinecap="round" pathLength={100}
                     style={dashed
                         // 虛線無法用「畫出來」的 dash 動畫（dasharray 被拿去做虛線）→ 改用淡入
                         ? { strokeDasharray: '4.5 4', opacity: instant ? 1 : 0, animation: instant ? undefined : 'ktInk .4s ease-out forwards', filter: shadow }

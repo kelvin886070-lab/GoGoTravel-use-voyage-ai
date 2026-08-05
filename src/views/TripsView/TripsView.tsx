@@ -19,6 +19,7 @@ import { OnTripHeroCard } from './components/cards/OnTripHeroCard';
 import { CreateTripModal } from './modals/CreateTripModal';
 import { EntryPage, type EntryResult } from '../create/EntryPage';
 import { ZonePage, type ZoneResult } from '../create/ZonePage';
+import { WhenPage, type WhenResult } from '../create/WhenPage';
 import { needsZoneStep } from '../../services/destinationIntel';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
@@ -76,13 +77,16 @@ export const TripsView: React.FC<TripsViewProps> = ({
   // 🗺️ 縮圈頁：只有國家／區域級目的地才插進來（城市級＝已回答，直接跳過）
   const [zoneOpen, setZoneOpen] = useState(false);
   const [zoneResult, setZoneResult] = useState<ZoneResult | null>(null);
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [whenResult, setWhenResult] = useState<WhenResult | null>(null);
   /** 入口頁交棒：需要縮圈就先進縮圈，否則直接進建立流程 */
   const afterEntry = (r: EntryResult) => {
     setEntryResult(r);
     setZoneResult(null);
     endTear();
+    setWhenResult(null);
     if (needsZoneStep(r.intel)) setZoneOpen(true);
-    else setIsCreating(true);
+    else setWhenOpen(true);
   };
   /** 交給下游的目的地：縮圈選了地帶就把地帶短名接在後面（原始資料留在 zoneResult，不遺失） */
   const flowDestinations = (): string[] => {
@@ -266,20 +270,38 @@ export const TripsView: React.FC<TripsViewProps> = ({
           isDomestic={entryResult.isDomestic}
           onBack={() => { setZoneOpen(false); setEntryOpen(true); }}
           onClose={() => { setZoneOpen(false); setEntryResult(null); setZoneResult(null); setTearing(false); }}
-          onNext={(z) => { setZoneResult(z); setZoneOpen(false); setIsCreating(true); }}
+          onNext={(z) => { setZoneResult(z); setZoneOpen(false); setWhenOpen(true); }}
+        />
+      )}
+      {whenOpen && entryResult && (
+        <WhenPage
+          breadcrumb={flowDestinations().join(' · ')}
+          query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
+          coverUrl={entryResult.coverUrl}
+          isDomestic={entryResult.isDomestic}
+          suggestedDaysHint={zoneResult?.suggestedDays ?? 0}
+          placeCount={Math.max(1, flowDestinations().length)}
+          onBack={() => {
+            setWhenOpen(false);
+            if (needsZoneStep(entryResult.intel)) setZoneOpen(true); else setEntryOpen(true);
+          }}
+          onClose={() => { setWhenOpen(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setTearing(false); }}
+          onNext={(w) => { setWhenResult(w); setWhenOpen(false); setIsCreating(true); }}
         />
       )}
       {isCreating && (
         <CreateTripModal
-          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); }}
+          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
           initialDestinations={entryResult ? flowDestinations() : undefined}
           initialIsDomestic={entryResult?.isDomestic}
+          initialStartDate={whenResult?.startDate}
+          initialEndDate={whenResult?.endDate}
           initialStep={entryResult ? 3 : 1}
           onBackToEntry={() => {
             setIsCreating(false);
-            if (entryResult && needsZoneStep(entryResult.intel)) setZoneOpen(true);   // 有縮圈就退回縮圈，不是退回最前面
+            if (entryResult) setWhenOpen(true);        // 退回上一頁＝「什麼時候」，不是退回最前面
             else setEntryOpen(true);
           }}
         />

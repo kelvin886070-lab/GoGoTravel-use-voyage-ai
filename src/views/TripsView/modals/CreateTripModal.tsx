@@ -80,9 +80,12 @@ export const CreateTripModal: React.FC<{
     initialDestinations?: string[];
     initialIsDomestic?: boolean;
     initialStep?: number;
+    /** 生成表單「什麼時候」頁交來的日期（YYYY-MM-DD，本地時區） */
+    initialStartDate?: string;
+    initialEndDate?: string;
     /** 從新入口頁進來時：在起始步按「上一步」＝回入口頁（舊①雙門②目的地已退役，不可回頭） */
     onBackToEntry?: () => void;
-}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, onBackToEntry }) => {
+}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, initialStartDate, initialEndDate, onBackToEntry }) => {
     const [step, setStep] = useState(initialStep ?? 1);
     const [loading, setLoading] = useState(false);
     
@@ -104,8 +107,9 @@ export const CreateTripModal: React.FC<{
     const theme = themes[tripType];
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const [startDate, setStartDate] = useState(todayStr);
+    const [startDate, setStartDate] = useState(initialStartDate ?? todayStr);
     const [endDate, setEndDate] = useState(() => {
+        if (initialEndDate) return initialEndDate;
         const d = new Date();
         d.setDate(d.getDate() + 3);
         return d.toISOString().split('T')[0];
