@@ -65,6 +65,9 @@ const seasonOf = (m: number): string =>
 const MONTH_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
 /** 日曆每一格的固定高度：補白的格子也必須佔這個高度，否則 5 排／6 排的月份會讓整張紙忽高忽低 */
 const CELL_H = 30;
+/** 「一年的樣子」的欄位網格：月份欄固定寬＋右對齊，「8 月」與「10 月」的關鍵詞才會切齊同一條線 */
+const GLANCE_MONTH_W = 46;
+const GLANCE_GAP = 14;
 /** 出發章紅：週末與連假的標記色（與全站「出發／準備家族＝紅」同一支） */
 const STAMP_RED = '#A23B2E';
 /** 冬季高山的風險提示關鍵字（只給通用、查得到的建議，不編造路況） */
@@ -112,6 +115,8 @@ export const WhenPage: React.FC<{
     const [editingDays, setEditingDays] = useState(false);
     const [daysDraft, setDaysDraft] = useState('');
     const [expertOpen, setExpertOpen] = useState(false);
+    /** 使用者動過的攤開狀態；null＝還沒動過，套用預設（接下來三個月） */
+    const [expandedOverride, setExpandedOverride] = useState<Set<number> | null>(null);
     const [exactOpen, setExactOpen] = useState(false);
     const [calYear, setCalYear] = useState(thisYear);
     const [calMonth, setCalMonth] = useState(thisMonth);
@@ -341,6 +346,25 @@ export const WhenPage: React.FC<{
         return groups;
     }, [deep, thisMonth, thisYear]);
     const expertCount = useMemo(() => expertGroups.reduce((n, g) => n + g.rows.length, 0), [expertGroups]);
+    /**
+     * 接下來三個月**預設攤開**：資訊的價值隨時間遞減——八月的人真正在考慮的是九、十、十一月，
+     * 明年五月的關鍵詞對此刻的決策價值接近零。讓版面的重量誠實反映這件事，
+     * 節奏就自己出來了（前幾列厚、後幾列薄），不必靠調字距去「排」出節奏。
+     */
+    const defaultExpanded = useMemo(
+        () => new Set(expertGroups.flatMap(g => g.rows).slice(0, 3).map(r => r.month)),
+        [expertGroups],
+    );
+    // 推導而不是寫入：在 effect 裡 setState 會造成連鎖 render（lint 也會擋）
+    const expandedMonths = expandedOverride ?? defaultExpanded;
+    const toggleExpanded = useCallback((m: number) => {
+        setExpandedOverride(prev => {
+            const next = new Set(prev ?? defaultExpanded);
+            if (next.has(m)) next.delete(m); else next.add(m);
+            return next;
+        });
+        hapticTap();
+    }, [defaultExpanded]);
     const density = densityWarning(placeCount, days);
     const rulerValue = Math.min(RULER_MAX, days);
     const exact = !!(startDate && endDate);
@@ -524,6 +548,7 @@ export const WhenPage: React.FC<{
                             <button onClick={() => {
                                 const next = !expertOpen;
                                 setExpertOpen(next);
+                                // 收起整張表時不重設攤開狀態：再打開時還是原樣（使用者的閱讀進度不該被沒收）
                                 // 攤開一張大紙／闔起來——兩個方向要有各自的聲音，不能共用一個滑動聲
                                 playPageSound(next ? 'paperUnfold' : 'paperFold');
                                 hapticTap();
@@ -554,28 +579,51 @@ export const WhenPage: React.FC<{
                                     </div>
                                     {expertGroups.map((g, gi) => (
                                         <div key={`${g.season}${gi}`} className="relative flex"
-                                            style={{ marginTop: gi === 0 ? 4 : 14 }}>
-                                            {/* 季節側標：與年曆同一套語彙，把十二行切成幾塊 */}
-                                            <span className="font-serif shrink-0 pt-2"
-                                                style={{ width: 20, fontSize: 11, letterSpacing: '.08em', color: 'rgba(35,35,32,.4)' }}>
+                                            style={{ marginTop: gi === 0 ? 6 : 18 }}>
+                                            {/* 季節側標：與年曆同一套語彙，把十二列切成幾塊 */}
+                                            <span className="font-serif shrink-0"
+                                                style={{ width: 20, paddingTop: 7, fontSize: 11, letterSpacing: '.08em', color: 'rgba(35,35,32,.38)' }}>
                                                 {g.season}
                                             </span>
                                             <div className="flex-1">
-                                                {g.rows.map((r, i) => (
-                                                    <button key={`${r.year}-${r.month}`} onClick={() => pickMonth(r.month)}
-                                                        className="relative w-full flex items-baseline gap-2.5 py-2 text-left"
-                                                        style={{ borderTop: i === 0 ? undefined : '1px solid rgba(35,35,32,.1)' }}>
-                                                        <span className="font-serif shrink-0 whitespace-nowrap text-right"
-                                                            style={{ width: 34, fontSize: 'clamp(11.5px, 3.4vw, 13px)', color: INK_PRINT }}>
-                                                            {r.month} 月
-                                                        </span>
-                                                        {/* 關鍵詞優先：整句留給選定之後的季節回應行（同一個資訊不必說兩次） */}
-                                                        <span className="font-serif whitespace-nowrap"
-                                                            style={{ fontSize: 'clamp(11.5px, 3.4vw, 13px)', color: '#4A463E' }}>
-                                                            {r.key || r.note}
-                                                        </span>
-                                                    </button>
-                                                ))}
+                                                {g.rows.map(r => {
+                                                    const open = expandedMonths.has(r.month);
+                                                    return (
+                                                        <div key={`${r.year}-${r.month}`} style={{ marginTop: 9 }}>
+                                                            {/* 詞條式：月份與關鍵詞緊鄰、全部靠左，眼睛只沿著一條垂直軸走。
+                                                                **兩個字各自是一個目標**（Kelvin 定案，不再需要額外的按鈕）：
+                                                                  點月份＝圈選這個月；點關鍵詞＝攤開／收起全文
+                                                                虛底線只畫在關鍵詞下方＝中文排版裡「此處有註」的記號；
+                                                                攤開後虛線消失（註已經在眼前了）——一個記號同時是暗示與狀態。 */}
+                                                            <div className="flex items-baseline flex-wrap">
+                                                                <button onClick={() => pickMonth(r.month)}
+                                                                    aria-label={`圈起 ${r.month} 月`}
+                                                                    className="font-serif py-1 shrink-0 text-right"
+                                                                    style={{ width: GLANCE_MONTH_W, fontSize: 'clamp(12px, 3.5vw, 13.5px)', color: INK_PRINT }}>
+                                                                    {r.month} 月
+                                                                </button>
+                                                                <button onClick={() => toggleExpanded(r.month)}
+                                                                    aria-expanded={open}
+                                                                    className="font-serif py-1"
+                                                                    style={{ paddingLeft: GLANCE_GAP, fontSize: 'clamp(12px, 3.5vw, 13.5px)', color: open ? INK_PRINT : '#4A463E' }}>
+                                                                    <span style={{
+                                                                        borderBottom: open ? '1px solid transparent' : '1px dotted rgba(35,35,32,.45)',
+                                                                        paddingBottom: 1,
+                                                                    }}>{r.key || r.note}</span>
+                                                                </button>
+                                                            </div>
+                                                            {open && (
+                                                                <div className="font-serif pr-1"
+                                                                    style={{
+                                                                        fontSize: 12, lineHeight: 1.85, color: '#6B665C', paddingTop: 2,
+                                                                        paddingLeft: GLANCE_MONTH_W + GLANCE_GAP,   // 釋義切齊詞頭（關鍵詞）
+                                                                    }}>
+                                                                    {r.note}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))}
