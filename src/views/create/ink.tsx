@@ -104,8 +104,8 @@ export const PaperTexture: React.FC<{
     radius?: string | number;
     /** 凹版內框線（票券卡紙才有；便條紙可關掉） */
     keyline?: boolean;
-    /** 右下角騎縫小印（憲章：全步驟每張紙統一） */
-    seal?: boolean;
+    /** 騎縫小印（憲章：全步驟每張紙統一）；'top' ＝ 印在紙的上緣正中（日曆的品牌抬頭位） */
+    seal?: boolean | 'top';
     /**
      * 大張的紙用 dense：紋理貼圖縮小一半。
      * 為什麼需要：斑塊與皺褶是低頻的，貼圖 320/400px 攤在 300px 寬的月曆上往往只落在平坦的區域，
@@ -149,11 +149,17 @@ export const PaperTexture: React.FC<{
             }} />
         )}
         {seal && (
-            <span aria-hidden style={{
-                position: 'absolute', right: 9, bottom: 6, pointerEvents: 'none',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                fontSize: 6.5, letterSpacing: '0.14em', color: `rgba(35,35,32,${PAPER_TUNING.seal})`,
-            }}>KELVIN TRIP</span>
+            <span aria-hidden style={seal === 'top'
+                ? {
+                    position: 'absolute', top: 5, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 6.5, letterSpacing: '0.28em', color: `rgba(35,35,32,${PAPER_TUNING.seal})`,
+                }
+                : {
+                    position: 'absolute', right: 9, bottom: 6, pointerEvents: 'none',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 6.5, letterSpacing: '0.14em', color: `rgba(35,35,32,${PAPER_TUNING.seal})`,
+                }}>KELVIN TRIP</span>
         )}
     </>
 );

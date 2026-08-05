@@ -15,11 +15,12 @@
 //   聲音：**一次使用者動作只播一聲**（選回程日重繪雙圈時，起點圈靜默）。
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, ChevronLeft } from 'lucide-react';
-import { playPageSound, hapticTap } from '../../services/sounds';
+import { playPageSound, playOverlapping, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
 import { fetchDestinationDeep, seasonNote, seasonTable, type DestinationDeep } from '../../services/destinationIntel';
 import { densityWarning } from '../../services/tripBrief';
-import { holidayOf, isWeekend, holidaysInMonth, hasHolidayData } from '../../services/twHolidays';
+import { holidayOf, festivalOf, isWeekend, holidaysInMonth, hasHolidayData } from '../../services/twHolidays';
+import { lunarLabel, preloadLunar } from '../../services/lunar';
 import { TicketNextButton } from './TicketNextButton';
 import { HandCircle, PaperTexture, paperShadow, seedOf, PAPER, PAPER_RADIUS, INK_INK, INK_PRINT, INK_GOLD, INK_AMBER, ON_PHOTO_SHADOW, INK_KEYFRAMES } from './ink';
 
@@ -58,6 +59,7 @@ const SEASON_ROWS: Array<{ label: string; months: number[] }> = [
     { label: '冬', months: [12, 1, 2] },
 ];
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const MONTH_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
 /** 出發章紅：週末與連假的標記色（與全站「出發／準備家族＝紅」同一支） */
 const STAMP_RED = '#A23B2E';
 /** 冬季高山的風險提示關鍵字（只給通用、查得到的建議，不編造路況） */
@@ -110,18 +112,41 @@ export const WhenPage: React.FC<{
     const [calMonth, setCalMonth] = useState(thisMonth);
     const [startDate, setStartDate] = useState<string | null>(null);
     const [endDate, setEndDate] = useState<string | null>(null);
+    const [lunar, setLunar] = useState<string | null>(null);   // 出發日的農曆旁註（單日撕日曆的靈魂）
+    const [collapsing, setCollapsing] = useState(false);  // 收束動畫進行中（撕下那一頁的 520ms）
     const [scrolled, setScrolled] = useState(false);      // 捲過年曆之後，標題換成常駐摘要
     const [atBottom, setAtBottom] = useState(false);     // 已經捲到底＝底部漸層收起來
     const scrollRef = useRef<HTMLDivElement>(null);
     const exactRef = useRef<HTMLDivElement>(null);
     const aliveRef = useRef(true);
+    const lastTickRef = useRef(0);          // 上一聲 tick 的時間（拖曳節奏用）
+    const draggingRef = useRef(false);      // 真的拖過才播放開的音（單純點快速刻度不播）
+    const timersRef = useRef<Set<number>>(new Set());
     const daysInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         // ⚠️ 旗標必須在每次掛載時設回 true（StrictMode 的假卸載會把它永久關掉）
         aliveRef.current = true;
-        return () => { aliveRef.current = false; };
+        const timers = timersRef.current;
+        return () => {
+            aliveRef.current = false;
+            timers.forEach(id => window.clearTimeout(id));
+            timers.clear();
+        };
     }, []);
+
+    // 農曆：進頁先暖機（動態載入），使用者選到日期時已經在手上
+    useEffect(() => { preloadLunar(); }, []);
+    useEffect(() => {
+        let cancelled = false;
+        // 沒有起點就非同步清掉（在 effect 裡同步 setState 會觸發連鎖 render，lint 會擋）
+        const run = async () => {
+            const v = startDate ? await lunarLabel(startDate) : null;
+            if (!cancelled && aliveRef.current) setLunar(v);
+        };
+        void run();
+        return () => { cancelled = true; };
+    }, [startDate]);
 
     // 季節註記（快取命中即零延遲；失敗＝該行不顯示，永不擋路）
     useEffect(() => {
@@ -177,12 +202,19 @@ export const WhenPage: React.FC<{
         // ⚠️ 不沒收使用者已經選好的日期：起點不動，回程日跟著新天數往後移。
         //   舊版是「動了粗略層就清掉精確日期」——一次手滑就把辛苦選的日子拿走，而且沒有任何提示。
         if (startDate) setEndDate(addDays(startDate, v - 1));
-        hapticTap();                            // 每一格一個輕震（拉桿的手感）
+        // 每一格一聲，但兩聲之間至少 40ms：拖很慢＝一格一聲，拖很快＝自動疏開，不會糊成一團。
+        const now = Date.now();
+        if (now - lastTickRef.current > 40) {
+            lastTickRef.current = now;
+            playOverlapping('rulerTick', 0.5);
+        }
+        hapticTap();
     };
 
     const commitDaysDraft = () => {
         const v = parseInt(daysDraft, 10);
         setEditingDays(false);
+        playPageSound('penCap');            // 關筆蓋＝寫完擱筆
         if (!Number.isFinite(v)) return;
         changeDays(v);
     };
@@ -193,7 +225,7 @@ export const WhenPage: React.FC<{
         if (month) { setCalMonth(month); setCalYear(yearOfMonth()); }
         else { setCalMonth(thisMonth); setCalYear(thisYear); }
         setExactOpen(true);
-        playPageSound('paperSlide');
+        playPageSound('paperUnfold');
         hapticTap();
         // 展開的東西自己走到眼前：等一幀讓 DOM 先長出來再捲
         window.requestAnimationFrame(() => {
@@ -281,7 +313,7 @@ export const WhenPage: React.FC<{
      *   - 為什麼要收而不是淡出：半透明但仍可拖的拉桿是陷阱——看起來停用，手滑碰到卻會默默改掉回程日。
      *     **要嘛能動、要嘛收起來，不該有中間狀態。**
      */
-    const coarseHidden = exact && !exactOpen;
+    const coarseHidden = exact && !exactOpen && !collapsing;
     /** 跨月的旅程要說兩句季節（天氣真的會變）——但年曆不必顯示兩個月，那是輸入工具，已經不是輸入了 */
     const endMonth = endDate ? Number(endDate.slice(5, 7)) : null;
     const noteEnd = exact && endMonth && endMonth !== month ? seasonNote(deep, endMonth) : null;
@@ -320,7 +352,14 @@ export const WhenPage: React.FC<{
                     backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
                 }} />
             )}
-            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.6), rgba(15,14,13,.84))' }} />
+            {/* 暗紗：決定完日期就轉淡——前面壓那麼暗是因為有 12 個數字要讀，現在畫面只剩三行字。
+                畫面從「工作檯」變成「風景」：你決定了日期，世界就打開了。 */}
+            <div className="absolute inset-0" style={{
+                backgroundImage: coarseHidden
+                    ? 'linear-gradient(rgba(15,14,13,.34), rgba(15,14,13,.62))'
+                    : 'linear-gradient(rgba(15,14,13,.6), rgba(15,14,13,.84))',
+                transition: 'background-image .5s ease',
+            }} />
 
             <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
                 <button onClick={onBack} aria-label="上一步" className="absolute left-3 p-2 z-30"
@@ -359,6 +398,7 @@ export const WhenPage: React.FC<{
                     {/* ── ①月份層：品牌年曆（有確切日期並關閉日曆後收起） ───────── */}
                     {!coarseHidden && (
                     <div className="relative mx-auto" style={{
+                        animation: collapsing && !instant ? 'ktFadeAway .26s ease-in forwards' : undefined,
                         maxWidth: 300,
                         backgroundColor: PAPER,
                         borderRadius: PAPER_RADIUS,
@@ -431,7 +471,7 @@ export const WhenPage: React.FC<{
                             {risk}
                         </div>
                     )}
-                    {countdown && (
+                    {countdown && !coarseHidden && (
                         <div className="text-center font-mono text-[10px] tracking-[0.14em] mt-2"
                             style={{ color: 'rgba(246,241,231,.7)', textShadow: ON_PHOTO_SHADOW }}>
                             還有 {countdown} 天
@@ -441,7 +481,7 @@ export const WhenPage: React.FC<{
                     {/* 專家時刻：還沒想法時，把整年攤開讓他挑（點一列＝直接圈那個月） */}
                     {!coarseHidden && !month && expertRows.length > 0 && (
                         <div className="text-center mt-3">
-                            <button onClick={() => { setExpertOpen(o => !o); hapticTap(); }}
+                            <button onClick={() => { const next = !expertOpen; setExpertOpen(next); playPageSound(next ? 'riffle' : 'paperSlide', .55); hapticTap(); }}
                                 className="font-serif text-[12px] font-bold underline underline-offset-4"
                                 style={{ color: '#F6F1E7', textDecorationColor: 'rgba(246,241,231,.5)', textShadow: '0 1px 4px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.6)' }}>
                                 {expertOpen ? '收起來' : '還沒想法？看看每個月的樣子'}
@@ -464,7 +504,10 @@ export const WhenPage: React.FC<{
 
                     {/* ── ②天數層：尺規拉桿 ─────────────────────────────── */}
                     {!coarseHidden && (
-                    <div className="mt-7 mx-auto" style={{ maxWidth: 300 }}>
+                    <div className="mt-7 mx-auto" style={{
+                        maxWidth: 300,
+                        animation: collapsing && !instant ? 'ktFadeAway .26s ease-in forwards' : undefined,
+                    }}>
                         <div className="text-center">
                             {editingDays ? (
                                 <input
@@ -480,7 +523,7 @@ export const WhenPage: React.FC<{
                                     style={{ caretColor: INK_GOLD, borderBottom: `1px dashed ${INK_GOLD}` }}
                                 />
                             ) : (
-                                <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); hapticTap(); }}
+                                <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); playPageSound('penUncap'); hapticTap(); }}
                                     aria-label="點一下自訂天數"
                                     className="font-mono text-[26px] text-[#F6F1E7]"
                                     style={{ borderBottom: '1px dashed rgba(201,185,143,.6)', paddingBottom: 1, textShadow: ON_PHOTO_SHADOW }}>
@@ -507,7 +550,10 @@ export const WhenPage: React.FC<{
                                 max={RULER_MAX}
                                 step={1}
                                 value={rulerValue}
-                                onChange={e => changeDays(Number(e.target.value))}
+                                onChange={e => { draggingRef.current = true; changeDays(Number(e.target.value)); }}
+                                onPointerUp={() => { if (draggingRef.current) { draggingRef.current = false; playPageSound('rulerRelease', 0.7); } }}
+                                onPointerCancel={() => { draggingRef.current = false; }}
+                                onKeyUp={() => { if (draggingRef.current) { draggingRef.current = false; playPageSound('rulerRelease', 0.7); } }}
                                 aria-label="天數"
                                 className="kt-ruler absolute inset-0 w-full appearance-none bg-transparent"
                                 style={{ height: 30 }}
@@ -531,7 +577,7 @@ export const WhenPage: React.FC<{
                             ))}
                         </div>
                         <div className="text-center mt-1">
-                            <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); hapticTap(); }}
+                            <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); playPageSound('penUncap'); hapticTap(); }}
                                 className="font-serif text-[11px] underline underline-offset-4"
                                 style={{ color: 'rgba(246,241,231,.7)', textShadow: ON_PHOTO_SHADOW, textDecorationColor: 'rgba(255,255,255,.35)' }}>
                                 自訂天數（最多 {MAX_DAYS} 天）
@@ -559,35 +605,120 @@ export const WhenPage: React.FC<{
                             </button>
                         )}
 
-                        {exact && !exactOpen && (
-                            <div className="flex flex-col items-center">
-                                {/* 摘要籤（定稿：精確日期選定→摺疊成摘要籤）：**事實印在紙上**，
-                                    照片再花也吃不掉；也讓「已經決定」這件事有一個實體的落點。 */}
-                                <div className="relative px-4 py-2" style={{
-                                    backgroundColor: PAPER,
-                                    borderRadius: PAPER_RADIUS,
-                                    boxShadow: paperShadow('picked'),
-                                }}>
-                                    <PaperTexture keyline={false} seal={false} />
-                                    <span className="relative font-serif text-[14px]" style={{ color: INK_PRINT, letterSpacing: '.02em' }}>
-                                        {startDate!.replace(/-/g, '.')} – {endDate!.slice(5).replace('-', '.')}
-                                    </span>
-                                    <span className="relative font-serif text-[12px] ml-2" style={{ color: '#6B665C' }}>· {days} 天</span>
-                                </div>
-                                {/* 兩條回頭路都明講，不會有人被鎖在裡面 */}
-                                <div className="flex items-center gap-6 mt-3">
-                                    <button onClick={openExact}
-                                        className="font-serif text-[11px] text-white/78 underline underline-offset-4 decoration-white/40"
-                                        style={{ textShadow: ON_PHOTO_SHADOW }}>改日期</button>
-                                    <button onClick={() => { dropExact(); hapticTap(); }}
-                                        className="font-serif text-[11px] text-white/78 underline underline-offset-4 decoration-white/40"
-                                        style={{ textShadow: ON_PHOTO_SHADOW }}>改用月份與天數</button>
-                                </div>
-                            </div>
-                        )}
+                        {exact && !exactOpen && !collapsing && (() => {
+                            const [sy, sm, sd] = startDate!.split('-').map(Number);
+                            const weekday = WEEKDAYS[new Date(sy, sm - 1, sd).getDay()];
+                            const hol = holidayOf(startDate!);
+                            const festival = festivalOf(startDate!);   // 那一天**叫什麼**（不是連假叫什麼）
+                            // 整趟期間碰到的連假（多天的才算；單日節日已經印在日期旁邊了）
+                            const tripHoliday = (() => {
+                                const a = holidayOf(startDate!);
+                                const b = holidayOf(endDate!);
+                                const hit = [a, b].find(h => h && h.start !== h.end);
+                                return hit || null;
+                            })();
+                            return (
+                                <div className="flex flex-col items-center">
+                                    {/* 🗓️ 單日撕日曆（定稿的「摘要籤」升級版）：
+                                        與上面那本年曆／日曆是**同一本紙**——同樣的撕頁孔、同樣的刊頭細線，
+                                        底下那道齒孔虛線就是它被撕下來的邊。
+                                        長條紙是收據的語言（交易）；撕下的日曆頁是**「那一天」的語言**（時間）。
+                                        寫法照家裡那本日曆：國曆大字＋星期，旁邊農曆，節日印紅字。
+                                        ⚠️ 形狀刻意保留可以「翻面」的比例——未來背面可放那幾天的天氣或在地活動，
+                                           屆時不必重新設計（先留形式，不先做功能）。 */}
+                                    <div className="relative" style={{
+                                        animation: instant ? undefined : 'ktCardDrop .42s cubic-bezier(.2,.9,.3,1) .12s backwards',
+                                        width: 250,
+                                        backgroundColor: PAPER,
+                                        borderRadius: PAPER_RADIUS,
+                                        boxShadow: paperShadow('picked'),
+                                        padding: '20px 16px 12px',
+                                    }}>
+                                        <PaperTexture keyline={false} dense seal="top" />
+                                        <span aria-hidden className="absolute w-[10px] h-[10px] rounded-full"
+                                            style={{ top: -5, left: 20, backgroundColor: 'rgba(18,15,12,.62)', boxShadow: 'inset 0 1px 1px rgba(0,0,0,.5)' }} />
 
-                        {exactOpen && (
+                                        {/* 刊頭：年月（與上面那本日曆同一條雙細線） */}
+                                        <div className="relative text-center py-1.5"
+                                            style={{ borderTop: '1px solid rgba(35,35,32,.45)', borderBottom: '1px solid rgba(35,35,32,.18)' }}>
+                                            <span className="font-mono text-[10px] tracking-[0.22em]" style={{ color: INK_PRINT }}>
+                                                {sy} · {MONTH_CN[sm - 1]}月
+                                            </span>
+                                        </div>
+
+                                        {/* 日曆的臉：**大字置中、農曆直排在左、節日直排在右、星期在數字下方**
+                                            （家裡那本日曆就是這樣排的——兩側直書、中間一個大日子） */}
+                                        <div className="relative flex items-start justify-center" style={{ minHeight: 104, paddingTop: 10 }}>
+                                            {lunar && (
+                                                <span className="absolute left-0 top-3 font-serif text-[11px]"
+                                                    style={{ writingMode: 'vertical-rl', textOrientation: 'upright', letterSpacing: '.08em', color: '#8A8266' }}>
+                                                    農{lunar}
+                                                </span>
+                                            )}
+
+                                            <span className="flex flex-col items-center">
+                                                <span className="font-serif leading-none"
+                                                    style={{ fontSize: 74, color: hol ? STAMP_RED : INK_PRINT }}>{sd}</span>
+                                                <span className="font-serif text-[12px] mt-2" style={{ color: '#5C5850' }}>星期{weekday}</span>
+                                            </span>
+
+                                            {festival && (
+                                                <span className="absolute right-0 top-3 font-serif text-[11px]"
+                                                    style={{ writingMode: 'vertical-rl', textOrientation: 'upright', letterSpacing: '.08em', color: STAMP_RED }}>
+                                                    {festival}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* 齒孔虛線＝它被撕下來的那一邊 */}
+                                        <div aria-hidden style={{ borderTop: '2px dashed #D6CDB8', margin: '10px -16px 10px' }} />
+
+                                        {/* 這一趟遇上的連假：**它屬於「這幾天」，不是「那一天」**——
+                                            所以放在齒孔線之下（撕下來的這一段時間），不跟日期旁的節日直排搶。 */}
+                                        {tripHoliday && (
+                                            <div className="relative text-center font-serif text-[11px] mb-2.5" style={{ color: STAMP_RED }}>
+                                                這幾天遇上 {tripHoliday.name}
+                                            </div>
+                                        )}
+
+                                        {/* 出發／回程成對出現＝票根的語彙（標籤靠左、事實靠右，一眼對得起來） */}
+                                        <div className="relative flex items-baseline justify-between">
+                                            <span className="font-serif text-[10px]" style={{ color: '#8A8266' }}>出發</span>
+                                            <span className="font-mono text-[11px]" style={{ color: '#5C5850' }}>{startDate!.replace(/-/g, '.')}</span>
+                                        </div>
+                                        <div className="relative flex items-baseline justify-between mt-1">
+                                            <span className="font-serif text-[10px]" style={{ color: '#8A8266' }}>回程</span>
+                                            <span className="font-mono text-[11px]" style={{ color: '#5C5850' }}>{endDate!.replace(/-/g, '.')}</span>
+                                        </div>
+
+                                        {/* 收尾一行：左邊是事實（共幾天），右邊是期待（還有幾天） */}
+                                        <div className="relative flex items-baseline justify-between mt-2.5 pt-2"
+                                            style={{ borderTop: '1px solid rgba(35,35,32,.12)' }}>
+                                            <span className="font-serif text-[11px]" style={{ color: '#5C5850' }}>共 {days} 天</span>
+                                            {countdown && (
+                                                <span className="font-mono text-[12px] tracking-[0.12em]" style={{ color: INK_PRINT }}>
+                                                    還有 {countdown} 天
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 兩條回頭路：同一列、字級一致，與卡片拉開距離（它們是「離開這張卡」的動作） */}
+                                    <div className="flex items-center justify-center gap-7 mt-7">
+                                        <button onClick={openExact}
+                                            className="font-serif text-[13px] text-white/85 underline underline-offset-4 decoration-white/45"
+                                            style={{ textShadow: ON_PHOTO_SHADOW }}>改日期</button>
+                                        <button onClick={() => { dropExact(); playPageSound('eraser'); hapticTap(); }}
+                                            className="font-serif text-[13px] text-white/85 underline underline-offset-4 decoration-white/45"
+                                            style={{ textShadow: ON_PHOTO_SHADOW }}>改用月份與天數</button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {(exactOpen || collapsing) && (
                             <div className="relative" style={{
+                                animation: collapsing && !instant ? 'ktTearOff .34s cubic-bezier(.4,0,.9,.6) forwards' : undefined,
                                 backgroundColor: PAPER,
                                 borderRadius: PAPER_RADIUS,
                                 boxShadow: paperShadow('rest'),
@@ -681,7 +812,24 @@ export const WhenPage: React.FC<{
                                         還是先不指定
                                     </button>
                                     {exact && (
-                                        <button onClick={() => { setExactOpen(false); hapticTap(); }}
+                                        <button onClick={() => {
+                                            setExactOpen(false);
+                                            setCollapsing(true);
+                                            const done = window.setTimeout(() => {
+                                                if (!aliveRef.current) return;
+                                                setCollapsing(false);          // 舊的演完才卸載，新的接著落下
+                                                playPageSound('paperDrop');
+                                            }, 260);
+                                            timersRef.current.add(done);
+                                            hapticTap();
+                                            // 收束的編曲（兩段式）：
+                                            //   0ms   撕下那一頁（pageTear）＋年曆/拉桿/日曆往上收走
+                                            //   260ms 舊的演完卸載，撕下來的那頁從上方落定（paperDrop）
+                                            // 兩個不同物件的兩種聲音，不違反「一次動作只播一聲」（那條是防同一物件重複發聲）。
+                                            playPageSound('pageTear');
+                                            // 捲動歸位：收起後內容變短，若停在半空會看到一片黑
+                                            scrollRef.current?.scrollTo({ top: 0, behavior: instant ? 'auto' : 'smooth' });
+                                        }}
                                             className="font-serif text-[11px] font-bold underline underline-offset-4"
                                             style={{ color: INK_INK, textDecorationColor: 'rgba(35,35,32,.4)' }}>
                                             就這樣
@@ -708,6 +856,22 @@ export const WhenPage: React.FC<{
 
             <style>{`
                 ${INK_KEYFRAMES}
+                /* 撕下那一頁：日曆往上收走（像被撕離），撕下來的那頁從上方落定。
+                   兩者刻意重疊——紙不會等另一張紙演完才動。 */
+                @keyframes ktTearOff {
+                    0%{transform:translateY(0) scale(1);opacity:1}
+                    35%{transform:translateY(3px) scale(1.008);opacity:1}
+                    100%{transform:translateY(-18px) scale(.94);opacity:0}
+                }
+                @keyframes ktFadeAway {
+                    0%{transform:translateY(0);opacity:1}
+                    100%{transform:translateY(-10px);opacity:0}
+                }
+                @keyframes ktCardDrop {
+                    0%{transform:translateY(-26px) rotate(-1.6deg);opacity:0}
+                    60%{opacity:1}
+                    100%{transform:translateY(0) rotate(0deg);opacity:1}
+                }
                 /* 尺規拉桿：原生 range 去皮，只留一顆紙色拇指（軌道由下層的刻度線負責） */
                 input[type="range"].kt-ruler::-webkit-slider-thumb {
                     -webkit-appearance: none; appearance: none;

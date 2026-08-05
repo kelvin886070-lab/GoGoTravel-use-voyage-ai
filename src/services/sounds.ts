@@ -10,7 +10,9 @@
 
 export type PageSoundKind =
     | 'flip' | 'riffle' | 'close' | 'tear'
-    | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap';
+    | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap'
+    // ── 2026-08-05 補齊（Kelvin 提供素材，ffmpeg 裁切：tick 0.10s／release 0.29s／tear 0.34s／unfold 0.65s）
+    | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'pageTear';
 
 const SOUND_KEY = 'kt_pp_sound';   // 缺席或 '1' ＝開；'0' ＝關
 const VOLUME = 0.5;                // 質感音量：聽得到紙、不搶注意力
@@ -29,6 +31,10 @@ const SRC: Record<PageSoundKind, string> = {
     stamp: '/sounds/stamp.mp3',            // 蓋章（情感最高點）
     penUncap: '/sounds/pen-uncap.mp3',     // 開筆蓋＝要開始寫了
     penCap: '/sounds/pen-cap.mp3',         // 關筆蓋＝寫完擱筆
+    rulerTick: '/sounds/ruler-tick.mp3',       // 尺規每一格（0.10s、-4dB；連放十幾次也不吵）
+    rulerRelease: '/sounds/ruler-release.mp3', // 放開拉桿的收尾（噠噠噠噠…咚）
+    paperUnfold: '/sounds/paper-unfold.mp3',   // 攤開一張紙（展開日曆／攤開整年）
+    pageTear: '/sounds/page-tear.mp3',         // 撕下日曆的一頁（比票券撕更薄更脆）
 };
 
 /** 翻頁音效目前是否開啟（預設開）。 */
@@ -65,6 +71,32 @@ export const preloadPageSounds = (): void => {
  *  iOS Safari 無 navigator.vibrate＝靜默不動作；原生打包後換 Capacitor Haptics（上架批）。 */
 export const hapticTap = (): void => {
     try { navigator.vibrate?.(10); } catch { /* ignore */ }
+};
+
+/**
+ * 播放**可重疊**的極短音效（拉桿的 tick 專用）。
+ * 為什麼不能用一般的 playPageSound：單一 Audio 實例重播＝先 rewind，前一聲會被硬切斷，
+ * 快速拖曳時聽起來是「斷奏」而不是連續的噠噠噠。這裡用一個小 pool 輪流播。
+ */
+const POOL_SIZE = 4;
+const pools: Partial<Record<PageSoundKind, HTMLAudioElement[]>> = {};
+let poolIdx = 0;
+export const playOverlapping = (kind: PageSoundKind, volumeScale = 1): void => {
+    if (!isPageSoundOn()) return;
+    try {
+        if (!pools[kind]) {
+            pools[kind] = Array.from({ length: POOL_SIZE }, () => {
+                const a = new Audio(SRC[kind]);
+                a.preload = 'auto';
+                return a;
+            });
+        }
+        const pool = pools[kind]!;
+        const a = pool[poolIdx++ % POOL_SIZE];
+        a.volume = Math.max(0, Math.min(1, VOLUME * volumeScale));
+        a.currentTime = 0;
+        void a.play().catch(() => { /* 自動播放政策擋下＝靜默 */ });
+    } catch { /* ignore */ }
 };
 
 /** 播放翻頁音（永不 throw；關閉時靜默）。
