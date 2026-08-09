@@ -51,7 +51,16 @@ const addDays = (isoStr: string, n: number): string => {
 
 const MIN_DAYS = 2;
 const MAX_DAYS = 60;        // 就地自訂的上限
-const RULER_MAX = 14;       // 尺規拉桿的刻度上限（超過 14 只能用自訂輸入）
+/**
+ * 尺規拉桿的上限。**刻意比常見天數多留一格**（標到 14，但拉得到 15）——
+ * 「14 不是盡頭」這件事要用**刻度本身**講，不必用文字解釋；
+ * 拉到最後一格才浮出「還要更長？」，把不常用的動作藏在會觸發它的情境裡。
+ */
+const RULER_MAX = 15;
+/** 拉桿下方標數字的刻度（其餘只有刻痕） */
+const RULER_MARKS = [3, 5, 7, 10, 14];
+/** 到達（或超過）這個天數才浮出「還要更長？」 */
+const RULER_LONG_HINT_AT = 14;
 const SEASON_ROWS: Array<{ label: string; months: number[] }> = [
     { label: '春', months: [3, 4, 5] },
     { label: '夏', months: [6, 7, 8] },
@@ -68,6 +77,13 @@ const CELL_H = 30;
 /** 「一年的樣子」的欄位網格：月份欄固定寬＋右對齊，「8 月」與「10 月」的關鍵詞才會切齊同一條線 */
 const GLANCE_MONTH_W = 46;
 const GLANCE_GAP = 14;
+/**
+ * 三層之間的間距（月份／天數／日期）。
+ * 這一頁混淆的真正來源不是「按鈕太多」，而是**層與層之間的距離和層內一樣**——
+ * 眼睛沒有依據可以分組，只能一個一個讀完才知道誰屬於誰。
+ * 格式塔的接近性原則：層間拉開、層內收緊，四個動作自動被讀成三段。
+ */
+const LAYER_GAP = 34;
 /** 出發章紅：週末與連假的標記色（與全站「出發／準備家族＝紅」同一支） */
 const STAMP_RED = '#A23B2E';
 /** 冬季高山的風險提示關鍵字（只給通用、查得到的建議，不編造路況） */
@@ -541,7 +557,7 @@ export const WhenPage: React.FC<{
 
                     {/* 專家時刻：還沒想法時，把整年攤開讓他挑（點一列＝直接圈那個月） */}
                     {!coarseHidden && !month && expertCount > 0 && (
-                        <div className="text-center mt-3">
+                        <div className="text-center" style={{ marginTop: 6 }}>
                             {/* ⚠️ 底線用 border-bottom 而不是 text-decoration：
                                 iOS Safari 在 text-shadow 疊加下有時不畫底線（Kelvin 手機上沒底線、電腦上有的真因）。
                                 邊框是幾何、不是文字裝飾，跨引擎一致。 */}
@@ -553,11 +569,11 @@ export const WhenPage: React.FC<{
                                 playPageSound(next ? 'paperUnfold' : 'paperFold');
                                 hapticTap();
                             }}
-                                className="inline-block font-serif text-[12px] font-bold pb-0.5"
+                                className="inline-block font-serif text-[11px] pb-0.5"
                                 style={{
-                                    color: '#F6F1E7',
+                                    color: 'rgba(246,241,231,.78)',
                                     textShadow: '0 1px 4px rgba(0,0,0,.95), 0 0 10px rgba(0,0,0,.6)',
-                                    borderBottom: '1px solid rgba(246,241,231,.55)',
+                                    borderBottom: '1px solid rgba(246,241,231,.4)',
                                 }}>
                                 {expertOpen ? '收起來' : '還沒想法？點開來看每個月的樣子'}
                             </button>
@@ -634,8 +650,9 @@ export const WhenPage: React.FC<{
 
                     {/* ── ②天數層：尺規拉桿 ─────────────────────────────── */}
                     {!coarseHidden && (
-                    <div className="mt-7 mx-auto" style={{
+                    <div className="mx-auto" style={{
                         maxWidth: 300,
+                        marginTop: LAYER_GAP,
                         animation: collapsing && !instant ? 'ktFadeAway .40s ease-in forwards' : undefined,
                     }}>
                         <div className="text-center">
@@ -693,7 +710,7 @@ export const WhenPage: React.FC<{
                         {/* 快速刻度：常見天數點一下就到；14 天以上走「自訂」（拉桿刻度到 14 為止，
                             再長的尺規在手機上每一格太小，反而選不準） */}
                         <div className="relative mt-1" style={{ height: 22 }}>
-                            {[3, 5, 7, 10, 14].map(v => (
+                            {RULER_MARKS.map(v => (
                                 <button key={v} onClick={() => changeDays(v)}
                                     className="absolute font-mono text-[11px] px-1"
                                     style={{
@@ -706,28 +723,37 @@ export const WhenPage: React.FC<{
                                     }}>{v}</button>
                             ))}
                         </div>
-                        <div className="text-center mt-1">
-                            <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); playPageSound('penUncap'); hapticTap(); }}
-                                className="font-serif text-[11px] underline underline-offset-4"
-                                style={{ color: 'rgba(246,241,231,.7)', textShadow: ON_PHOTO_SHADOW, textDecorationColor: 'rgba(255,255,255,.35)' }}>
-                                自訂天數（最多 {MAX_DAYS} 天）
-                            </button>
-                        </div>
+                        {/* 情境式：九成的旅行在 3–14 天之間，那行字對他們從頭到尾都是雜訊。
+                            真的要更長的人一定會先把拉桿拉到底，那時候它才出現——
+                            這是**接在使用者動作後面的一句回應**，不是常駐的招牌。 */}
+                        {days >= RULER_LONG_HINT_AT && !editingDays && (
+                            <div className="text-center mt-1">
+                                <button onClick={() => { setDaysDraft(String(days)); setEditingDays(true); playPageSound('penUncap'); hapticTap(); }}
+                                    className="font-serif text-[11.5px] pb-0.5"
+                                    style={{
+                                        color: '#F6F1E7',
+                                        textShadow: ON_PHOTO_SHADOW,
+                                        borderBottom: '1px solid rgba(246,241,231,.5)',
+                                    }}>
+                                    還要更長？
+                                </button>
+                            </div>
+                        )}
 
                         {/* 理由行（縮圈反哺）與密度提醒（只陳述事實，永不擋路） */}
                         {suggestedDaysHint > 0 && !density && (
-                            <div className="text-center font-serif text-[10px] text-white/65 mt-2" style={{ textShadow: ON_PHOTO_SHADOW }}>
+                            <div className="text-center font-serif text-[10px] text-white/65 mt-1.5" style={{ textShadow: ON_PHOTO_SHADOW }}>
                                 {placeCount} 個地方，建議 {suggestedDaysHint} 天左右
                             </div>
                         )}
                         {density && (
-                            <div className="text-center font-serif text-[10px] mt-2" style={{ color: INK_AMBER, textShadow: ON_PHOTO_SHADOW }}>{density}</div>
+                            <div className="text-center font-serif text-[10px] mt-1.5" style={{ color: INK_AMBER, textShadow: ON_PHOTO_SHADOW }}>{density}</div>
                         )}
                     </div>
                     )}
 
                     {/* ── ③精確層：可展開的日曆 ─────────────────────────── */}
-                    <div ref={exactRef} className="mt-7 mx-auto" style={{ maxWidth: 300 }}>
+                    <div ref={exactRef} className="mx-auto" style={{ maxWidth: 300, marginTop: LAYER_GAP }}>
                         {!exactOpen && !exact && (
                             <button onClick={openExact}
                                 className="w-full font-serif text-[12px] text-white/80 underline underline-offset-4 decoration-white/40 py-1" style={{ textShadow: ON_PHOTO_SHADOW }}>
@@ -911,9 +937,9 @@ export const WhenPage: React.FC<{
                                 {/* 當月的連假：**大部分人的日期是被假期決定的**，這一行比季節更影響決策。
                                     ⚠️ 高度固定保留兩行——有連假、兩個連假、沒連假都一樣高，
                                     否則換月時紙會上上下下跳。這塊空間本來就是日曆的頁尾註記區。 */}
-                                <div className="relative mt-2 text-center" style={{ minHeight: 30 }}>
+                                <div className="relative mt-2 text-center" style={{ minHeight: 36 }}>
                                     {hasHolidayData(calYear) && holidaysInMonth(calYear, calMonth).slice(0, 2).map(h => (
-                                        <div key={h.name} className="font-serif text-[10px] leading-[15px]" style={{ color: STAMP_RED }}>
+                                        <div key={h.name} className="font-serif text-[11.5px] leading-[18px]" style={{ color: STAMP_RED }}>
                                             {h.start.slice(5).replace('-', '/')}
                                             {h.end !== h.start ? `–${h.end.slice(5).replace('-', '/')}` : ''} {h.name}
                                         </div>
@@ -980,21 +1006,24 @@ export const WhenPage: React.FC<{
 
                 {/* 日曆展開時**收起票券鈕**：票券＝撕票＝離開這一頁，與「確認這幾天」不是同一件事。
                     同一個畫面上兩個前進動作會讓人猶豫該按哪一個——這時候只該有一個。 */}
-                <div className="relative px-4 pt-2" style={{
-                    paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)',
-                    opacity: exactOpen ? 0 : 1,
-                    pointerEvents: exactOpen ? 'none' : undefined,
-                    transition: 'opacity .28s ease',
-                }}>
-                    {/* A：底部漸層——內容被切在空白處時，這道漸層說明「下面還有」。
-                        捲到底自動收起；pointer-events none，不吃點擊。 */}
+                <div className="relative px-4 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
+                    {/* 底部漸層：內容被切在空白處時，這道漸層說明「下面還有」。捲到底自動收起。
+                        ⚠️ 它**必須是這個容器的直接子層、不能被票券鈕的透明度包住**——
+                        先前把它放進票券鈕的包裝裡，日曆一展開（票券鈕整塊淡出）漸層就跟著消失了。 */}
                     <div aria-hidden className="absolute left-0 right-0 pointer-events-none"
                         style={{
                             bottom: '100%', height: 42,
                             backgroundImage: 'linear-gradient(rgba(15,14,13,0), rgba(15,14,13,.82))',
                             opacity: atBottom ? 0 : 1, transition: 'opacity .3s ease',
                         }} />
-                    <TicketNextButton onPress={guardNext} onNext={submit} />
+                    {/* 日曆展開時只收起票券鈕（票券＝離開這一頁，與「確認這幾天」不是同一件事） */}
+                    <div style={{
+                        opacity: exactOpen ? 0 : 1,
+                        pointerEvents: exactOpen ? 'none' : undefined,
+                        transition: 'opacity .28s ease',
+                    }}>
+                        <TicketNextButton onPress={guardNext} onNext={submit} />
+                    </div>
                 </div>
             </div>
 

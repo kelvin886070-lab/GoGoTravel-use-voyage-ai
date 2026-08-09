@@ -11,7 +11,7 @@ import { IOSButton } from '../../../components/UI';
 import { generateItinerary } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
 import { ensureTripGeocoded } from '../../../services/geo';
-import type { Trip, TripDay, TripConstraints } from '../../../types';
+import type { Trip, TripDay, TripConstraints, PaceLevel, BudgetLevel } from '../../../types';
 import { INTEREST_DATA, CURRENCIES } from '../shared';
 import { toast } from '../../../components/Toast';
 
@@ -83,9 +83,16 @@ export const CreateTripModal: React.FC<{
     /** 生成表單「什麼時候」頁交來的日期（YYYY-MM-DD，本地時區） */
     initialStartDate?: string;
     initialEndDate?: string;
+    /** 🎴「想怎麼玩」頁交來的答案（步驟④「風格與預算」的同行者／步調／預算已在那裡問過）。
+     *  `initialCompanions` 是**完整清單**（進 prompt 用）；`initialCompanion` 只是給舊步驟④
+     *  那組單選按鈕顯示的代表值——⑧上線、步驟④退場後兩者一起清掉。 */
+    initialCompanions?: string[];
+    initialCompanion?: string;
+    initialPace?: PaceLevel;
+    initialBudgetLevel?: BudgetLevel;
     /** 從新入口頁進來時：在起始步按「上一步」＝回入口頁（舊①雙門②目的地已退役，不可回頭） */
     onBackToEntry?: () => void;
-}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, initialStartDate, initialEndDate, onBackToEntry }) => {
+}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, initialStartDate, initialEndDate, initialCompanions, initialCompanion, initialPace, initialBudgetLevel, onBackToEntry }) => {
     const [step, setStep] = useState(initialStep ?? 1);
     const [loading, setLoading] = useState(false);
     
@@ -167,10 +174,11 @@ export const CreateTripModal: React.FC<{
     const [flightOut, setFlightOut] = useState('');
 
     // --- Step 4 & 5 Data ---
-    const [companion, setCompanion] = useState('couple');
-    const [pace, setPace] = useState('standard');
+    // 🎴「想怎麼玩」頁問過的三件事在這裡帶入（沒有經過那一頁＝維持原本的中性預設）
+    const [companion, setCompanion] = useState(initialCompanion ?? 'couple');
+    const [pace, setPace] = useState<string>(initialPace ?? 'standard');
     const [vibe, setVibe] = useState('balanced');
-    const [budgetLevel, setBudgetLevel] = useState('standard');
+    const [budgetLevel, setBudgetLevel] = useState<string>(initialBudgetLevel ?? 'standard');
     const [customBudget, setCustomBudget] = useState('');
     const [currency, setCurrency] = useState('TWD');
     
@@ -216,6 +224,9 @@ export const CreateTripModal: React.FC<{
             },
             soft: {
                 companion,
+                // ⚠️ 進 prompt 以 companions 全集為準——壓成單一代表值就資訊死亡
+                //    （「長輩＋孩子」和「長輩」對行程的意義完全不同）
+                companions: initialCompanions?.length ? initialCompanions : undefined,
                 pace: pace as TripConstraints['soft']['pace'],
                 vibe,
                 budgetLevel,

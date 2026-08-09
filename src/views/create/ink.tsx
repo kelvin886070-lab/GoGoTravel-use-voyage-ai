@@ -85,13 +85,37 @@ export const PAPER_TUNING = { grain: 0.07, age: 0.24, edge: 0.18, seal: 0.24, cr
  *   - 環境陰影：很寬、很淡、往下擴散 → 說明「這裡有一盞燈」
  *   單層 8px 模糊＝Material Design 的浮起卡片，那是 UI 的語彙不是紙的。
  */
-export const paperShadow = (state: 'rest' | 'press' | 'picked'): string => {
+export const paperShadow = (state: 'rest' | 'press' | 'picked' | 'hand' | 'back'): string => {
     // 紙的厚度：上緣受光的白線＋下緣壓陰的暗線
     const edge = 'inset 0 1px 0 rgba(255,255,255,.72), inset 0 -1px 0 rgba(35,35,32,.07)';
     if (state === 'press') return `${edge}, 0 1px 1px rgba(0,0,0,.32), 0 3px 6px -2px rgba(0,0,0,.24)`;
     if (state === 'picked') return `${edge}, 0 1px 2px rgba(0,0,0,.34), 0 5px 10px -4px rgba(0,0,0,.26)`;
+    // hand＝**被拿在手上**：接觸陰影鬆開（紙離開桌面了）、環境陰影變大變散變深（距離桌面遠）。
+    //   ⚠️ 一定要與 scale 同時變：只放大會像「放大」，只改陰影會像「浮著但沒動」。
+    if (state === 'hand') return 'inset 0 1px 0 rgba(255,255,255,.80), inset 0 -1px 0 rgba(35,35,32,.07), 0 6px 10px rgba(0,0,0,.34), 0 26px 44px -10px rgba(0,0,0,.46)';
+    // back＝**退到桌子後面**（聚焦模式裡沒輪到的那幾張）：陰影收淺，不搶前景的紙
+    if (state === 'back') return 'inset 0 1px 0 rgba(255,255,255,.50), 0 1px 2px rgba(0,0,0,.26), 0 4px 8px -4px rgba(0,0,0,.20)';
     return `${edge}, 0 1px 2px rgba(0,0,0,.34), 0 10px 20px -6px rgba(0,0,0,.30)`;
 };
+
+/**
+ * 「拿在手上」的陰影層（配合 `ktPickPut` 三拍動畫使用）。
+ *
+ * ⚠️ **為什麼不把 box-shadow 寫進 keyframes**：陰影不上 GPU，逐格重算模糊半徑會掉幀。
+ *   改成一張**只動 opacity** 的陰影層疊在紙下面——opacity 上 GPU，而且與紙的 transform 動畫
+ *   同時開始、同樣時長，天然同步，不必用 JS 對時。
+ * 用法：放進紙容器內當第一個子元素（容器要 `position: relative`）。
+ */
+export const HandShadow: React.FC<{ radius?: string | number; playing?: boolean }> = ({
+    radius = PAPER_RADIUS, playing,
+}) => (
+    <span aria-hidden style={{
+        position: 'absolute', inset: 0, borderRadius: radius, pointerEvents: 'none',
+        boxShadow: '0 6px 10px rgba(0,0,0,.34), 0 26px 44px -10px rgba(0,0,0,.46)',
+        opacity: 0,
+        animation: playing ? 'ktHandShadow .82s cubic-bezier(.33,0,.2,1) forwards' : undefined,
+    }} />
+);
 
 /**
  * 紙面紋理（放進任何鋪紙的容器裡當第一個子元素；容器要 `position: relative`）。
@@ -215,6 +239,30 @@ export const INK_KEYFRAMES = `
     @keyframes ktRub { 0%{transform:translate(0,0) rotate(-4deg)} 45%{transform:translate(96px,2px) rotate(3deg)} 70%{transform:translate(48px,-2px) rotate(-3deg)} 100%{transform:translate(118px,0) rotate(3deg)} }
     @keyframes ktFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
     @keyframes ktPaperDrop { 0%{opacity:0;transform:translateY(-22px) rotate(-.6deg)} 60%{opacity:1} 100%{opacity:1;transform:translateY(0) rotate(0deg)} }
+
+    /* 🎬 拿起 → 端詳 → 放下（⑥想怎麼玩頁的交棒動畫；Kelvin 2026-08-09 定案）
+       ①拿起 0–180ms（0–22%）：上浮 6px、放大 1.028、微傾 −0.9°（手拿著不會完全平）
+       ②端詳 180–426ms（22–52%）：**停住不動**——這 246ms 的停頓才是儀式感的來源。
+          少了它，整段就只是一個縮小動畫。這一拍也**不放音效**（停頓要真的安靜）。
+       ③放下 426–820ms（52–100%）：退到 0.968、透明度 .34、旋轉回正
+       ⚠️ 終態刻意與聚焦模式「退到後面」的靜態值（scale .968 / opacity .34）**完全相同**——
+          （提醒：這整段在 template literal 裡，註解**不可以出現反引號**，會提前結束字串。）
+          動畫播完移除 class 的瞬間才不會跳一下。 */
+    @keyframes ktPickPut {
+        0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1 }
+        22%  { transform: scale(1.028) translateY(-6px) rotate(-.9deg); opacity: 1 }
+        52%  { transform: scale(1.028) translateY(-6px) rotate(-.9deg); opacity: 1 }
+        100% { transform: scale(.968) translateY(0) rotate(0deg); opacity: .34 }
+    }
+    /* 手上的陰影層（只動 opacity＝上 GPU；與上面同時長，天然同步） */
+    @keyframes ktHandShadow { 0%{opacity:0} 22%{opacity:1} 52%{opacity:1} 100%{opacity:0} }
+    /* 短版：使用者**自己**點去別張紙時，離開的那張只落下，不表演端詳——
+       他的注意力已經走了，這時還在原地演出就是搶戲。 */
+    @keyframes ktPutDown { 0%{transform:scale(1);opacity:1} 100%{transform:scale(.968);opacity:.34} }
+    /* 反向（從後面拿回前面）刻意**不寫 keyframes**：那段只是 .34→1 的單純變化，
+       用 transition 就夠，而且不會有動畫殘留需要清。 */
+    /* 摺頁首次揭示：自己翻起 12° 再收回＝紙被風吹了一下（不是一個動畫在自我介紹） */
+    @keyframes ktPeek { 0%{transform:rotateX(-178deg)} 38%{transform:rotateX(-166deg)} 100%{transform:rotateX(-178deg)} }
 `;
 
 /** 橡皮擦：可見的米白橡皮塊掃過（取消選擇時疊在被擦的字上） */

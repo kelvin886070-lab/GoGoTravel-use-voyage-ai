@@ -12,7 +12,9 @@ export type PageSoundKind =
     | 'flip' | 'riffle' | 'close' | 'tear'
     | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap'
     // ── 2026-08-05 補齊（Kelvin 提供素材，ffmpeg 裁切：tick 0.10s／release 0.29s／tear 0.34s／unfold 0.65s）
-    | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'paperFold' | 'pageTear';
+    | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'paperFold' | 'pageTear'
+    // ── 2026-08-09 ⑥想怎麼玩頁（拿起 → 端詳 → 放下）；素材由 Kelvin 提供，未到位前自動退位
+    | 'paperLand' | 'paperLift';
 
 const SOUND_KEY = 'kt_pp_sound';   // 缺席或 '1' ＝開；'0' ＝關
 const VOLUME = 0.5;                // 質感音量：聽得到紙、不搶注意力
@@ -36,7 +38,22 @@ const SRC: Record<PageSoundKind, string> = {
     paperUnfold: '/sounds/paper-unfold.mp3',   // 攤開一張紙（展開日曆／攤開整年）
     paperFold: '/sounds/paper-fold.mp3',       // 收起一張紙（攤開的相反方向，不共用滑動聲）
     pageTear: '/sounds/page-tear.mp3',         // 撕下日曆的一頁（比票券撕更薄更脆）
+    paperLand: '/sounds/paper-land.mp3',       // 紙落到木桌（悶、低頻、無回音；會連放三次，尾巴必須乾淨）
+    paperLift: '/sounds/paper-lift.mp3',       // 紙從桌面被拿起（窸窣，比 land 亮、比 unfold 短）
 };
+
+/**
+ * 🚧 **素材尚未到位**的音效：一律靜默，`getAudio` 也不會替它們建 Audio。
+ *
+ * 為什麼要有這張表，而不是「檔案不存在自然失敗」：
+ *   ①`preloadPageSounds()` 會對每一個 SRC 建 Audio，缺檔會在 console 洗一排 404——
+ *     那是**假的錯誤訊息**，會讓真的錯誤更難看見。
+ *   ②有名字沒聲音是一種「假按鈕」；明確列出來，才知道還欠什麼。
+ *
+ * ➜ Kelvin 把 mp3 放進 `public/sounds/` 之後，**只要從這個集合刪掉那一行就上線**，
+ *   呼叫端一行都不用改（見 `docs/音效素材清單.md`）。
+ */
+const PENDING: ReadonlySet<PageSoundKind> = new Set<PageSoundKind>(['paperLand', 'paperLift']);
 
 /** 翻頁音效目前是否開啟（預設開）。 */
 export const isPageSoundOn = (): boolean => {
@@ -52,6 +69,7 @@ export const setPageSoundOn = (on: boolean): void => {
 const cache: Partial<Record<PageSoundKind, HTMLAudioElement>> = {};
 
 const getAudio = (kind: PageSoundKind): HTMLAudioElement | null => {
+    if (PENDING.has(kind)) return null;   // 素材未到位＝連 Audio 都不要建（避免 console 被 404 洗版）
     try {
         if (!cache[kind]) {
             const a = new Audio(SRC[kind]);
@@ -83,7 +101,7 @@ const POOL_SIZE = 4;
 const pools: Partial<Record<PageSoundKind, HTMLAudioElement[]>> = {};
 let poolIdx = 0;
 export const playOverlapping = (kind: PageSoundKind, volumeScale = 1): void => {
-    if (!isPageSoundOn()) return;
+    if (!isPageSoundOn() || PENDING.has(kind)) return;
     try {
         if (!pools[kind]) {
             pools[kind] = Array.from({ length: POOL_SIZE }, () => {

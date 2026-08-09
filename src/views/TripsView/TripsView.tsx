@@ -20,6 +20,7 @@ import { CreateTripModal } from './modals/CreateTripModal';
 import { EntryPage, type EntryResult } from '../create/EntryPage';
 import { ZonePage, type ZoneResult } from '../create/ZonePage';
 import { WhenPage, type WhenResult } from '../create/WhenPage';
+import { HowPage, legacyCompanionId, type HowResult } from '../create/HowPage';
 import { needsZoneStep } from '../../services/destinationIntel';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
@@ -79,12 +80,16 @@ export const TripsView: React.FC<TripsViewProps> = ({
   const [zoneResult, setZoneResult] = useState<ZoneResult | null>(null);
   const [whenOpen, setWhenOpen] = useState(false);
   const [whenResult, setWhenResult] = useState<WhenResult | null>(null);
+  // 🎴 ⑥想怎麼玩：和誰同行／步調／預算（複選的同行者以 howResult.companions 為準）
+  const [howOpen, setHowOpen] = useState(false);
+  const [howResult, setHowResult] = useState<HowResult | null>(null);
   /** 入口頁交棒：需要縮圈就先進縮圈，否則直接進建立流程 */
   const afterEntry = (r: EntryResult) => {
     setEntryResult(r);
     setZoneResult(null);
     endTear();
     setWhenResult(null);
+    setHowResult(null);
     if (needsZoneStep(r.intel)) setZoneOpen(true);
     else setWhenOpen(true);
   };
@@ -286,22 +291,40 @@ export const TripsView: React.FC<TripsViewProps> = ({
             if (needsZoneStep(entryResult.intel)) setZoneOpen(true); else setEntryOpen(true);
           }}
           onClose={() => { setWhenOpen(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setTearing(false); }}
-          onNext={(w) => { setWhenResult(w); setWhenOpen(false); setIsCreating(true); }}
+          onNext={(w) => { setWhenResult(w); setWhenOpen(false); setHowOpen(true); }}
+        />
+      )}
+      {howOpen && entryResult && (
+        <HowPage
+          breadcrumb={flowDestinations().join(' · ')}
+          query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
+          coverUrl={entryResult.coverUrl}
+          isDomestic={entryResult.isDomestic}
+          onBack={() => { setHowOpen(false); setWhenOpen(true); }}
+          onClose={() => {
+            setHowOpen(false); setEntryResult(null); setZoneResult(null);
+            setWhenResult(null); setHowResult(null); setTearing(false);
+          }}
+          onNext={(h) => { setHowResult(h); setHowOpen(false); setIsCreating(true); }}
         />
       )}
       {isCreating && (
         <CreateTripModal
-          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); }}
+          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setHowResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
           initialDestinations={entryResult ? flowDestinations() : undefined}
           initialIsDomestic={entryResult?.isDomestic}
           initialStartDate={whenResult?.startDate}
           initialEndDate={whenResult?.endDate}
+          initialCompanions={howResult?.companions}
+          initialCompanion={howResult ? legacyCompanionId(howResult) : undefined}
+          initialPace={howResult?.pace}
+          initialBudgetLevel={howResult?.budget}
           initialStep={entryResult ? 3 : 1}
           onBackToEntry={() => {
             setIsCreating(false);
-            if (entryResult) setWhenOpen(true);        // 退回上一頁＝「什麼時候」，不是退回最前面
+            if (entryResult) setHowOpen(true);         // 退回上一頁＝「想怎麼玩」，不是退回最前面
             else setEntryOpen(true);
           }}
         />

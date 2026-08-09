@@ -266,7 +266,11 @@ const buildUserPreferences = (c: TripConstraints): string => {
         - 抵達時間：第一天 ${arrival ?? '未指定'} 抵達
         - 離開時間：最後一天 ${departure ?? '未指定'} 離開
         - 當地移動方式：以 ${mobility} 為主
-        - 旅伴：${s.companion ? (COMPANION_LABEL[s.companion] ?? s.companion) : '未指定'}
+        - 旅伴：${s.companions?.length
+            // ⚠️ 有完整清單就用完整清單：「長輩同行、帶著孩子」與「長輩同行」對行程的意義完全不同，
+            //    壓成單一代表值（舊的 companion 欄）會讓其中一個限制安靜地消失。
+            ? s.companions.join('、')
+            : s.companion ? (COMPANION_LABEL[s.companion] ?? s.companion) : '未指定'}
         - 步調：${s.pace ? (PACE_LABEL[s.pace] ?? s.pace) : '標準觀光'}
         - 風格：${s.vibe ? (VIBE_LABEL[s.vibe] ?? s.vibe) : '在地與熱門均衡'}
         - 預算：${s.budgetLevel ? (BUDGET_LABEL[s.budgetLevel] ?? s.budgetLevel) : '標準預算'} ${s.customBudget ? `(${s.customBudget})` : ''}

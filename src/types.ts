@@ -171,6 +171,9 @@ export interface HardAnchors {
 // 軟偏好：LLM 可自由發揮的部分。
 export interface SoftPreferences {
   companion?: string;
+  /** 完整的同行者清單（⑥想怎麼玩頁的複選；`companion` 只是給舊 UI 顯示的代表值）。
+   *  ⚠️ 進 prompt 時以這個為準——「長輩＋孩子」和「長輩」是兩件不同的事，壓成單值就資訊死亡。 */
+  companions?: string[];
   pace?: 'relaxed' | 'standard' | 'packed' | 'deep';
   vibe?: string;
   budgetLevel?: string;

@@ -40,12 +40,27 @@ export interface DestinationIntel {
     suggestions?: string[];   // unknown 時的猜測
 }
 
+/** 預算三級的粗估區間（⑥想怎麼玩頁的錨點）。
+ *  ⚠️ 三條規矩（docs E3-0「預算三條規矩」）：
+ *    ①**不含機票與住宿**——那兩樣波動極大（飯店淡旺季差三倍）且使用者通常已自己訂好；
+ *      拿掉之後只剩吃／玩／車資，這個數字才從「不可能估準」變成「可以估個大概」。
+ *    ②**永遠不進 prompt**——不是因為不準，是因為它**冗餘**：行為描述（「好好吃一餐、
+ *      累了就搭車」）已完整表達約束；再給一個金額，LLM 要嘛忽略、要嘛拿去**湊數**
+ *      （為了湊到 ¥12,000 硬塞一個景點）。進 prompt 的永遠是 lean/mid/rich 這個**等級**。
+ *    ③這是**給人看的**：只要相對排序（lean < mid < rich）正確，絕對值差兩成無妨。 */
+export interface DestinationBudget {
+    lean: string;   // 「約 ¥4,000–8,000」
+    mid: string;
+    rich: string;   // 「¥20,000 起」
+}
+
 /** 重層：後面三頁才用得到（背景預取，永不擋畫面） */
 export interface DestinationDeep {
     zones?: IntelZone[];               // 縮圈頁（country/region 才有）
     tags?: string[];                   // 講究頁標籤雲
     seasons?: Record<string, string>;     // '1'..'12' → 一句話（8–14 字）
     seasonKeys?: Record<string, string>;  // '1'..'12' → 2–6 字關鍵詞（「楓紅・百岳」）
+    budget?: DestinationBudget;           // 想怎麼玩頁（不含機加酒；缺就不顯示錨點那一行）
 }
 
 // ── 前端快取（記憶體＋localStorage；兩層各自一份）────────────────────
@@ -88,7 +103,7 @@ const makeStore = <T>(storageKey: string) => {
 
 // v4：拆成輕／重兩層，形狀改變 → 舊快取一律失效
 const intelStore = makeStore<DestinationIntel>('kt_dest_intel_v4');
-const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v3');   // v3：seasonKeys 上線前的舊資料一律作廢
+const deepStore = makeStore<DestinationDeep>('kt_dest_deep_v4');   // v4：加了 budget（v3＝seasonKeys 上線）
 
 const intelInflight = new Map<string, Promise<DestinationIntel | null>>();
 const deepInflight = new Map<string, Promise<DestinationDeep | null>>();
@@ -224,4 +239,20 @@ export const seasonNote = (deep: DestinationDeep | null, month: number): string 
 /** 某月的關鍵詞（2–6 字，「楓紅・百岳」）；沒有就回 null——呼叫端退位成整句。 */
 export const seasonKey = (deep: DestinationDeep | null, month: number): string | null =>
     (deep?.seasonKeys?.[String(month)] || '').trim() || null;
+
+/**
+ * 預算三級的粗估區間；**任何一級缺字串就整組回 null**（呼叫端整行不顯示）。
+ *
+ * 為什麼是「整組全有或全無」而不是逐級退位：三個數字的價值在**互相比較**——
+ * 只顯示其中一兩級，使用者無從判斷貴或便宜，那比完全不顯示更糟。
+ *
+ * ⚠️ 這是**唯一**取得預算錨點的入口；伺服器端 35 天快取裡的舊資料沒有 `budget`
+ *    （2026-08-09 上線前寫入的），此時回 null＝畫面自動退位，不需要清快取也不會出錯。
+ */
+export const budgetAnchors = (deep: DestinationDeep | null): DestinationBudget | null => {
+    const b = deep?.budget;
+    if (!b) return null;
+    const lean = (b.lean || '').trim(), mid = (b.mid || '').trim(), rich = (b.rich || '').trim();
+    return lean && mid && rich ? { lean, mid, rich } : null;
+};
 
