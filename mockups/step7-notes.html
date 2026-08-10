@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>⑦ 這一趟，你的講究 · mockup</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   ⑦「這一趟，你的講究」
+   兩張紙：①標籤紙（目的地感知標籤雲・雙筆）②書寫紙（手寫欄）
+   ＋回頭客的和紙膠帶便條（上一趟的碎片）
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --paper:#F6F1E7;--ink:#232320;--print:#2A2723;--gold:#C9B98F;--amber:#E9BE7A;
+  --stamp:#A23B2E;--bg:#0F0E0D;--paper-radius:3px 2px 4px 2px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:#E8E2D6;
+  font-family:"PingFang TC","Noto Sans TC",-apple-system,system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:22px 12px 60px;gap:24px}
+.rig{width:100%;max-width:940px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:12px 14px;border:1px dashed #4a463d;border-radius:8px;background:#171614}
+.rig .lbl{font-size:11.5px;color:#8d887c;letter-spacing:.06em}
+.rig button{font:inherit;font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;
+  background:#26241f;color:#E8E2D6;border:1px solid #3d3931}
+.rig button.on{background:var(--gold);color:#1b1a17;border-color:var(--gold)}
+
+.phone{width:390px;height:840px;border-radius:34px;overflow:hidden;position:relative;
+  background:#141310;box-shadow:0 24px 60px -12px rgba(0,0,0,.7),0 0 0 1px #2a2823;display:flex;flex-direction:column}
+.photo{position:absolute;inset:0;background:
+  radial-gradient(70% 50% at 30% 20%, rgba(180,160,120,.3), transparent 60%),
+  radial-gradient(60% 50% at 80% 70%, rgba(90,70,50,.5), transparent 60%),
+  linear-gradient(165deg,#54452f,#211a13)}
+.veil{position:absolute;inset:0;background-image:linear-gradient(rgba(15,14,13,.5),rgba(15,14,13,.8))}
+.screen{position:relative;flex:1;overflow-y:auto;overflow-x:hidden}
+.screen::-webkit-scrollbar{width:0}
+
+.head{padding:24px 22px 8px;position:relative;text-align:center}
+.head .bk{position:absolute;left:16px;top:22px;border:0;background:none;color:#8d887c;font-size:19px;cursor:pointer}
+.head .xx{position:absolute;right:16px;top:22px;border:0;background:none;color:#8d887c;font-size:16px;cursor:pointer}
+.head .crumb{font-size:11px;color:rgba(255,255,255,.6);margin-bottom:8px}
+.head h1{margin:0;font-size:21px;font-weight:600;letter-spacing:.04em;color:#EDE7DA;text-shadow:0 1px 3px rgba(0,0,0,.82)}
+.head .sub{margin:6px 0 0;font-size:11.5px;letter-spacing:.05em;color:#8d887c}
+
+/* ── 紙 ────────────────────────────────────────────────────── */
+.sheet{position:relative;margin:0 18px 16px;background:var(--paper);border-radius:var(--paper-radius);
+  padding:14px 16px 13px;color:var(--print);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.72),inset 0 -1px 0 rgba(35,35,32,.07),
+             0 1px 2px rgba(0,0,0,.34),0 10px 20px -6px rgba(0,0,0,.30)}
+.tex>span{position:absolute;inset:0;border-radius:var(--paper-radius);pointer-events:none;display:block}
+.t-grain{opacity:.07}
+.t-age{opacity:.24;background-size:170px 170px;mix-blend-mode:multiply}
+.t-crease{opacity:.6;background-size:210px 210px;mix-blend-mode:overlay}
+.seal{position:absolute;right:9px;bottom:6px;font-family:ui-monospace,Menlo,monospace;
+  font-size:6.5px;letter-spacing:.14em;color:rgba(35,35,32,.24);pointer-events:none}
+.sheet h2{margin:0;font-size:14.5px;font-weight:600;letter-spacing:.05em;position:relative;z-index:2}
+.sheet .note{margin:2px 0 0;font-size:10.5px;color:rgba(42,39,35,.52);position:relative;z-index:2}
+
+/* ── 🖊️ 雙筆：**選中的那一隻浮起＋微傾＝被拿在手上** ──────────
+   模式切換的經典坑是「使用者忘記自己在哪個模式」。
+   解法不是加提示文字，是**用物理隱喻取代抽象狀態**——
+   「你手上拿著哪支筆」本身就是最強的狀態指示。 */
+.pens{position:absolute;right:14px;top:11px;z-index:5;display:flex;gap:9px;align-items:flex-start}
+.pen{position:relative;width:15px;height:46px;border:0;background:none;padding:0;cursor:pointer;
+  transition:transform .22s cubic-bezier(.2,.8,.25,1),filter .22s ease}
+.pen svg{display:block;overflow:visible}
+.pen.off{transform:translateY(6px) rotate(0deg);filter:saturate(.55) opacity(.5)}
+.pen.on{transform:translateY(-4px) rotate(-9deg);filter:drop-shadow(0 4px 5px rgba(0,0,0,.3))}
+/* 首次揭示：紅筆自己浮起再放下——不加說明文字，讓那支筆自己說「我可以被拿起來」 */
+.pen.peek{animation:ktPenPeek 1.5s cubic-bezier(.3,.7,.3,1) 1.1s both}
+@keyframes ktPenPeek{
+  0%{transform:translateY(6px) rotate(0)}
+  26%{transform:translateY(-3px) rotate(-7deg)}
+  54%{transform:translateY(-3px) rotate(-7deg)}
+  100%{transform:translateY(6px) rotate(0)}
+}
+
+/* ── 標籤雲：純文字、無框（膠囊全面退役）───────────────────── */
+.tags{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:14px 18px;margin-top:14px}
+.tag{position:relative;background:none;border:0;padding:3px 1px;cursor:pointer;font:inherit;
+  font-size:13.5px;letter-spacing:.03em;color:rgba(42,39,35,.62);transition:color .2s}
+.tag.want{color:var(--print);font-weight:500}
+.tag.avoid{color:rgba(42,39,35,.34)}
+.mark{position:absolute;pointer-events:none;overflow:visible}
+.mark.circ{inset:-4px -7px;width:calc(100% + 14px);height:calc(100% + 8px)}
+.mark.strike{left:-5px;right:-5px;top:50%;height:12px;width:calc(100% + 10px);margin-top:-6px}
+.mark path{fill:none;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;
+  animation:ktDraw .4s ease-out forwards}
+.mark.circ path{stroke:var(--ink);stroke-width:1.5;filter:drop-shadow(0 0 .5px rgba(35,35,32,.25))}
+.mark.strike path{stroke:var(--stamp);stroke-width:1.7;filter:drop-shadow(0 0 .5px rgba(162,59,46,.3))}
+@keyframes ktDraw{to{stroke-dashoffset:0}}
+.eraser{position:absolute;top:50%;left:-16px;width:18px;height:12px;margin-top:-6px;border-radius:3px;
+  background:linear-gradient(#F7EEDD,#DCCAAA 60%,#C9B38D);box-shadow:0 3px 5px rgba(0,0,0,.35);
+  animation:ktRub .4s cubic-bezier(.4,.05,.55,.95) forwards;z-index:4;pointer-events:none}
+@keyframes ktRub{0%{transform:translate(0,0) rotate(-4deg)}50%{transform:translate(70px,2px) rotate(3deg)}
+  100%{transform:translate(96px,0) rotate(3deg)}}
+.fading{animation:ktFadeOut .4s ease-out forwards}
+@keyframes ktFadeOut{0%{opacity:1}60%{opacity:.12}100%{opacity:0}}
+
+/* 已圈／已劃的回顯（不可編輯的事實） */
+.recap{position:relative;z-index:2;margin-top:12px;padding-top:9px;border-top:1px dashed rgba(35,35,32,.16);
+  font-size:10px;line-height:1.7;color:rgba(42,39,35,.5);min-height:32px}
+/* 圈太多的軟提醒：琥珀墨、只陳述事實、永不擋路 */
+.crowd{position:relative;z-index:2;font-size:10px;font-style:italic;line-height:1.6;
+  color:#8A6A2E;opacity:0;transition:opacity .4s ease;min-height:16px;text-align:right}
+.crowd.on{opacity:.9}
+.recap b{font-weight:400;color:var(--print)}
+.recap i{font-style:normal;color:var(--stamp);opacity:.8}
+
+/* ── 書寫紙 ────────────────────────────────────────────────── */
+.write{padding-top:20px}
+.clip{position:absolute;left:22px;top:-11px;width:20px;height:38px;z-index:5}
+.lines{position:absolute;left:16px;right:16px;top:118px;bottom:52px;pointer-events:none;
+  background-image:repeating-linear-gradient(rgba(35,35,32,.075) 0 1px, transparent 1px 25px)}
+/* ✨加分②：**原文用手寫感的襯線字**（這是「你寫的」），
+   整理結果用**印刷體**（見 .tidy .body）——**那個差異本身就在說「這段不是你寫的」**，
+   不需要任何標籤去解釋。 */
+.write textarea{position:relative;z-index:2;width:100%;min-height:100px;border:0;background:none;outline:none;
+  resize:none;font-size:13.5px;line-height:25px;color:var(--ink);padding:0;letter-spacing:.02em;
+  font-family:"Kaiti TC","STKaiti","BiauKai",Georgia,"Songti TC",serif}
+.write textarea::placeholder{color:rgba(42,39,35,.32);font-style:italic}
+.wfoot{position:relative;z-index:2;display:flex;align-items:center;gap:14px;margin-top:8px;padding-top:9px;
+  border-top:1px dashed rgba(35,35,32,.16)}
+.wfoot button{background:none;border:0;padding:2px 1px;cursor:pointer;font:inherit;font-size:11.5px;
+  color:rgba(42,39,35,.62);border-bottom:1px solid rgba(35,35,32,.26)}
+.wfoot .count{margin-left:auto;font-size:10px;color:rgba(42,39,35,.34);font-family:ui-monospace,Menlo,monospace}
+.wfoot .count.warn{color:var(--stamp)}
+
+/* 整理結果：新舊對照，**「用這個」才生效、永遠可還原** */
+.tidy{position:relative;z-index:2;margin-top:10px;padding:10px 11px;border-radius:2px;display:none;
+  background:rgba(201,185,143,.14);border:1px dashed rgba(35,35,32,.18)}
+.tidy.on{display:block;animation:ktFadeUp .35s ease-out}
+.tidy .lab{font-size:9.5px;letter-spacing:.08em;color:rgba(42,39,35,.45);margin-bottom:5px}
+/* 整理結果＝**印刷體**（黑體），與上面手寫感的襯線原文形成對比：這段不是你寫的 */
+.tidy .body{font-size:12.5px;line-height:1.8;color:var(--print);
+  font-family:"PingFang TC","Noto Sans TC",-apple-system,system-ui,sans-serif;letter-spacing:.01em}
+.tidy .acts{display:flex;gap:14px;margin-top:9px}
+.tidy .acts button{background:none;border:0;cursor:pointer;font:inherit;font-size:11.5px;padding:1px}
+.tidy .acts .use{color:var(--print);font-weight:600;border-bottom:1px solid rgba(35,35,32,.4)}
+.tidy .acts .keep{color:rgba(42,39,35,.5);border-bottom:1px solid rgba(35,35,32,.2)}
+@keyframes ktFadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ── 記憶便條（回頭客）：和紙膠帶**兩段、飽和赭紅**＝畫面唯一彩色 ── */
+.memo{position:relative;margin:26px 18px 16px;background:#F1E9D8;border-radius:1px 2px 1px 2px;
+  padding:14px 15px 12px;color:var(--print);box-shadow:0 3px 8px -4px rgba(0,0,0,.32);display:none}
+.memo.on{display:block}
+.memo::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:rgba(120,96,58,.06)}
+.tape2{position:absolute;top:-13px;width:40px;height:26px;z-index:4;
+  background:linear-gradient(160deg,rgba(178,86,58,.82),rgba(150,64,42,.78));
+  clip-path:polygon(0 6%,12% 0,26% 7%,41% 1%,57% 8%,72% 1%,87% 7%,100% 2%,100% 96%,86% 100%,70% 94%,55% 100%,40% 93%,25% 100%,11% 94%,0 100%);
+  box-shadow:0 1px 2px rgba(0,0,0,.24)}
+.tape2.l{left:16px;transform:rotate(-4deg)}
+.tape2.r{right:16px;transform:rotate(3deg)}
+.memo .from{position:relative;z-index:2;font-family:ui-monospace,Menlo,monospace;font-size:8px;
+  letter-spacing:.24em;color:rgba(42,39,35,.42)}
+.memo .txt{position:relative;z-index:2;font-size:12.5px;line-height:1.75;margin-top:6px}
+.memo .acts{position:relative;z-index:2;display:flex;gap:16px;margin-top:9px}
+.memo .acts button{background:none;border:0;cursor:pointer;font:inherit;font-size:11.5px;padding:1px}
+.memo .acts .yes{color:var(--print);border-bottom:1px solid rgba(35,35,32,.4)}
+.memo .acts .no{color:rgba(42,39,35,.48);border-bottom:1px solid rgba(35,35,32,.18)}
+
+/* ── 底部 ─────────────────────────────────────────────────── */
+.foot{position:relative;padding:8px 16px 20px;flex:none}
+.foot .grad{position:absolute;left:0;right:0;bottom:100%;height:42px;pointer-events:none;
+  background-image:linear-gradient(rgba(15,14,13,0),rgba(15,14,13,.82))}
+.tellback{text-align:center;min-height:30px;margin-bottom:9px;font-size:11.5px;line-height:1.5;
+  letter-spacing:.05em;color:#8d887c;transition:color .35s ease;padding:0 6px}
+.tellback.filled{color:var(--amber);font-style:italic}
+.ticket{width:100%;position:relative;background:var(--paper);color:var(--print);border:0;cursor:pointer;
+  border-radius:var(--paper-radius);padding:14px 0;font:inherit;font-size:14.5px;font-weight:600;
+  letter-spacing:.14em;box-shadow:inset 0 1px 0 rgba(255,255,255,.72),0 8px 16px -6px rgba(0,0,0,.3)}
+.ticket .perf{position:absolute;left:0;right:0;top:0;height:1px;
+  background-image:repeating-linear-gradient(90deg,rgba(35,35,32,.22) 0 3px,transparent 3px 7px)}
+.drop{animation:ktPaperDrop .62s cubic-bezier(.18,.86,.32,1) backwards}
+@keyframes ktPaperDrop{0%{opacity:0;transform:translateY(-24px)}60%{opacity:1}100%{opacity:1;transform:none}}
+
+.col{width:100%;max-width:940px;display:flex;flex-direction:column;gap:14px}
+.doc{border:1px solid #2c2a25;border-radius:10px;padding:16px 18px;background:#171614;font-size:13px;line-height:1.85;color:#c9c3b6}
+.doc h3{margin:0 0 10px;font-size:13.5px;color:#EDE7DA;letter-spacing:.06em}
+.doc h4{margin:15px 0 6px;font-size:12.5px;color:#d8d2c5}
+.doc table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.doc th,.doc td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a2823;vertical-align:top}
+.doc th{color:#8d887c;font-weight:500;font-size:11px;letter-spacing:.06em}
+.doc .good{color:#9DBE8E}.doc .bad{color:#D98A7A}
+.doc code{background:#232019;padding:1px 5px;border-radius:3px;font-size:11.5px;color:var(--gold)}
+</style>
+</head>
+<body>
+
+<div class="rig">
+  <span class="lbl">手上的筆</span>
+  <button id="pb1" class="on" onclick="setPen('ink')">墨筆 · 圈起來</button>
+  <button id="pb2" onclick="setPen('red')">紅筆 · 劃掉</button>
+  <span class="lbl" style="margin-left:12px">狀態</span>
+  <button onclick="reset()">清空</button>
+  <button onclick="demo()">示範已選</button>
+  <button id="mb" onclick="toggleMemo()">回頭客便條：關</button>
+  <button id="pz" onclick="togglePersonalize()">個人化排序：關</button>
+</div>
+
+<div class="phone">
+  <div class="photo"></div><div class="veil"></div>
+  <div class="screen">
+    <div class="head">
+      <button class="bk">‹</button><button class="xx">✕</button>
+      <div class="crumb">日本 · 九州</div>
+      <h1>這一趟，你的講究</h1>
+      <p class="sub">圈起想要的，劃掉不想要的</p>
+    </div>
+
+    <!-- ═══ 標籤紙 ═══ -->
+    <div class="sheet drop" style="animation-delay:.18s">
+      <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+      <div class="seal">KELVIN TRIP</div>
+
+      <!-- 🖊️ 兩隻筆：選中的浮起＋微傾＝被拿在手上 -->
+      <div class="pens">
+        <button class="pen on" id="penInk" onclick="setPen('ink')" aria-label="墨筆">
+          <svg width="15" height="46" viewBox="0 0 15 46">
+            <path d="M7.5 46 L3 34 H12 Z" fill="#2A2723"/>
+            <rect x="3" y="6" width="9" height="28" rx="1.5" fill="#3A362F"/>
+            <rect x="3" y="6" width="3.4" height="28" fill="#4A453C" opacity=".7"/>
+            <rect x="3.6" y="1" width="7.8" height="6" rx="2" fill="#C9B98F"/>
+          </svg>
+        </button>
+        <!-- 首次揭示：紅筆自己浮起再放下（與 ⑥ 摺頁的 ktPeek 同一招）——
+             不加說明文字，讓那支筆自己說「我可以被拿起來」 -->
+        <button class="pen off peek" id="penRed" onclick="setPen('red')" aria-label="紅筆">
+          <svg width="15" height="46" viewBox="0 0 15 46">
+            <path d="M7.5 46 L3 34 H12 Z" fill="#A23B2E"/>
+            <rect x="3" y="6" width="9" height="28" rx="1.5" fill="#8E3227"/>
+            <rect x="3" y="6" width="3.4" height="28" fill="#B04E3E" opacity=".7"/>
+            <rect x="3.6" y="1" width="7.8" height="6" rx="2" fill="#C9B98F"/>
+          </svg>
+        </button>
+      </div>
+
+      <h2>特別想要的</h2>
+      <p class="note">圈起想要的，換紅筆劃掉不想要的　·　再點一次就擦掉</p>
+
+      <div class="tags" id="tags"></div>
+
+      <!-- 回顯：**留在標籤紙裡**（Kelvin 定案）——它是標籤的結果，放這裡語意最直接，
+           也不會讓人誤以為是自己在書寫紙上寫的。
+           ⚠️ 配套不能省：**鍵盤升起時標籤紙收起、頂部只留一行摘要**——
+              那才是「打字時看不到自己圈了什麼」的真正解法。 -->
+      <div class="recap" id="recap"></div>
+
+      <!-- ✨加分①：圈太多的軟提醒（與 ⑥ 矛盾旁註、⑤ 密度提醒同一套機制）。
+           真實價值：標籤圈太多＝LLM 每天都要塞進所有主題＝行程會亂。 -->
+      <div class="crowd" id="crowd"></div>
+    </div>
+
+    <!-- ═══ 書寫紙 ═══ -->
+    <div class="sheet write drop" style="animation-delay:.4s">
+      <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+      <div class="seal">KELVIN TRIP</div>
+      <!-- 金屬迴紋針 -->
+      <svg class="clip" viewBox="0 0 20 38">
+        <path d="M6 34 V10 a4 4 0 0 1 8 0 v20 a2.6 2.6 0 0 1-5.2 0 V13"
+          fill="none" stroke="#9A968C" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M6 34 V10 a4 4 0 0 1 8 0 v20 a2.6 2.6 0 0 1-5.2 0 V13"
+          fill="none" stroke="#D7D3C8" stroke-width=".9" stroke-linecap="round" transform="translate(-.5,-.5)"/>
+      </svg>
+
+      <h2 style="margin-left:26px">寫下你的講究</h2>
+      <p class="note" style="margin-left:26px">圈起來的已經記下了，這裡寫下標籤沒有的想法吧</p>
+
+      <div class="lines"></div>
+      <textarea id="ta" maxlength="200" placeholder="想吃拉麵、不去咖啡廳、早上不要太早出門…"
+        oninput="onType()"></textarea>
+
+      <div class="tidy" id="tidy">
+        <div class="lab">整理成這樣，可以嗎？</div>
+        <div class="body" id="tidyBody"></div>
+        <div class="acts">
+          <button class="use" onclick="useTidy()">用這個</button>
+          <button class="keep" onclick="closeTidy()">保留原文</button>
+        </div>
+      </div>
+
+      <div class="wfoot">
+        <button onclick="doTidy()">整理一下</button>
+        <button onclick="alert('（mockup）語音輸入')">用說的</button>
+        <span class="count" id="count"></span>
+      </div>
+    </div>
+
+    <!-- ═══ 記憶便條（回頭客才有）═══ -->
+    <div class="memo" id="memo">
+      <span class="tape2 l"></span><span class="tape2 r"></span>
+      <div class="from">FROM 上一趟 · 京都</div>
+      <div class="txt">「早上不要太早出門，中午一定要坐下來好好吃飯。」</div>
+      <div class="acts">
+        <button class="yes" onclick="takeMemo()">這趟也要</button>
+        <button class="no" onclick="dropMemo()">這次不用</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="grad"></div>
+    <!-- ⑦ 是**最後一次收集資訊**（⑧ 就是生成幕），所以「什麼都不填會怎樣」更需要交代。
+         與 ⑥ 同位置、同語彙：空白時說明我會怎麼做，有內容時把他的話念回來。 -->
+    <div class="tellback" id="tellback"></div>
+    <button class="ticket"><span class="perf"></span>下 一 步</button>
+  </div>
+</div>
+
+<!-- ══════════════ 說明 ══════════════ -->
+<div class="col">
+
+<div class="doc">
+<h3>🖊️ 雙筆：用「拿起筆」取代「模式切換」</h3>
+<p>模式切換的經典坑是<b>使用者忘記自己在哪個模式</b>（憲章第 4 條也寫過「不做模式切換」）。
+解法不是加提示文字，是<b>用物理隱喻取代抽象狀態</b>——兩隻筆放在紙的右上，
+<b>選中的那一隻浮起 4px、微傾 −9°、帶投影</b>＝被拿在手上。</p>
+<p><b>「你手上拿著哪支筆」本身就是最強的狀態指示。</b>模式是抽象的，拿筆是具體的。</p>
+<table>
+<tr><th>狀態 × 動作</th><th>結果</th></tr>
+<tr><td>空白 ＋ 墨筆</td><td>畫上<b>墨圈</b>（想要）</td></tr>
+<tr><td>空白 ＋ 紅筆</td><td>畫上<b>紅色劃除線</b>（不要）</td></tr>
+<tr><td>已圈／已劃 ＋ <b>任何筆</b></td><td class="good"><b>橡皮擦擦掉</b></td></tr>
+</table>
+<p>⚠️ <b>「再點一次＝擦掉」與 ⑥ 完全一致</b>——只有兩種「畫」的動作和一種「擦」的動作，<b>沒有三態循環</b>。
+使用者在 ⑥ 學會的手勢，在這裡不會突然改變意思。</p>
+<p>紅筆持續有效（不自動切回墨筆）：劃掉通常是連續的動作，每次都要重新拿筆太煩。而因為筆是「拿在手上」的，
+狀態一直看得見，不會迷路。</p>
+</div>
+
+<div class="doc">
+<h3>❌ 為什麼不做「vibe → 跳出對應主題」</h3>
+<p>這會讓標籤雲<b>從「目的地感知」降級成「vibe 的子選單」</b>，而那正是它最有價值的地方。</p>
+<table>
+<tr><td>①</td><td>金澤的好標籤是「兼六園的四季」「金箔工藝」「近江町市場」——<b>它們不屬於任何單一 vibe</b>。做成父子，LLM 生標籤時得先問「這是經典還是秘境」，多數好標籤兩邊都不是。</td></tr>
+<tr><td>②</td><td><b>興趣跨 vibe 的人卡住</b>：想去經典地標又想鑽小巷，他只能選一個。</td></tr>
+<tr><td>③</td><td>多一層互動（先選 vibe 才看得到標籤）。</td></tr>
+</table>
+<p class="good"><b>零成本的替代</b>：在重層 <code>tags</code> 的 prompt 加一句「<b>涵蓋從熱門到冷門的不同調性</b>」，
+讓「經典地標」與「隱藏小店」本身就是並列的標籤。使用者可以同時圈，
+而且<b>沒有兩個維度可以互相矛盾——因為只剩一個維度</b>。</p>
+</div>
+
+<div class="doc">
+<h3>✍️ 書寫紙：保留「整理一下」、砍掉「即時解讀」</h3>
+<p>Kelvin 的理由我接受：<b>「整理」會逼使用者把心裡的話說完整</b>，那是<b>引導</b>不是潤飾；
+而即時解讀是被動跳出來的，每次停筆彈一下反而打擾。</p>
+<h4>三條必須守住的規則（原定案）</h4>
+<table>
+<tr><td>①</td><td><b>永不自動套用。</b>整理結果顯示在原文下方，按「用這個」才生效。</td></tr>
+<tr><td>②</td><td><b>永遠可還原。</b>brief 同時存 <code>notes</code>（原文）與 <code>notesRefined</code>；<b>原文永不覆蓋</b>。</td></tr>
+<tr><td>③</td><td><b>只具體化、不改語意。</b>prompt 要明講「不得新增使用者沒說的偏好」——整理器最容易犯的錯就是自作主張補上「還想去看夜景」。</td></tr>
+</table>
+<h4>其他</h4>
+<p>「用說的」沿用入口頁既有的語音輸入（zh-TW，瀏覽器不支援即隱藏）。<br>
+字數上限 200，<b>160 字才顯示計數</b>（平常不要在旁邊倒數，那會讓人不敢寫）。<br>
+<b>回顯區只讀不可編輯</b>：圈起／劃掉的標籤在標籤紙下方回顯，<b>不把標籤文字塞進書寫區</b>——
+使用者的紙不代筆，也避免雙來源同步問題。</p>
+</div>
+
+<div class="doc">
+<h3>🎗️ 記憶便條（回頭客才出現）</h3>
+<p>來自上一趟的碎片，是<b>貼上去的外來物</b>：更黃更薄的紙料、<b>和紙膠帶兩段、飽和赭紅</b>
+＝畫面唯一的彩色，焦點自然落在記憶上。</p>
+<p>⚠️ 與 ⑤ 時段便條的區隔（同一個語彙家族，靠段數與飽和度分辨）：<br>
+⑤＝<b>一段、淡赭、半透明</b>（<b>暫時</b>，會被匯入的機票取代）／⑦＝<b>兩段、飽和赭紅</b>（<b>外來</b>，上一趟的碎片）。</p>
+<p>「這趟也要」→ 字跡<b>轉印</b>進書寫區（一字一字寫）→ 便條撕離；「這次不用」→ 直接撕落。</p>
+</div>
+
+<div class="doc">
+<h3>✅ 這一版的定案（2026-08-09）</h3>
+<table>
+<tr><th></th><th>決定</th></tr>
+<tr><td>標籤數量</td><td><b>收到 10 個</b>（<code>intelTags</code> 現在是 slice 12）。真正的解法是<b>排序不是數量</b>——排對了掃到第三個就能決定，排錯了給 8 個也要全部讀完。</td></tr>
+<tr><td>標題</td><td>維持「特別想要的」；<b>副標改成「圈起想要的，換紅筆劃掉不想要的 · 再點一次就擦掉」</b>——紅筆必須被說出來，否則它看起來像裝飾。</td></tr>
+<tr><td>回顯位置</td><td><b>留在標籤紙</b>（Kelvin）。⚠️ 配套不能省：<b>鍵盤升起時標籤紙收起、頂部只留一行摘要</b>——那才是「打字時看不到自己圈了什麼」的真正解法。</td></tr>
+<tr><td>記憶便條</td><td>維持書寫紙下方。</td></tr>
+<tr><td>出口文案</td><td><b>「順應直覺，讓美好按慣例發生。」</b>（Kelvin 定）</td></tr>
+</table>
+
+<h4>✨ 四個加分項（全數採納）</h4>
+<table>
+<tr><td>①</td><td><b>圈太多的軟提醒</b>（≥6 個）——與 ⑤ 密度提醒同一套語氣：只陳述事實、永不擋路。真實價值：標籤圈太多＝LLM 每天都要塞進所有主題＝行程會亂。</td></tr>
+<tr><td>②</td><td><b>原文手寫感襯線體、整理結果印刷體</b>——<b>那個差異本身就在說「這段不是你寫的」</b>，不需要任何標籤去解釋。</td></tr>
+<tr><td>③</td><td><b>標籤按主題群隱性分組</b>（吃→看→買→慢）。前端不加標題、不畫線，只是順序。<b>零 UI 成本，只改 prompt 一句。</b>同一句順帶要求「涵蓋從熱門到冷門的不同調性」＝vibe 退場後補回調性維度的方式。</td></tr>
+<tr><td>④</td><td><b>個人化排序</b>（右上角可切換看效果）。先做<b>最簡版</b>：用上一份 brief 的 <code>tagsWanted</code> 把他上次圈過的往前排——不需要新的資料管線，而回頭客正是最能感受到「為你縮小世界」的人。<br>⚠️ 用<b>穩定排序</b>：同分的維持主題群順序，不打亂加分項③的分組。</td></tr>
+</table>
+
+<h4>🖊️ 紅筆的首次揭示</h4>
+<p>第一次進頁時紅筆<b>自己浮起再放下</b>（1.1s 後、歷時 1.5s，與 ⑥ 摺頁的 <code>ktPeek</code> 同一招）。
+不加說明文字——<b>讓那支筆自己說「我可以被拿起來」</b>。一動手就取消。</p>
+</div>
+
+</div>
+
+<script>
+/** ✨加分③：**按主題群隱性分組**（吃 → 看 → 買 → 慢）。
+ *  前端不加標題、不畫分隔線，只是順序——使用者掃視時會覺得「有條理」但說不出為什麼。
+ *  **零 UI 成本**：只在重層 tags 的 prompt 加一句排序要求。
+ *  ⚠️ 同一句 prompt 順帶要求「**涵蓋從熱門到冷門的不同調性**」（經典地標／隱藏小店並列），
+ *     這就是 vibe 退場後補回「調性」維度的方式——**只剩一個維度，沒有東西可以互相矛盾**。
+ *
+ *  ✨加分④（Kelvin 認可）：**個人化排序**——先做最簡版：用上一份 brief 的 tagsWanted 把
+ *  他上次圈過的往前排。不需要新的資料管線，而回頭客正是最能感受到「為你縮小世界」的人。 */
+const TAGS=['市場與小吃','在地咖啡','老街散策',              // 吃
+  '經典地標','庭園','夜景','海岸線','美術館',                // 看
+  '工藝與選物','隱藏小店',                                   // 買
+  '溫泉與放鬆','清晨的寺院'];                                // 慢
+/** 上一趟圈過的（回頭客）——排序時往前提 */
+const LAST_WANTED=['溫泉與放鬆','老街散策'];
+let personalize=false;
+let pen='ink';
+const state={};   // tag -> 'want' | 'avoid'
+
+function setPen(p){
+  pen=p;
+  // 一動手就取消揭示動畫（使用者已經知道了，不必再演）
+  document.getElementById('penInk').className='pen '+(p==='ink'?'on':'off');
+  document.getElementById('penRed').className='pen '+(p==='red'?'on':'off');
+  document.getElementById('pb1').className=p==='ink'?'on':'';
+  document.getElementById('pb2').className=p==='red'?'on':'';
+}
+const seedOf=s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%1000};
+const CIRC=s=>{const r=((s*9301+49297)%233280)/233280;
+  return `M${(30+r*4).toFixed(1)} 3 C 51 ${(1+r*2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3+r*2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35+r*3).toFixed(1)} 4`};
+/** 劃除線：手畫的線不是直的，兩端略微超出、中段有一點弧 */
+const STRIKE=s=>{const r=((s*7919+13)%1000)/1000;
+  return `M1 ${(7+r*1.6).toFixed(1)} C 22 ${(5.4+r).toFixed(1)}, 44 ${(7.6-r).toFixed(1)}, 63 ${(5.6+r*1.4).toFixed(1)}`};
+
+/** 個人化排序：上次圈過的往前（**穩定排序**——同分的維持主題群順序，不打亂分組） */
+function ordered(){
+  if(!personalize) return TAGS;
+  const hit=t=>LAST_WANTED.includes(t)?0:1;
+  return TAGS.map((t,i)=>({t,i})).sort((a,b)=>hit(a.t)-hit(b.t)||a.i-b.i).map(x=>x.t);
+}
+function render(){
+  const box=document.getElementById('tags');
+  box.innerHTML='';
+  ordered().forEach(t=>{
+    const b=document.createElement('button');
+    b.className='tag'+(state[t]?' '+state[t]:'');
+    b.textContent=t;
+    b.onclick=()=>hit(t,b);
+    box.appendChild(b);
+    if(state[t]) draw(b,t,state[t]);
+  });
+  recap(); crowd(); tellback();
+}
+function draw(el,t,kind){
+  const s=seedOf(t);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  if(kind==='want'){
+    svg.setAttribute('viewBox','0 0 64 34'); svg.setAttribute('class','mark circ');
+    const r=((s*9301+49297)%233280)/233280;
+    svg.style.transform=`rotate(${(r*6-3).toFixed(1)}deg)`;
+    svg.innerHTML=`<path d="${CIRC(s)}" pathLength="100"/>`;
+  }else{
+    svg.setAttribute('viewBox','0 0 64 12'); svg.setAttribute('class','mark strike');
+    svg.setAttribute('preserveAspectRatio','none');
+    svg.innerHTML=`<path d="${STRIKE(s)}" pathLength="100"/>`;
+  }
+  el.appendChild(svg);
+}
+function hit(t,el){
+  // 🔑 再點一次永遠是擦掉（與 ⑥ 一致），不論手上拿的是哪支筆——**沒有三態循環**
+  if(state[t]){
+    const m=el.querySelector('.mark'); if(m) m.classList.add('fading');
+    const e=document.createElement('span'); e.className='eraser'; el.appendChild(e);
+    setTimeout(()=>{delete state[t];render()},410);
+    return;
+  }
+  state[t]= pen==='ink' ? 'want' : 'avoid';
+  el.className='tag '+state[t];
+  draw(el,t,state[t]);
+  recap(); crowd(); tellback();
+}
+function recap(){
+  const w=Object.keys(state).filter(k=>state[k]==='want');
+  const a=Object.keys(state).filter(k=>state[k]==='avoid');
+  const el=document.getElementById('recap');
+  if(!w.length&&!a.length){el.innerHTML='<span style="opacity:.5">上面圈起來的、劃掉的，會列在這裡</span>';return}
+  el.innerHTML=(w.length?`已圈：<b>${w.join('、')}</b>`:'')
+    +(w.length&&a.length?'<br>':'')
+    +(a.length?`已劃除：<i>${a.join('、')}</i>`:'');
+}
+/** ✨加分①：圈太多的軟提醒——只陳述事實、永不擋路（與 ⑤ 密度提醒同一套語氣） */
+function crowd(){
+  const n=Object.keys(state).filter(k=>state[k]==='want').length;
+  const el=document.getElementById('crowd');
+  el.textContent = n>=6 ? `圈了 ${n} 個，每天都要塞這麼多主題會有點趕` : '';
+  el.className='crowd'+(n>=6?' on':'');
+}
+/** ⑦ 是最後一次收集資訊，「什麼都不填會怎樣」必須交代 */
+function tellback(){
+  const el=document.getElementById('tellback');
+  const w=Object.keys(state).filter(k=>state[k]==='want');
+  const a=Object.keys(state).filter(k=>state[k]==='avoid');
+  const wrote=document.getElementById('ta').value.trim().length>0;
+  if(!w.length&&!a.length&&!wrote){
+    el.textContent='順應直覺，讓美好按慣例發生。';
+    el.className='tellback'; return;
+  }
+  const p=[];
+  if(w.length) p.push(`想要 ${w.length} 項`);
+  if(a.length) p.push(`避開 ${a.length} 項`);
+  if(wrote) p.push('還有你寫下的講究');
+  el.textContent=p.join(' · ')+'，都記下了';
+  el.className='tellback filled';
+}
+function reset(){for(const k in state)delete state[k];document.getElementById('ta').value='';closeTidy();setPen('ink');onType();render()}
+function demo(){reset();['市場與小吃','溫泉與放鬆','老街散策'].forEach(t=>state[t]='want');
+  ['夜景','美術館'].forEach(t=>state[t]='avoid');
+  document.getElementById('ta').value='早上不要太早出門，中午想坐下來好好吃一頓。想找那種老闆會跟你聊天的小店。';
+  onType();render()}
+
+function onType(){
+  const ta=document.getElementById('ta'), c=document.getElementById('count');
+  const n=ta.value.length;
+  // 平常不要在旁邊倒數（那會讓人不敢寫）；160 字才現身
+  c.textContent = n>=160 ? `${n} / 200` : '';
+  c.className = 'count'+(n>=190?' warn':'');
+  tellback();
+}
+function doTidy(){
+  const v=document.getElementById('ta').value.trim();
+  if(!v){alert('（mockup）先寫點什麼');return}
+  document.getElementById('tidyBody').textContent=
+    '出發時間：上午較晚出發，不排早班行程。\n用餐：午餐安排可坐下來的店家，避免站著吃。\n店家偏好：有人情味的個人小店優先。';
+  document.getElementById('tidyBody').style.whiteSpace='pre-line';
+  document.getElementById('tidy').className='tidy on';
+}
+function useTidy(){document.getElementById('ta').value=document.getElementById('tidyBody').textContent;onType();closeTidy()}
+function closeTidy(){document.getElementById('tidy').className='tidy'}
+
+function togglePersonalize(){
+  personalize=!personalize;
+  document.getElementById('pz').textContent='個人化排序：'+(personalize?'開':'關');
+  document.getElementById('pz').className=personalize?'on':'';
+  render();
+}
+function toggleMemo(){
+  const m=document.getElementById('memo'), on=m.classList.toggle('on');
+  document.getElementById('mb').textContent='回頭客便條：'+(on?'開':'關');
+}
+function takeMemo(){
+  const ta=document.getElementById('ta');
+  ta.value=(ta.value?ta.value+'\n':'')+'早上不要太早出門，中午一定要坐下來好好吃飯。';
+  onType(); dropMemo();
+}
+function dropMemo(){document.getElementById('memo').classList.remove('on');document.getElementById('mb').textContent='回頭客便條：關'}
+
+const G=`<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/></filter><rect width='140' height='140' filter='url(#g)'/></svg>`;
+const A=`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='a'><feTurbulence type='fractalNoise' baseFrequency='0.021' numOctaves='4' seed='7'/><feColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.6 0'/></filter><rect width='320' height='320' filter='url(#a)'/></svg>`;
+const C=`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='c'><feTurbulence type='fractalNoise' baseFrequency='0.009 0.042' numOctaves='3' seed='11' result='t'/><feDiffuseLighting in='t' surface-scale='2.4' diffuseConstant='1' lighting-color='#ffffff'><feDistantLight azimuth='225' elevation='55'/></feDiffuseLighting></filter><rect width='400' height='400' filter='url(#c)'/></svg>`;
+const u=s=>`url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+document.querySelectorAll('.t-grain').forEach(e=>e.style.backgroundImage=u(G));
+document.querySelectorAll('.t-age').forEach(e=>e.style.backgroundImage=u(A));
+document.querySelectorAll('.t-crease').forEach(e=>e.style.backgroundImage=u(C));
+render(); onType();
+</script>
+</body>
+</html>

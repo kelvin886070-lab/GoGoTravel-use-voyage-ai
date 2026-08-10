@@ -225,16 +225,56 @@ export const needsZoneStep = (intel: DestinationIntel | null): boolean =>
 export const misspellSuggestions = (intel: DestinationIntel | null): string[] =>
     intel?.granularity === 'unknown' ? (intel.suggestions || []).slice(0, 3) : [];
 
-/** 玩法標籤（講究頁；重層還沒到或查不到＝通用組退位，畫面不會空）。 */
-const FALLBACK_TAGS = ['市場與小吃', '在地咖啡', '博物館與展覽', '老街散策', '自然風景', '選物與工藝', '夜景', '溫泉與放鬆'];
-export const intelTags = (deep: DestinationDeep | null): string[] => {
-    const t = (deep?.tags || []).filter(Boolean);
-    return t.length >= 4 ? t.slice(0, 12) : FALLBACK_TAGS;
+/**
+ * 玩法標籤（⑦講究頁；重層還沒到或查不到＝通用組退位，畫面不會空）。
+ *
+ * **上限 10 個**（原本 12）：這裡是「10 選 N 的複選、而且有圈／劃兩種動作」，
+ * 選擇負擔遠高於單選題。⚠️ 但真正的解法是**排序不是數量**——
+ * 排對了使用者掃到第三個就能決定，排錯了給 8 個他也要全部讀完。
+ *
+ * `lastWanted`＝上一份 brief 圈過的標籤（回頭客）。**穩定排序**把它們往前提，
+ * 同分的維持原順序——不打亂重層 prompt 已經做好的「主題群分組」（吃→看→買→慢）。
+ * ⚠️ 刻意先做這個最簡版的個人化（而不是心願盒／旅風向量比對）：不需要新的資料管線，
+ *    而回頭客正是最能感受到「為你縮小世界」的人。
+ */
+const FALLBACK_TAGS = ['市場與小吃', '在地咖啡', '老街散策', '經典地標', '自然風景', '博物館與展覽', '選物與工藝', '溫泉與放鬆'];
+const MAX_TAGS = 10;
+export const intelTags = (deep: DestinationDeep | null, lastWanted?: string[]): string[] => {
+    const raw = (deep?.tags || []).filter(Boolean);
+    const list = (raw.length >= 4 ? raw : FALLBACK_TAGS).slice(0, MAX_TAGS);
+    if (!lastWanted?.length) return list;
+    const seen = new Set(lastWanted);
+    return list
+        .map((t, i) => ({ t, i, hit: seen.has(t) ? 0 : 1 }))
+        .sort((a, b) => a.hit - b.hit || a.i - b.i)
+        .map(x => x.t);
 };
 
 /** 某月的季節註記（「十月的金澤，楓正紅」的素材）；沒有回 null（該行不顯示）。 */
 export const seasonNote = (deep: DestinationDeep | null, month: number): string | null =>
     (deep?.seasons?.[String(month)] || '').trim() || null;
+
+/**
+ * ⑦「整理一下」：把手寫欄的口語整理成條列。
+ *
+ * 🔴 **零快取的純個人呼叫**——內容因人而異，快取不可能命中，**每按一次就是一次真實花費**。
+ *    這是整條管線裡唯一一個這樣的呼叫；成本模型與目的地情報完全不同（見成本記錄 §3.10）。
+ * 失敗一律回 null＝畫面上什麼都不做（原文完好無損，使用者再按一次就好）。
+ */
+export const refineNotes = async (text: string, destination?: string): Promise<string | null> => {
+    const raw = text.trim();
+    if (raw.length < 4) return null;
+    try {
+        const { data, error } = await supabase.functions.invoke('ai-proxy', {
+            body: { action: 'refine-notes', payload: { text: raw, destination } },
+        });
+        if (error || !data) return null;
+        const out = (data as { text?: string }).text;
+        return typeof out === 'string' && out.trim() ? out.trim() : null;
+    } catch {
+        return null;
+    }
+};
 
 /** 某月的關鍵詞（2–6 字，「楓紅・百岳」）；沒有就回 null——呼叫端退位成整句。 */
 export const seasonKey = (deep: DestinationDeep | null, month: number): string | null =>

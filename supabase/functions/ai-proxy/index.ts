@@ -87,6 +87,8 @@ Deno.serve(async (req) => {
         return json(await destinationIntel(payload, user.id));
       case "destination-deep":
         return json(await destinationDeep(payload, user.id));
+      case "refine-notes":
+        return json(await refineNotes(payload, user.id));
       default:
         return json({ error: `未知的 action: ${action}` }, 400);
     }
@@ -250,7 +252,11 @@ async function destinationDeep(
 規則：
 - 若「${raw}」不是真實地名，三個欄位一律回空（zones: []、tags: []、seasons: {}）——不要編造
 - zones 只在「${raw}」是國家或區域時提供，**6–8 組**；每組是「地帶」不是套裝路線（用地理範圍命名，例：「關西 · 大阪與京都」），reason 一句話（12–18 字，正面措辭，例「美食比例高」而非「吃的比重高」），tags 為該地帶 2–3 個特徵標籤；若是城市則 zones 回空陣列
-- tags：該目的地 8–10 個「玩法」標籤，名詞短語（例：市場與小吃、工藝與選物、庭園）
+- tags：該目的地 **10 個**「玩法」標籤，名詞短語（例：市場與小吃、工藝與選物、庭園）。兩個額外要求：
+  ①**按主題群排序**：吃的 → 看的 → 買的 → 慢下來的。不要輸出群組名稱，只要**順序照這樣排**
+    （前端不畫分隔線，靠順序讓使用者感覺「有條理」）
+  ②**涵蓋從熱門到冷門的不同調性**——同時要有「經典地標」這類人人都知道的，
+    也要有「隱藏小店」「清晨的寺院」這類冷門的，讓使用者能表達他偏好哪一種
 - seasons：12 個月的一句話註記（**8–14 字**，描述當月最值得的景象或氣候）
 - seasonKeys：**同樣 12 個月**，每個月 **2–6 個字**的關鍵詞（該月最代表性的景象／氣候），
   兩個詞用「・」分隔，例：「楓紅・百岳」「梅花・雪景」「避暑・親子」。**只描述，不要評價**
@@ -293,6 +299,50 @@ JSON 結構：
 
   await writeIntelCache(key, deep);
   return { deep, cached: false };
+}
+
+// ---------- ⑦「整理一下」：把手寫欄的口語整理成條列 ----------
+// 🔴 **這是整條管線第一個「純個人、零快取」的呼叫**：內容因人而異，快取不可能命中。
+//   所以它的成本模型與目的地情報完全不同——**每按一次就是一次真實花費**。
+//   ⚠️ 次數限制（Kelvin：每份 brief 最多 3 次）**驗收後才加**（前端 `TIDY_LIMIT`）；
+//      現在先只計入每日限額。沒有量測就不要先加限制。
+// ⚠️ 用 jsonMode 不是因為需要多個欄位，是因為 `geminiText` 只在 jsonMode 時壓低 thinking——
+//   不壓的話 Gemini 3 會把輸出額度花在思考上、text 回空字串（2026-08-04 踩過）。
+async function refineNotes(payload: { text?: string; destination?: string }, userId: string) {
+  const raw = (payload.text || "").trim();
+  if (raw.length < 4) return { text: null };
+  if (raw.length > 400) return { text: null, reason: "too-long" };   // 前端上限 200，這裡再擋一次
+
+  if ((await bumpDailyOrLimit(userId)).limited) return { text: null, limited: true };
+
+  const where = (payload.destination || "").trim();
+  const prompt = `把旅客寫的這段話整理成清楚的條列，讓行程生成器讀得懂。
+
+旅客寫的（目的地：${where || "未指定"}）：
+"""
+${raw}
+"""
+
+規則（**違反任何一條都是錯的**）：
+- 🔴 **絕對不可以新增旅客沒說的偏好**。他沒提到的事情一個字都不要加——
+  這是整理器最容易犯的錯（例如自作主張補上「還想看夜景」）。
+- 只做兩件事：**把模糊的說法具體化**、**把混在一起的需求分開**。語意不可改變。
+- 用「主題：內容」的條列，一行一件事，最多 5 行。不要用 -、*、# 等符號。
+- 保留他的語氣強度：「不想」就是不想，不要軟化成「盡量避免」。
+- 如果某句話本來就已經很清楚，原樣保留。
+- 繁體中文；不要 emoji；不要加任何開場白或結語。
+
+只回 JSON：{"text":"整理後的內容"}`;
+
+  const res = await geminiText({ prompt, jsonMode: true, maxOutputTokens: 700, timeoutMs: 20000 });
+  if ("error" in res && res.error) {
+    console.error("[refine-notes] gemini error", res.error);
+    return { text: null, error: res.error };
+  }
+  const parsed = parseJsonLoose<{ text?: string }>((res as { text?: string }).text || "");
+  const out = (parsed?.text || "").trim();
+  console.log("[refine-notes] ok", { inLen: raw.length, outLen: out.length, ms: (res as { ms?: number }).ms ?? null });
+  return { text: out || null };
 }
 
 // ---------- Gemini 文字 ----------

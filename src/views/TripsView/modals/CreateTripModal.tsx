@@ -11,7 +11,7 @@ import { IOSButton } from '../../../components/UI';
 import { generateItinerary } from '../../../services/gemini';
 import { recalculateTimeline } from '../../../services/timeline';
 import { ensureTripGeocoded } from '../../../services/geo';
-import type { Trip, TripDay, TripConstraints, PaceLevel, BudgetLevel } from '../../../types';
+import type { Trip, TripDay, TripConstraints, PaceLevel, BudgetLevel, LocalTransport, TimeSlot } from '../../../types';
 import { INTEREST_DATA, CURRENCIES } from '../shared';
 import { toast } from '../../../components/Toast';
 
@@ -90,9 +90,21 @@ export const CreateTripModal: React.FC<{
     initialCompanion?: string;
     initialPace?: PaceLevel;
     initialBudgetLevel?: BudgetLevel;
+    /** 使用者親手輸入的每人每天上限（唯一會進 prompt 的金額） */
+    initialBudgetCap?: number;
+    /** 「主要移動」（⑥問過；charter 對應舊資料的 taxi） */
+    initialLocalTransport?: LocalTransport;
+    /** 第一天抵達／最後一天離開的時段（⑤問過；`'unset'`＝還沒訂票） */
+    initialArrivalSlot?: TimeSlot;
+    initialDepartureSlot?: TimeSlot;
+    /** ⑦「你的講究」：圈起來的／紅筆劃除的／手寫欄原文 */
+    initialTagsWanted?: string[];
+    initialTagsAvoided?: string[];
+    initialNotes?: string;
     /** 從新入口頁進來時：在起始步按「上一步」＝回入口頁（舊①雙門②目的地已退役，不可回頭） */
     onBackToEntry?: () => void;
-}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, initialStartDate, initialEndDate, initialCompanions, initialCompanion, initialPace, initialBudgetLevel, onBackToEntry }) => {
+}> = ({ onClose, onAddTrip, onImport, initialDestinations, initialIsDomestic, initialStep, initialStartDate, initialEndDate, initialCompanions, initialCompanion, initialPace, initialBudgetLevel, initialBudgetCap, initialLocalTransport, initialArrivalSlot, initialDepartureSlot,
+    initialTagsWanted, initialTagsAvoided, initialNotes, onBackToEntry }) => {
     const [step, setStep] = useState(initialStep ?? 1);
     const [loading, setLoading] = useState(false);
     
@@ -165,11 +177,23 @@ export const CreateTripModal: React.FC<{
     // （靈感辭典已刪：見 shared.ts 註記——順遊/標籤由目的地感知 LLM 快取承接，屬生成表單重設計批）
 
     // --- Step 3 Data ---
-    const [arrivalTime, setArrivalTime] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
-    const [departureTime, setDepartureTime] = useState<'morning' | 'afternoon' | 'evening'>('afternoon');
+    // 🎫 新流程（⑤什麼時候）已經問過時段就沿用它的答案，**包含 'unset'（還沒訂票）**；
+    //    沒經過新流程才維持舊的預設值 'afternoon'。
+    //    ⚠️ 'unset' 不可以送進 `hard.arrival`——prompt 會出現 "unset" 這個英文字（見 buildConstraints）。
+    const [arrivalTime, setArrivalTime] = useState<TimeSlot>(initialArrivalSlot ?? 'afternoon');
+    const [departureTime, setDepartureTime] = useState<TimeSlot>(initialDepartureSlot ?? 'afternoon');
+    /** 這一趟是不是從新表單走過來的：⑤問過時段、⑥問過當地交通 → 這一步不再重複問 */
+    const askedWhen = initialArrivalSlot !== undefined;
+    const askedTransport = initialLocalTransport !== undefined;
+    /** ⑥「想怎麼玩」問過旅伴／步調／預算 → 步驟④只留還沒有家的「風格 vibe」與「幣別」 */
+    const askedHow = initialPace !== undefined;
     const [showTransportDetails, setShowTransportDetails] = useState(false);
     const [transportMode, setTransportMode] = useState<'flight' | 'train' | 'time'>('flight');
-    const [localTransportMode, setLocalTransportMode] = useState<'public' | 'car' | 'taxi'>('public');
+    // ⚠️ 兩套字彙的對照：`LocalTransport` 用 charter、舊的 Trip 欄位用 taxi（同一件事，包車接駁）。
+    //    唯一的轉換點放這裡，不要在別處再翻譯一次。
+    const [localTransportMode, setLocalTransportMode] = useState<'public' | 'car' | 'taxi'>(
+        initialLocalTransport === 'charter' ? 'taxi' : (initialLocalTransport ?? 'public'),
+    );
     const [flightIn, setFlightIn] = useState('');
     const [flightOut, setFlightOut] = useState('');
 
@@ -178,14 +202,23 @@ export const CreateTripModal: React.FC<{
     const [companion, setCompanion] = useState(initialCompanion ?? 'couple');
     const [pace, setPace] = useState<string>(initialPace ?? 'standard');
     const [vibe, setVibe] = useState('balanced');
-    const [budgetLevel, setBudgetLevel] = useState<string>(initialBudgetLevel ?? 'standard');
+    // ⚠️ **第二組字彙不一致**（第一組是 charter／taxi）：`BudgetLevel` 型別用 economy，
+    //    但這個 modal 與 gemini.ts 的 BUDGET_LABEL 歷來都用 **cheap**（舊 trip 也是這樣存的）。
+    //    不轉換的話：三顆按鈕全部比對不到＝看起來像沒選，prompt 也會出現英文原字。
+    //    唯一的轉換點放這裡；統一字彙是技術債，等舊步驟④退場時一起清。
+    const [budgetLevel, setBudgetLevel] = useState<string>(
+        initialBudgetLevel === 'economy' ? 'cheap' : (initialBudgetLevel ?? 'standard'),
+    );
     const [customBudget, setCustomBudget] = useState('');
     const [currency, setCurrency] = useState('TWD');
     
     const [activeInterestTab, setActiveInterestTab] = useState<keyof typeof INTEREST_DATA>('shopping');
     const [interestDetails, setInterestDetails] = useState<Record<string, string>>({});
-    const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-    const [specificRequests, setSpecificRequests] = useState('');
+    // 🎫 ⑦「你的講究」已經問過：圈起來的標籤＝interests、手寫欄＝specificRequests
+    const [selectedInterests, setSelectedInterests] = useState<string[]>(initialTagsWanted ?? []);
+    const [specificRequests, setSpecificRequests] = useState(initialNotes ?? '');
+    /** ⑦ 問過標籤與手寫欄 → 這一步不再重複問 */
+    const askedNotes = initialTagsWanted !== undefined;
     const [coverImage] = useState('');   // lint 清理：setter 從未呼叫（封面 B 已改背景補圖）
 
     const toggleInterest = (tag: string) => { 
@@ -219,8 +252,10 @@ export const CreateTripModal: React.FC<{
             currency,
             legs: destinations.map(city => ({ city, startDay: 1, endDay: durationDays })),
             hard: {
-                arrival: { confidence: 'hint', value: arrivalTime },
-                departure: { confidence: 'hint', value: departureTime },
+                // ⚠️ 'unset'（還沒訂票）**絕不能送出去**：它會原封不動出現在 prompt 裡變成
+                //    「抵達時間：第一天 unset 抵達」。沒有答案就不要給欄位，讓生成端用自己的預設。
+                ...(arrivalTime !== 'unset' ? { arrival: { confidence: 'hint' as const, value: arrivalTime } } : {}),
+                ...(departureTime !== 'unset' ? { departure: { confidence: 'hint' as const, value: departureTime } } : {}),
             },
             soft: {
                 companion,
@@ -231,7 +266,10 @@ export const CreateTripModal: React.FC<{
                 vibe,
                 budgetLevel,
                 customBudget: customBudget || undefined,
+                budgetCap: initialBudgetCap,   // 使用者親手輸入的上限（唯一會進 prompt 的金額）
                 interests: selectedInterests.map(tag => ({ tag, detail: interestDetails[tag] || undefined })),
+                // ⚠️ 負面約束**獨立成欄**，不混進自由文字——它是 prompt 裡執行力最高的材料
+                tagsAvoided: initialTagsAvoided?.length ? initialTagsAvoided : undefined,
                 specificRequests: mergedRequests || undefined,
                 localTransportMode,
             },
@@ -535,6 +573,9 @@ export const CreateTripModal: React.FC<{
 
                         {step === 3 && (
                             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300 pb-10 w-full">
+                                {/* 🎫 過渡期：⑤「什麼時候」已經問過抵達／離開時段，這裡就不再問一次。
+                                    重複提問比多一個步驟更傷——使用者會懷疑前面填的到底有沒有存進去。 */}
+                                {!askedWhen && (
                                 <div className="space-y-5">
                                     <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">規劃您的可用時間</h3>
                                     <div>
@@ -558,6 +599,12 @@ export const CreateTripModal: React.FC<{
                                         </div>
                                     </div>
                                 </div>
+                                )}
+                                {/* 從新流程過來時，這一步只剩「航班／車次」這一件事——給它一個自己的標題，
+                                    否則畫面上會是一個沒有抬頭的孤兒區塊。 */}
+                                {askedWhen && askedTransport && (
+                                    <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">有確切的航班或車次嗎？</h3>
+                                )}
                                 <div className="border-t border-b border-gray-100 py-2">
                                     <button onClick={() => setShowTransportDetails(!showTransportDetails)} className={`w-full flex items-center justify-between text-xs font-bold py-2 ${showTransportDetails ? theme.text : 'text-gray-400'} transition-colors hover:bg-gray-50 rounded-xl px-2`}>
                                         <span className="flex items-center gap-2"><Plus className={`w-4 h-4 ${showTransportDetails ? 'rotate-45' : ''} transition-transform duration-300`} />新增確切航班/車次資訊 (選填)</span>
@@ -575,19 +622,28 @@ export const CreateTripModal: React.FC<{
                                         </div>
                                     )}
                                 </div>
-                                <div className="space-y-4 w-full">
-                                    <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">在當地，您偏好怎麼移動？</h3>
-                                    <div className="flex flex-col gap-3 w-full">
-                                        <MobilityCard id="public" label="大眾運輸" sub="地鐵與公車，深入城市脈絡" icon={<Bus />} />
-                                        <MobilityCard id="car" label="租車自駕" sub="機動性高，探索郊區秘境" icon={<Car />} />
-                                        <MobilityCard id="taxi" label="計程車/包車" sub="點對點接駁，輕鬆不費力" icon={<MapPin />} />
+                                {/* 🎫 過渡期：⑥「想怎麼玩」的紙二已經問過「主要移動」，這裡不再問一次 */}
+                                {!askedTransport && (
+                                    <div className="space-y-4 w-full">
+                                        <h3 className="text-xl font-black text-[#1D1D1B] font-serif tracking-wide">在當地，您偏好怎麼移動？</h3>
+                                        <div className="flex flex-col gap-3 w-full">
+                                            <MobilityCard id="public" label="大眾運輸" sub="地鐵與公車，深入城市脈絡" icon={<Bus />} />
+                                            <MobilityCard id="car" label="租車自駕" sub="機動性高，探索郊區秘境" icon={<Car />} />
+                                            <MobilityCard id="taxi" label="計程車/包車" sub="點對點接駁，輕鬆不費力" icon={<MapPin />} />
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )}
 
                         {step === 4 && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 w-full">
+                                {/* 🎫 過渡期：⑥「想怎麼玩」已經問過旅伴／步調／預算，這裡只留**還沒有家的那兩件事**：
+                                    「風格 vibe」與「幣別」。
+                                    ⚠️ vibe 的歸屬未定（見 docs E3-0「vibe 的家」）——⑦ 的目的地感知標籤雲是它的
+                                       高解析度版本，兩者並存會互相矛盾（選了「經典地標」卻圈了「秘境小店」，LLM 聽誰的？）。
+                                       在 Kelvin 拍板前先留在這裡，不要悄悄弄丟。 */}
+                                {!askedHow && (
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">旅伴</label>
                                     <div className="grid grid-cols-4 gap-2 w-full">
@@ -601,30 +657,44 @@ export const CreateTripModal: React.FC<{
                                         <ThemedOptionCard id="classmate" selected={companion === 'classmate'} onClick={() => setCompanion('classmate')} icon={<GraduationCap />} label="同學" />
                                     </div>
                                 </div>
-                                <div className="h-px bg-gray-100 my-2" />
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">步調與風格</label>
-                                    <div className="grid grid-cols-4 gap-2 w-full">
-                                        <ThemedOptionCard id="relaxed" selected={pace === 'relaxed'} onClick={() => setPace('relaxed')} icon={<Coffee />} label="悠閒" />
-                                        <ThemedOptionCard id="standard" selected={pace === 'standard'} onClick={() => setPace('standard')} icon={<Footprints />} label="標準" />
-                                        <ThemedOptionCard id="packed" selected={pace === 'packed'} onClick={() => setPace('packed')} icon={<Zap />} label="緊湊" />
-                                        <ThemedOptionCard id="deep" selected={pace === 'deep'} onClick={() => setPace('deep')} icon={<Book />} label="深度" />
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-2 mt-2 w-full">
-                                        <ThemedOptionCard id="popular" selected={vibe === 'popular'} onClick={() => setVibe('popular')} icon={<MapPin />} label="經典" sub="地標" />
-                                        <ThemedOptionCard id="balanced" selected={vibe === 'balanced'} onClick={() => setVibe('balanced')} icon={<Scale />} label="均衡" sub="在地" />
-                                        <ThemedOptionCard id="cultural" selected={vibe === 'cultural'} onClick={() => setVibe('cultural')} icon={<Landmark />} label="人文" sub="歷史" />
-                                        <ThemedOptionCard id="hidden" selected={vibe === 'hidden'} onClick={() => setVibe('hidden')} icon={<Mountain />} label="秘境" sub="自然" />
-                                    </div>
-                                </div>
-                                <div className="h-px bg-gray-100 my-2" />
+                                )}
+                                {/* ❌ **vibe（經典／均衡／人文／秘境）已退場**（2026-08-09 Kelvin 定案）：
+                                    它是**低解析度**的偏好，而 ⑦ 的目的地感知標籤雲是同一件事的高解析度版本；
+                                    兩者並存會直接衝突——**選了「經典地標」卻圈了「秘境小店」，LLM 要聽誰的？**
+                                    ⚠️ 欄位與中性預設 'balanced' **保留不動**（舊行程仍讀得到、prompt 不會少欄位）；
+                                       消失的只有這個問法。⑦ 上線後由 tagsWanted／tagsAvoided 承接。 */}
+                                {!askedHow && (
+                                    <>
+                                        <div className="h-px bg-gray-100 my-2" />
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">步調與風格</label>
+                                            <div className="grid grid-cols-4 gap-2 w-full">
+                                                <ThemedOptionCard id="relaxed" selected={pace === 'relaxed'} onClick={() => setPace('relaxed')} icon={<Coffee />} label="悠閒" />
+                                                <ThemedOptionCard id="standard" selected={pace === 'standard'} onClick={() => setPace('standard')} icon={<Footprints />} label="標準" />
+                                                <ThemedOptionCard id="packed" selected={pace === 'packed'} onClick={() => setPace('packed')} icon={<Zap />} label="緊湊" />
+                                                <ThemedOptionCard id="deep" selected={pace === 'deep'} onClick={() => setPace('deep')} icon={<Book />} label="深度" />
+                                            </div>
+                                            <div className="grid grid-cols-4 gap-2 mt-2 w-full">
+                                                <ThemedOptionCard id="popular" selected={vibe === 'popular'} onClick={() => setVibe('popular')} icon={<MapPin />} label="經典" sub="地標" />
+                                                <ThemedOptionCard id="balanced" selected={vibe === 'balanced'} onClick={() => setVibe('balanced')} icon={<Scale />} label="均衡" sub="在地" />
+                                                <ThemedOptionCard id="cultural" selected={vibe === 'cultural'} onClick={() => setVibe('cultural')} icon={<Landmark />} label="人文" sub="歷史" />
+                                                <ThemedOptionCard id="hidden" selected={vibe === 'hidden'} onClick={() => setVibe('hidden')} icon={<Mountain />} label="秘境" sub="自然" />
+                                            </div>
+                                        </div>
+                                        <div className="h-px bg-gray-100 my-2" />
+                                    </>
+                                )}
                                 <div className="w-full">
-                                    <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">預算等級</label>
-                                    <div className="flex gap-2 mb-3 w-full">
-                                        {[{id:'cheap',l:'經濟 $'}, {id:'standard',l:'標準 $$'}, {id:'luxury',l:'豪華 $$$'}].map(opt => (
-                                            <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-2xl font-bold text-sm border transition-all ${budgetLevel === opt.id ? `${theme.bg} text-white ${theme.border} shadow-md` : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}>{opt.l}</button>
-                                        ))}
-                                    </div>
+                                    <label className="block text-xs font-bold text-gray-400 mb-2 ml-1 uppercase">
+                                        {askedHow ? '幣別' : '預算等級'}
+                                    </label>
+                                    {!askedHow && (
+                                        <div className="flex gap-2 mb-3 w-full">
+                                            {[{ id: 'cheap', l: '經濟 $' }, { id: 'standard', l: '標準 $$' }, { id: 'luxury', l: '豪華 $$$' }].map(opt => (
+                                                <button key={opt.id} onClick={() => setBudgetLevel(opt.id)} className={`flex-1 py-3 rounded-2xl font-bold text-sm border transition-all ${budgetLevel === opt.id ? `${theme.bg} text-white ${theme.border} shadow-md` : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}>{opt.l}</button>
+                                            ))}
+                                        </div>
+                                    )}
                                     <div className="flex gap-2 w-full">
                                         <div className="relative min-w-fit">
                                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Coins className="h-4 w-4 text-gray-400" /></div>
@@ -639,7 +709,15 @@ export const CreateTripModal: React.FC<{
                             </div>
                         )}
 
-                        {step === 5 && (
+                        {/* 🎫 過渡期：⑦「你的講究」已經問過標籤與手寫欄，整步跳過。
+                            ⚠️ 不是隱藏內容而已——**整步變成空白會讓使用者以為當掉了**，所以直接進下一步。 */}
+                        {step === 5 && askedNotes && (
+                            <div className="flex flex-col items-center justify-center py-16 text-center animate-in fade-in duration-300">
+                                <p className="text-sm text-gray-400 font-medium">你的講究已經記下了</p>
+                                <p className="text-xs text-gray-300 mt-1.5">按「下一步」看看要生成什麼</p>
+                            </div>
+                        )}
+                        {step === 5 && !askedNotes && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 w-full">
                                 <div className="w-full">
                                     <label className="block text-xs font-bold text-gray-400 mb-3 ml-1 uppercase">您想怎麼玩？(深度興趣)</label>

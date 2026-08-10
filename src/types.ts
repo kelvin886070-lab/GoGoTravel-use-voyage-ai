@@ -178,7 +178,15 @@ export interface SoftPreferences {
   vibe?: string;
   budgetLevel?: string;
   customBudget?: string;
+  /** 使用者**親手輸入**的每人每天上限（餐飲／當地交通／門票，**不含機票住宿**）。
+   *  ⚠️ 語意是**上限**不是目標——寫成目標，LLM 會為了湊到那個數字硬塞景點。
+   *     這是唯一會進 prompt 的金額；我們自己估的三級錨點永遠不進（見 §1 原則 14）。 */
+  budgetCap?: number;
   interests?: { tag: string; detail?: string }[];
+  /** ⑦ 紅筆劃除的標籤＝**負面約束**。
+   *  ⚠️ 這是 prompt 裡**執行力最高的材料**——「不要什麼」比「想要什麼」明確得多，
+   *     模型幾乎不會違反。所以它必須獨立成欄，不可以混進 specificRequests 的自由文字裡。 */
+  tagsAvoided?: string[];
   specificRequests?: string;
   localTransportMode?: 'public' | 'car' | 'taxi';
 }
@@ -270,6 +278,8 @@ export interface TripBrief {
   pace: PaceLevel;               // 度量衡：relaxed 2–3 站、standard 4–5、packed 6+、deep 站少待久
   vibe: VibeLevel;
   budgetLevel: BudgetLevel;
+  /** 使用者親手輸入的每人每天上限（見 SoftPreferences.budgetCap；沒填＝undefined） */
+  budgetCap?: number;
   currency: string;              // 由目的地推斷、可點改（旁註）
   localTransport: LocalTransport;
   // ── 你的講究 ──

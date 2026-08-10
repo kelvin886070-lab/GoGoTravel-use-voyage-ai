@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>⑤ 時段便條・降階對照</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   ⑤「什麼時候」→ 撕日曆卡下的時段便條
+   問題：時段那張紙和撕日曆卡「平起平坐」，變成第二個主角。
+   ⚠️ 主角／配角的差別**不在尺寸，在「獨立 vs 附屬」**——
+      現在那張紙有完整的陰影與厚度（inset 受光白線），讀起來是「桌上的另一張紙」；
+      單純縮小只會變成「小一號的主角」。
+   ⚠️ 便利貼常見的「略微傾斜」**不能用**：Kelvin 在紙質那一輪已否決微角度
+      （「三張紙角度統一 0°，微角度散亂被否決」）。
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --paper:#F6F1E7;--ink:#232320;--print:#2A2723;--gold:#C9B98F;--stamp:#A23B2E;--bg:#0F0E0D;
+  --paper-radius:3px 2px 4px 2px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:#E8E2D6;
+  font-family:"PingFang TC","Noto Sans TC",-apple-system,system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:22px 12px 60px;gap:22px}
+.rig{width:100%;max-width:980px;padding:12px 14px;border:1px dashed #4a463d;border-radius:8px;background:#171614;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rig button{font:inherit;font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;background:#26241f;color:#E8E2D6;border:1px solid #3d3931}
+.rig .lbl{font-size:11.5px;color:#8d887c;letter-spacing:.06em}
+
+.pair{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+.slot{display:flex;flex-direction:column;align-items:center;gap:10px}
+.slot .cap{font-size:12px;letter-spacing:.08em;color:#8d887c}
+.slot .cap b{color:#EDE7DA}
+
+.phone{width:360px;height:760px;border-radius:32px;overflow:hidden;position:relative;
+  background:#141310;box-shadow:0 24px 60px -12px rgba(0,0,0,.7),0 0 0 1px #2a2823;display:flex;flex-direction:column}
+.photo{position:absolute;inset:0;background:
+  radial-gradient(70% 50% at 30% 20%, rgba(180,160,120,.35), transparent 60%),
+  radial-gradient(60% 50% at 80% 70%, rgba(90,70,50,.5), transparent 60%),
+  linear-gradient(165deg,#5a4a38,#241d16)}
+.veil{position:absolute;inset:0;background-image:linear-gradient(rgba(15,14,13,.42),rgba(15,14,13,.72))}
+.body{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;padding-top:14px;overflow-y:auto}
+.body::-webkit-scrollbar{width:0}
+.crumb{text-align:center;font-size:10.5px;color:rgba(255,255,255,.6);margin-bottom:6px}
+h1{margin:0;text-align:center;font-size:21px;font-weight:700;color:#F6F1E7;letter-spacing:.04em;text-shadow:0 1px 3px rgba(0,0,0,.82)}
+.when{text-align:center;font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.32em;color:rgba(255,255,255,.5);margin-top:4px}
+.season{text-align:center;font-size:11.5px;color:var(--gold);margin:14px 0 12px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+
+/* ── 撕日曆卡（票券卡紙：挺、有厚度、完整陰影）───────────────── */
+.card{position:relative;z-index:2;width:250px;background:var(--paper);color:var(--print);
+  border-radius:var(--paper-radius);padding:16px 14px 10px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.72),0 1px 2px rgba(0,0,0,.34),0 12px 24px -8px rgba(0,0,0,.4)}
+.tex>span{position:absolute;inset:0;border-radius:inherit;pointer-events:none;display:block}
+.t-grain{opacity:.07}
+.t-age{opacity:.22;background-size:170px 170px;mix-blend-mode:multiply}
+.t-crease{opacity:.5;background-size:210px 210px;mix-blend-mode:overlay}
+.punch{position:absolute;left:14px;top:-5px;width:10px;height:10px;border-radius:50%;background:rgba(18,15,12,.62);box-shadow:inset 0 1px 1px rgba(0,0,0,.5)}
+.brand{text-align:center;font-family:ui-monospace,Menlo,monospace;font-size:6.5px;letter-spacing:.28em;color:rgba(35,35,32,.3);position:relative;z-index:2}
+.ym{position:relative;z-index:2;text-align:center;font-size:12.5px;letter-spacing:.28em;color:rgba(42,39,35,.7);
+  border-top:1px solid rgba(35,35,32,.2);border-bottom:1px solid rgba(35,35,32,.2);margin:7px 0 0;padding:6px 0}
+.big{position:relative;z-index:2;display:grid;grid-template-columns:22px 1fr 22px;align-items:center;padding:6px 0 2px}
+.lunar{writing-mode:vertical-rl;font-size:9.5px;color:rgba(42,39,35,.5);line-height:1.25;justify-self:start}
+.day{text-align:center;font-size:74px;font-weight:300;line-height:.92;letter-spacing:-.02em;color:var(--ink)}
+.dow{text-align:center;font-size:12px;color:rgba(42,39,35,.66);margin-top:2px;position:relative;z-index:2}
+.perf{position:relative;z-index:2;margin:9px 0 8px;border-top:1px dashed rgba(35,35,32,.28)}
+.row{position:relative;z-index:2;display:flex;justify-content:space-between;font-size:11.5px;color:rgba(42,39,35,.72);padding:1px 0}
+.row .v{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--print)}
+.sum{position:relative;z-index:2;display:flex;justify-content:space-between;margin-top:7px;font-size:12px;color:var(--print)}
+
+.link{margin-top:18px;font-size:13px;color:rgba(255,255,255,.85);text-decoration:none;border-bottom:1px solid rgba(255,255,255,.45);padding-bottom:2px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+
+/* ── 時段紙：A＝平起平坐（現況）────────────────────────────── */
+.memoA{position:relative;width:250px;margin-top:32px;background:var(--paper);color:var(--print);
+  border-radius:2px 3px 2px 3px;padding:13px 15px 11px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.26),0 6px 14px -6px rgba(0,0,0,.28)}
+
+/* ── 時段紙：B＝**塞在日曆下面**的便條（提案）─────────────────
+   三個降階手法，缺一不可：
+     ①**上緣重疊 −10px、z-index 在卡片之下** → 物理上依附，不是並排
+     ②**寬度收窄到 210**（卡片 250）→ 從卡片下緣露出來的一張小紙
+     ③**拿掉紙的厚度**（inset 受光白線）＋陰影只留一層極薄的落影
+        → 厚度是主角的特權；沒有厚度就不會被讀成「另一張桌上的紙」 */
+.memoB{position:relative;z-index:1;width:210px;margin-top:-10px;background:var(--paper);color:var(--print);
+  border-radius:0 0 2px 3px;padding:16px 14px 11px;
+  box-shadow:0 4px 10px -5px rgba(0,0,0,.34)}
+
+/* ── 時段紙：C＝**膠帶貼在日曆下緣的便條**（Kelvin 提案 ＋ 我的兩處修正）──
+   ①**膠帶橫跨兩張紙的交界** → 「貼上去」變成一個看得見的動作，比單純重疊更明確。
+     與 ⑦「記憶便條」的區隔：⑤＝**一段、淡赭、半透明**；⑦＝**兩段、飽和赭紅**（畫面唯一彩色）。
+   ②🔴 **不是「更淡／透明」，是「暗半階」**：
+     · 深色背景上「淡」＝更亮＝**更跳**。現在會搶戲，正是因為它和日曆一樣亮。
+     · 真正退後的做法是**降低對比**（空氣透視：遠的東西對比低）→ 疊一層 6% 暖灰。
+     · 半透明還會讓**照片的亮度透上來**——我們剛從暗紗改成紙就是為了避開這件事；
+       而且紙不透明，半透明是玻璃的語彙。 */
+.memoC{position:relative;z-index:1;width:196px;margin-top:14px;color:var(--print);
+  background:var(--paper);border-radius:1px 2px 1px 2px;padding:15px 13px 10px;
+  box-shadow:0 3px 8px -4px rgba(0,0,0,.3)}
+/* 暗半階：同一個紙色，疊一層暖灰讓它退到日曆後面（不違反「紙色唯一」） */
+.memoC::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:rgba(96,80,58,.085)}
+/* 和紙膠帶：半透明（膠帶本來就透）、邊緣是撕的不是切的 */
+.tape{position:absolute;left:50%;top:-13px;transform:translateX(-50%);width:46px;height:26px;z-index:3;
+  background:linear-gradient(160deg,rgba(196,146,96,.62),rgba(168,118,74,.58));
+  clip-path:polygon(0 6%,12% 0,26% 7%,41% 1%,57% 8%,72% 1%,87% 7%,100% 2%,100% 96%,86% 100%,70% 94%,55% 100%,40% 93%,25% 100%,11% 94%,0 100%);
+  box-shadow:0 1px 2px rgba(0,0,0,.22)}
+
+.sline{position:relative;display:flex;align-items:center;gap:8px;padding:5px 0}
+.sline .lb{flex:none;width:72px;font-size:12.5px;color:rgba(42,39,35,.62);letter-spacing:.03em}
+.memoB .sline .lb{width:64px;font-size:12px}
+.sline .opts{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,1fr)}
+.sline .opt{position:relative;background:none;border:0;cursor:pointer;font:inherit;font-size:12.5px;padding:4px 1px;text-align:center;color:rgba(42,39,35,.52)}
+.memoB .sline .opt{font-size:12px}
+.sline .opt.on{color:var(--print);font-weight:600}
+.foot{position:relative;text-align:center;font-size:10px;line-height:1.7;color:rgba(42,39,35,.5);
+  margin-top:10px;padding-top:10px;border-top:1px dashed rgba(35,35,32,.14)}
+.memoB .foot{font-size:9.5px;margin-top:8px;padding-top:8px}
+
+.circ{position:absolute;inset:-4px -7px;width:calc(100% + 14px);height:calc(100% + 8px);overflow:visible;pointer-events:none}
+.circ path{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;
+  animation:ktDraw .45s ease-out forwards;filter:drop-shadow(0 0 .5px rgba(35,35,32,.25))}
+@keyframes ktDraw{to{stroke-dashoffset:0}}
+
+.ticket{margin:auto 14px 18px;width:calc(100% - 28px);background:var(--paper);color:var(--print);border:0;border-radius:var(--paper-radius);
+  padding:13px 0;font:inherit;font-size:14px;font-weight:600;letter-spacing:.14em;box-shadow:0 8px 16px -6px rgba(0,0,0,.4)}
+
+.col{width:100%;max-width:980px;display:flex;flex-direction:column;gap:14px}
+.doc{border:1px solid #2c2a25;border-radius:10px;padding:16px 18px;background:#171614;font-size:13px;line-height:1.85;color:#c9c3b6}
+.doc h3{margin:0 0 10px;font-size:13.5px;color:#EDE7DA;letter-spacing:.06em}
+.doc h4{margin:14px 0 6px;font-size:12.5px;color:#d8d2c5}
+.doc table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.doc th,.doc td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a2823;vertical-align:top}
+.doc th{color:#8d887c;font-weight:500;font-size:11px;letter-spacing:.06em}
+.doc .good{color:#9DBE8E}.doc .bad{color:#D98A7A}
+.doc code{background:#232019;padding:1px 5px;border-radius:3px;font-size:11.5px;color:var(--gold)}
+</style>
+</head>
+<body>
+
+<div class="rig">
+  <span class="lbl">兩版都可以點時段</span>
+  <button onclick="reset()">清空</button>
+  <button onclick="demo()">示範已選</button>
+  <span class="lbl" style="margin-left:auto">A＝現況（平起平坐）　C＝膠帶便條＋暗半階（提案）</span>
+</div>
+
+<div class="pair">
+  <div class="slot">
+    <div class="cap"><b>A · 現況</b>　兩張紙平起平坐</div>
+    <div class="phone">
+      <div class="photo"></div><div class="veil"></div>
+      <div class="body">
+        <div class="crumb">日本 · 九州</div>
+        <h1>什麼時候去？</h1><div class="when">WHEN</div>
+        <div class="season">豔陽高照且海岸煙火大會頻繁</div>
+        <div class="card">
+          <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+          <div class="punch"></div><div class="brand">KELVIN TRIP</div>
+          <div class="ym">2026 · 八月</div>
+          <div class="big"><span class="lunar">農七月初七</span><span class="day">19</span><span></span></div>
+          <div class="dow">星期三</div><div class="perf"></div>
+          <div class="row"><span>出發</span><span class="v">2026.08.19</span></div>
+          <div class="row"><span>回程</span><span class="v">2026.08.22</span></div>
+          <div class="sum"><span>共 4 天</span><span>還有 9 天</span></div>
+        </div>
+        <a class="link">改日期</a>
+        <div class="memoA">
+          <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+          <div class="sline" data-g="a1"><span class="lb">第一天到</span><div class="opts">
+            <button class="opt" data-v="m">早上</button><button class="opt" data-v="a">下午</button><button class="opt" data-v="e">晚上</button></div></div>
+          <div class="sline" data-g="a2"><span class="lb">最後一天走</span><div class="opts">
+            <button class="opt" data-v="m">早上</button><button class="opt" data-v="a">下午</button><button class="opt" data-v="e">晚上</button></div></div>
+          <div class="foot">暫時留白，機票匯入隨時同步。</div>
+        </div>
+      </div>
+      <button class="ticket">下 一 步</button>
+    </div>
+  </div>
+
+  <div class="slot">
+    <div class="cap"><b>C · 提案</b>　膠帶貼住的便條 ＋ 暗半階</div>
+    <div class="phone">
+      <div class="photo"></div><div class="veil"></div>
+      <div class="body">
+        <div class="crumb">日本 · 九州</div>
+        <h1>什麼時候去？</h1><div class="when">WHEN</div>
+        <div class="season">豔陽高照且海岸煙火大會頻繁</div>
+        <div class="card">
+          <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+          <div class="punch"></div><div class="brand">KELVIN TRIP</div>
+          <div class="ym">2026 · 八月</div>
+          <div class="big"><span class="lunar">農七月初七</span><span class="day">19</span><span></span></div>
+          <div class="dow">星期三</div><div class="perf"></div>
+          <div class="row"><span>出發</span><span class="v">2026.08.19</span></div>
+          <div class="row"><span>回程</span><span class="v">2026.08.22</span></div>
+          <div class="sum"><span>共 4 天</span><span>還有 9 天</span></div>
+        </div>
+        <div class="memoC">
+          <span class="tape"></span>
+          <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span></div>
+          <div class="sline" data-g="b1"><span class="lb">第一天到</span><div class="opts">
+            <button class="opt" data-v="m">早上</button><button class="opt" data-v="a">下午</button><button class="opt" data-v="e">晚上</button></div></div>
+          <div class="sline" data-g="b2"><span class="lb">最後一天走</span><div class="opts">
+            <button class="opt" data-v="m">早上</button><button class="opt" data-v="a">下午</button><button class="opt" data-v="e">晚上</button></div></div>
+          <div class="foot">暫時留白，機票匯入隨時同步。</div>
+        </div>
+        <a class="link">改日期</a>
+      </div>
+      <button class="ticket">下 一 步</button>
+    </div>
+  </div>
+</div>
+
+<div class="col">
+<div class="doc">
+<h3>C 版：四個降階手法</h3>
+<table>
+<tr><th>#</th><th>手法</th><th>為什麼</th></tr>
+<tr><td>①</td><td class="good"><b>暗半階</b>（疊 8.5% 暖灰）</td><td>🔴 這一條最關鍵，而且和直覺相反。<b>深色背景上「淡」＝更亮＝更跳</b>——現在會搶戲，正是因為它和日曆一樣亮，兩塊亮色在暗底上，眼睛不知道該看哪個。<br>真正讓東西退後的是<b>降低對比</b>（空氣透視：遠的東西對比低）。而且暗半階<b>不違反「紙色唯一」</b>（同色、只是疊一層灰），也<b>不讓可讀性依賴照片</b>。</td></tr>
+<tr><td>②</td><td><b>和紙膠帶橫跨兩張紙的交界</b></td><td>讓「貼上去」變成一個<b>看得見的動作</b>，比單純重疊更明確。<br>而且膠帶在這裡<b>不是裝飾，是語意</b>：它說「這是暫時的」——而這張便條的內容本來就會被匯入的機票取代。</td></tr>
+<tr><td>③</td><td><b>寬度 250 → 196</b>、字級各降半階</td><td>配角的音量本來就該小一點。單獨用這一招只會變成「小一號的主角」。</td></tr>
+<tr><td>④</td><td><b>拿掉紙的厚度</b>（inset 受光白線），陰影只留一層極薄落影</td><td><b>厚度是主角的特權。</b>沒有受光白線，它就不再是「有體積的物件」，而是一張薄紙。</td></tr>
+</table>
+
+<h4>膠帶：⑤ 與 ⑦ 怎麼區隔</h4>
+<table>
+<tr><th></th><th>⑤ 時段便條</th><th>⑦ 記憶便條</th></tr>
+<tr><td>形態</td><td><b>一段</b>、上緣正中</td><td><b>兩段</b>、上緣兩角</td></tr>
+<tr><td>顏色</td><td>淡赭、半透明（膠帶本來就透）</td><td><b>飽和赭紅</b>＝畫面唯一的彩色</td></tr>
+<tr><td>語意</td><td>「這是<b>暫時</b>的」（會被匯入的機票取代）</td><td>「這是<b>外來</b>的」（上一趟的碎片）</td></tr>
+</table>
+<p>兩者形成一個語彙家族：<b>膠帶＝貼上去的東西</b>；靠段數與飽和度分辨是「暫時」還是「外來」。</p>
+
+<h4>❌ 沒有採用的做法</h4>
+<table>
+<tr><td class="bad">半透明</td><td>①深色背景上會讓<b>照片的亮度透上來</b>，可讀性又變成不可控（我們剛從暗紗改成紙就是為了避開）②<b>紙不透明</b>——半透明是玻璃的語彙。真實便條紙「輕」是靠薄和小，不是靠透。</td></tr>
+<tr><td class="bad">略微傾斜</td><td>便利貼最典型的手法，但 Kelvin 在紙質那一輪已否決微角度（「三張紙角度統一 0°」）。</td></tr>
+<tr><td class="bad">換一種紙色（例如圖例的黃）</td><td>憲章：品牌紙色<b>唯一</b> <code>#F6F1E7</code>，差異只能靠表面處理。黃色便條紙會在這個 app 裡變成第二種紙的年代。</td></tr>
+<tr><td class="bad">筆記本橫線</td><td>橫線＝書寫紙的標誌，而這裡是<b>圈選</b>不是書寫；⑦ 的書寫紙才用橫線，先留給它。</td></tr>
+</table>
+
+<h4>如果 C 還是太搶戲，下一格旋鈕（每次只動一個，動完看）</h4>
+<p>①暖灰 8.5% → 12%（再暗半階）②寬度 196 → 180 ③把「暫時留白…」那一行移出便條、改成便條下方的一行小字（便條上只剩兩行圈選，資訊量最小化）。</p>
+</div>
+</div>
+
+<script>
+const seedOf=s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%1000};
+const CIRC=seed=>{const r=((seed*9301+49297)%233280)/233280;
+  return `M${(30+r*4).toFixed(1)} 3 C 51 ${(1+r*2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3+r*2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35+r*3).toFixed(1)} 4`};
+document.querySelectorAll('.sline').forEach(line=>{
+  line.querySelectorAll('.opt').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const was=el.classList.contains('on');
+      line.querySelectorAll('.opt').forEach(o=>{o.classList.remove('on');o.querySelector('.circ')?.remove()});
+      if(was) return;
+      el.classList.add('on');
+      const s=seedOf(line.dataset.g+el.dataset.v), r=((s*9301+49297)%233280)/233280;
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 64 34');svg.setAttribute('class','circ');
+      svg.style.transform=`rotate(${(r*6-3).toFixed(1)}deg)`;
+      svg.innerHTML=`<path d="${CIRC(s)}" pathLength="100"/>`;
+      el.appendChild(svg);
+    });
+  });
+});
+function reset(){document.querySelectorAll('.opt').forEach(o=>{o.classList.remove('on');o.querySelector('.circ')?.remove()})}
+function demo(){reset();['a1|m','a2|e','b1|m','b2|e'].forEach(x=>{const[g,v]=x.split('|');
+  document.querySelector(`.sline[data-g="${g}"] .opt[data-v="${v}"]`).click()})}
+const G=`<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/></filter><rect width='140' height='140' filter='url(#g)'/></svg>`;
+const A=`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='a'><feTurbulence type='fractalNoise' baseFrequency='0.021' numOctaves='4' seed='7'/><feColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.6 0'/></filter><rect width='320' height='320' filter='url(#a)'/></svg>`;
+const C=`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='c'><feTurbulence type='fractalNoise' baseFrequency='0.009 0.042' numOctaves='3' seed='11' result='t'/><feDiffuseLighting in='t' surface-scale='2.4' diffuseConstant='1' lighting-color='#ffffff'><feDistantLight azimuth='225' elevation='55'/></feDiffuseLighting></filter><rect width='400' height='400' filter='url(#c)'/></svg>`;
+const u=s=>`url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+document.querySelectorAll('.t-grain').forEach(e=>e.style.backgroundImage=u(G));
+document.querySelectorAll('.t-age').forEach(e=>e.style.backgroundImage=u(A));
+document.querySelectorAll('.t-crease').forEach(e=>e.style.backgroundImage=u(C));
+demo();
+</script>
+</body>
+</html>

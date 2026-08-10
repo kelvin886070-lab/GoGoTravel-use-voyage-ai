@@ -13,8 +13,10 @@ export type PageSoundKind =
     | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap'
     // ── 2026-08-05 補齊（Kelvin 提供素材，ffmpeg 裁切：tick 0.10s／release 0.29s／tear 0.34s／unfold 0.65s）
     | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'paperFold' | 'pageTear'
-    // ── 2026-08-09 ⑥想怎麼玩頁（拿起 → 端詳 → 放下）；素材由 Kelvin 提供，未到位前自動退位
-    | 'paperLand' | 'paperLift';
+    // ── 2026-08-09 ⑥想怎麼玩頁；素材由 Kelvin 提供、ffmpeg 裁切
+    | 'paperLand' | 'paperLift' | 'paperSettle' | 'tick'
+    // ── 2026-08-10 ⑦你的講究頁
+    | 'penSwitch';
 
 const SOUND_KEY = 'kt_pp_sound';   // 缺席或 '1' ＝開；'0' ＝關
 const VOLUME = 0.5;                // 質感音量：聽得到紙、不搶注意力
@@ -38,8 +40,13 @@ const SRC: Record<PageSoundKind, string> = {
     paperUnfold: '/sounds/paper-unfold.mp3',   // 攤開一張紙（展開日曆／攤開整年）
     paperFold: '/sounds/paper-fold.mp3',       // 收起一張紙（攤開的相反方向，不共用滑動聲）
     pageTear: '/sounds/page-tear.mp3',         // 撕下日曆的一頁（比票券撕更薄更脆）
-    paperLand: '/sounds/paper-land.mp3',       // 紙落到木桌（悶、低頻、無回音；會連放三次，尾巴必須乾淨）
-    paperLift: '/sounds/paper-lift.mp3',       // 紙從桌面被拿起（窸窣，比 land 亮、比 unfold 短）
+    paperLand: '/sounds/paper-land.mp3',       // **單張**紙落到桌面（短音）
+    // 一疊紙被鋪定（1.23s 的連續紙聲）。⚠️ **不要改回「短音連放三次」**：
+    //   三個短音是三次獨立事件，會把從容的情緒切碎；一段連續的紙聲才是一個過程（Kelvin 實測定案）。
+    paperSettle: '/sounds/paper-settle.mp3',
+    paperLift: '/sounds/paper-lift.mp3',       // 紙從桌面被拿起（⚠️ 目前無呼叫端，保留給 ⑧生成幕的「抽新紙」）
+    tick: '/sounds/tick.mp3',                  // 打勾（複選清單專用；與圈選的 penCircle 是兩種不同的筆法）
+    penSwitch: '/sounds/pen-switch.mp3',       // 換筆（放下一支、拿起另一支——素材裡兩聲都留著）
 };
 
 /**
@@ -53,7 +60,9 @@ const SRC: Record<PageSoundKind, string> = {
  * ➜ Kelvin 把 mp3 放進 `public/sounds/` 之後，**只要從這個集合刪掉那一行就上線**，
  *   呼叫端一行都不用改（見 `docs/音效素材清單.md`）。
  */
-const PENDING: ReadonlySet<PageSoundKind> = new Set<PageSoundKind>(['paperLand', 'paperLift']);
+const PENDING: ReadonlySet<PageSoundKind> = new Set<PageSoundKind>([
+    // （目前全部到位。日後新增音效時先把代號放進來，素材進 public/sounds/ 再刪掉這一行。）
+]);
 
 /** 翻頁音效目前是否開啟（預設開）。 */
 export const isPageSoundOn = (): boolean => {

@@ -21,6 +21,7 @@ import { EntryPage, type EntryResult } from '../create/EntryPage';
 import { ZonePage, type ZoneResult } from '../create/ZonePage';
 import { WhenPage, type WhenResult } from '../create/WhenPage';
 import { HowPage, legacyCompanionId, type HowResult } from '../create/HowPage';
+import { NotesPage, type NotesResult } from '../create/NotesPage';
 import { needsZoneStep } from '../../services/destinationIntel';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
@@ -83,6 +84,9 @@ export const TripsView: React.FC<TripsViewProps> = ({
   // 🎴 ⑥想怎麼玩：和誰同行／步調／預算（複選的同行者以 howResult.companions 為準）
   const [howOpen, setHowOpen] = useState(false);
   const [howResult, setHowResult] = useState<HowResult | null>(null);
+  // ✍️ ⑦你的講究：標籤雲（圈＝想要／紅筆劃除＝不要）＋手寫欄
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesResult, setNotesResult] = useState<NotesResult | null>(null);
   /** 入口頁交棒：需要縮圈就先進縮圈，否則直接進建立流程 */
   const afterEntry = (r: EntryResult) => {
     setEntryResult(r);
@@ -90,6 +94,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
     endTear();
     setWhenResult(null);
     setHowResult(null);
+    setNotesResult(null);
     if (needsZoneStep(r.intel)) setZoneOpen(true);
     else setWhenOpen(true);
   };
@@ -305,26 +310,47 @@ export const TripsView: React.FC<TripsViewProps> = ({
             setHowOpen(false); setEntryResult(null); setZoneResult(null);
             setWhenResult(null); setHowResult(null); setTearing(false);
           }}
-          onNext={(h) => { setHowResult(h); setHowOpen(false); setIsCreating(true); }}
+          onNext={(h) => { setHowResult(h); setHowOpen(false); setNotesOpen(true); }}
+        />
+      )}
+      {notesOpen && entryResult && (
+        <NotesPage
+          breadcrumb={flowDestinations().join(' · ')}
+          query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
+          coverUrl={entryResult.coverUrl}
+          isDomestic={entryResult.isDomestic}
+          onBack={() => { setNotesOpen(false); setHowOpen(true); }}
+          onClose={() => {
+            setNotesOpen(false); setEntryResult(null); setZoneResult(null);
+            setWhenResult(null); setHowResult(null); setNotesResult(null); setTearing(false);
+          }}
+          onNext={(n) => { setNotesResult(n); setNotesOpen(false); setIsCreating(true); }}
         />
       )}
       {isCreating && (
         <CreateTripModal
-          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setHowResult(null); }}
+          onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setHowResult(null); setNotesResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
           initialDestinations={entryResult ? flowDestinations() : undefined}
           initialIsDomestic={entryResult?.isDomestic}
           initialStartDate={whenResult?.startDate}
           initialEndDate={whenResult?.endDate}
+          initialArrivalSlot={whenResult?.arrivalSlot}
+          initialDepartureSlot={whenResult?.departureSlot}
+          initialTagsWanted={notesResult?.tagsWanted}
+          initialTagsAvoided={notesResult?.tagsAvoided}
+          initialNotes={notesResult?.notes}
           initialCompanions={howResult?.companions}
           initialCompanion={howResult ? legacyCompanionId(howResult) : undefined}
           initialPace={howResult?.pace}
           initialBudgetLevel={howResult?.budget}
+          initialBudgetCap={howResult?.budgetCap}
+          initialLocalTransport={howResult?.move}
           initialStep={entryResult ? 3 : 1}
           onBackToEntry={() => {
             setIsCreating(false);
-            if (entryResult) setHowOpen(true);         // 退回上一頁＝「想怎麼玩」，不是退回最前面
+            if (entryResult) setNotesOpen(true);       // 退回上一頁＝「你的講究」，不是退回最前面
             else setEntryOpen(true);
           }}
         />

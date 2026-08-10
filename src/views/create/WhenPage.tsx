@@ -15,6 +15,7 @@
 //   聲音：**一次使用者動作只播一聲**（選回程日重繪雙圈時，起點圈靜默）。
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, ChevronLeft } from 'lucide-react';
+import type { TimeSlot } from '../../types';
 import { playPageSound, playOverlapping, hapticTap } from '../../services/sounds';
 import { toast } from '../../components/Toast';
 import { fetchDestinationDeep, seasonNote, seasonKey, type DestinationDeep } from '../../services/destinationIntel';
@@ -101,7 +102,70 @@ export interface WhenResult {
     endDate?: string;
     /** 使用者是否給了確切日期 */
     exact: boolean;
+    /**
+     * 第一天抵達／最後一天離開的時段（`'unset'`＝還沒訂票，這是一級狀態不是缺漏）。
+     *
+     * ⚠️ **只在有確切日期時才問得到**：這兩題掛在撕日曆卡下方，而那張卡只在 `exact` 時存在。
+     *    只給「10 月、4 天」的人表示他還沒訂機票，這時問「第一天幾點到」他只能亂猜——
+     *    **把題目放在唯一能回答的情境裡，就不需要任何條件判斷**。
+     * ⚠️ 使用者按「改用月份與天數」時**靜默清回 unset**（Kelvin 定案）：那個動作的意思是
+     *    「我不確定日期了」，時段已失去依據；留著會變成**沒有來源的答案**，
+     *    而且如果他後來改選別的日期，舊時段會悄悄跟著新日期走——那是錯的。
+     */
+    arrivalSlot: TimeSlot;
+    departureSlot: TimeSlot;
 }
+
+/** 時段三選（**沒有第四顆「還沒訂」**——都不圈就是還沒訂） */
+const SLOTS: { v: Exclude<TimeSlot, 'unset'>; t: string }[] = [
+    { v: 'morning', t: '早上' },
+    { v: 'afternoon', t: '下午' },
+    { v: 'evening', t: '晚上' },
+];
+
+/**
+ * 一行時段（第一天到／最後一天走）。
+ *
+ * ⚠️ **必須定義在模組層級**：在元件內定義元件的話，每次 state 改變都會產生「新的元件型別」，
+ *    React 會卸載重掛整棵子樹——墨圈的描繪動畫會不停重播。
+ *
+ * 底材是**紙**（憲章第一條：凡需圈選／勾選／寫字的區域才鋪紙——時段是圈選區），
+ * 所以筆色用**墨**、不套 `ON_PHOTO_SHADOW`。
+ * ❌ 曾用「照片上用金＋規格化暗紗」，那是把「卡外」誤解成「一定在照片上」；
+ *    改成紙之後可讀性不再依賴照片亮度（那張照片是使用者的目的地，我們控制不了）。
+ *
+ * 標籤與選項**同一個字級**（12.5px）——差一級會讀成兩種東西；靠字重與墨色分辨。
+ */
+const SlotRow: React.FC<{
+    label: string;
+    value: TimeSlot;
+    onPick: (v: TimeSlot) => void;
+    instant: boolean;
+    /** seed 命名空間：兩行的「早上」不該是同一道筆跡 */
+    ns: string;
+}> = ({ label, value, onPick, instant, ns }) => (
+    <div className="relative flex items-center gap-2 py-1">
+        <span className="flex-none font-serif text-[12px] w-[64px]"
+            style={{ color: 'rgba(42,39,35,.62)', letterSpacing: '.03em' }}>{label}</span>
+        {/* ⚠️ min-w-0：flex 項目預設 min-width:auto 會撐破容器（入口頁踩過的坑） */}
+        <div className="flex-1 min-w-0 grid grid-cols-3">
+            {SLOTS.map(s => {
+                const on = value === s.v;
+                return (
+                    <button key={s.v} type="button" aria-pressed={on}
+                        onClick={() => onPick(on ? 'unset' : s.v)}   // 再點一次＝回到「還沒訂」
+                        className="relative py-1 text-center font-serif text-[12px]"
+                        style={{ color: on ? INK_PRINT : 'rgba(42,39,35,.52)', fontWeight: on ? 600 : 400 }}>
+                        <span className="relative inline-block">
+                            {s.t}
+                            {on && <HandCircle seed={seedOf(ns + s.v)} color={INK_INK} instant={instant} tight />}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    </div>
+);
 
 export const WhenPage: React.FC<{
     /** 麵包屑（「南投 · 日月潭與水里」） */
@@ -134,6 +198,9 @@ export const WhenPage: React.FC<{
     /** 使用者動過的攤開狀態；null＝還沒動過，套用預設（接下來三個月） */
     const [expandedOverride, setExpandedOverride] = useState<Set<number> | null>(null);
     const [exactOpen, setExactOpen] = useState(false);
+    // 第一天／最後一天的時段（'unset'＝還沒訂票，預設值，零操作可過）
+    const [arrivalSlot, setArrivalSlot] = useState<TimeSlot>('unset');
+    const [departureSlot, setDepartureSlot] = useState<TimeSlot>('unset');
     const [calYear, setCalYear] = useState(thisYear);
     const [calMonth, setCalMonth] = useState(thisMonth);
     const [startDate, setStartDate] = useState<string | null>(null);
@@ -202,6 +269,10 @@ export const WhenPage: React.FC<{
     const dropExact = useCallback(() => {
         setStartDate(null);
         setEndDate(null);
+        // 時段附屬於確切日期：沒有日期就沒有依據，**靜默清回 unset**（不提示——
+        // 「改用月份與天數」的意思就是「我不確定日期了」，時段消失是那個動作的自然後果）。
+        setArrivalSlot('unset');
+        setDepartureSlot('unset');
     }, []);
 
     const pickMonth = (m: number) => {
@@ -414,6 +485,10 @@ export const WhenPage: React.FC<{
             startDate: exact ? startDate! : undefined,
             endDate: exact ? endDate! : undefined,
             exact,
+            // 沒有確切日期就一定是 unset（時段的 UI 根本不會出現）——這裡再保一次，
+            // 避免「先選日期填了時段、再改回月份天數」的路徑漏掉
+            arrivalSlot: exact ? arrivalSlot : 'unset',
+            departureSlot: exact ? departureSlot : 'unset',
         });
     };
 
@@ -859,14 +934,86 @@ export const WhenPage: React.FC<{
                                         </div>
                                     </div>
 
-                                    {/* 兩條回頭路：同一列、字級一致，與卡片拉開距離（它們是「離開這張卡」的動作） */}
-                                    <div className="flex items-center justify-center gap-7 mt-7">
+                                    {/* 🕐 第一天與最後一天＝**用膠帶貼在日曆下緣的便條**（Kelvin 定案 C 版）。
+                                        主視覺必須留給日曆，所以這張紙用**四個手法一起降階**：
+
+                                        ①🔴 **暗半階**（疊 8.5% 暖灰）——最關鍵，而且與直覺相反：
+                                           **深色背景上「淡」＝更亮＝更跳**。它原本搶戲正是因為和日曆一樣亮，
+                                           兩塊亮色在暗底上，眼睛不知道該看哪個。真正讓東西退後的是**降低對比**
+                                           （空氣透視：遠的東西對比低）。
+                                           ⚠️ 這也是**唯一不違反「紙色唯一」的降階法**（同色、只疊一層灰），
+                                              而且不像半透明那樣讓可讀性依賴照片（照片是使用者的目的地，亮度不可控）。
+                                        ②**和紙膠帶把便條貼在桌面（照片）上，刻意不碰日曆**——
+                                           🔴 **連接 ≠ 從屬**：膠帶跨在兩張紙之間時，做的是**平等的連結**，
+                                              便條會因此「升格」成日曆的一部分，借到它的地位（2026-08-09 實機驗證）。
+                                              改成貼在背景上之後，兩張紙是**鄰居不是父子**。
+                                           膠帶在這裡**不是裝飾，是語意**：它說「這是暫時的」——這張便條的內容
+                                           本來就會被匯入的機票取代。
+                                           ❌ 不做「填完撕掉膠帶」：填完了它**仍然暫時**（那還是沒訂票時填的猜測），
+                                              撕掉等於說「這下確定了」＝錯的訊息；而且撕完便條變成漂浮的紙，
+                                              反而失去「貼」的語意。這一頁的動畫預算留給撕日曆卡那個主儀式。
+                                           與 ⑦「記憶便條」的區隔：⑤＝**一段、淡赭、半透明**（暫時）／
+                                           ⑦＝**兩段、飽和赭紅**（外來，畫面唯一彩色）。
+                                        ③寬度 250 → **196**、字級各降半階（配角的音量本來就該小一點）。
+                                        ④**拿掉紙的厚度**（inset 受光白線）——厚度是主角的特權；
+                                           沒有受光白線，它就不再是「有體積的物件」，而是一張薄紙。
+
+                                        ❌ 不用半透明（紙不透明，那是玻璃的語彙）、不用微角度（紙質那輪已否決）、
+                                           不換紙色（黃色便條會開出第二種紙的年代）、不加橫線（那是 ⑦ 書寫紙的標誌）。 */}
+                                    {/* 回頭路：緊跟在日曆下方（它是「改這張卡」的動作，屬於日曆這一組）。
+                                        ❌「改用月份與天數」已移除（2026-08-09 Kelvin）——**出口沒有消失**：
+                                           點「改日期」展開日曆後，裡面那顆「還是先不指定」做的就是 dropExact()。
+                                        ⚠️ 提醒未來的自己：「按上一步回去改」**不成立**——onBack 會離開這一頁
+                                           （回縮圈／入口），不是退回月份天數層。移除那顆的前提是日曆裡的出口還在。 */}
+                                    <div className="flex items-center justify-center mt-5">
                                         <button onClick={openExact}
                                             className="font-serif text-[13px] text-white/85 underline underline-offset-4 decoration-white/45"
                                             style={{ textShadow: ON_PHOTO_SHADOW }}>改日期</button>
-                                        <button onClick={() => { dropExact(); playPageSound('eraser'); hapticTap(); }}
-                                            className="font-serif text-[13px] text-white/85 underline underline-offset-4 decoration-white/45"
-                                            style={{ textShadow: ON_PHOTO_SHADOW }}>改用月份與天數</button>
+                                    </div>
+
+                                    {/* ⚠️ mt-14（56px）＝**刻意的遠距離**：日曆＋改日期是一組（主視覺），
+                                        便條是貼在下面桌面上的另一件東西。**距離就是歸屬**——拉遠它，
+                                        主從關係就不必靠任何裝飾去說明。
+                                        （下限是 18px：必須大於膠帶超出便條的高度，膠帶才會落在照片上而不是壓到日曆。） */}
+                                    <div className="relative mt-14" style={{
+                                        width: 196,
+                                        backgroundColor: PAPER,
+                                        borderRadius: '1px 2px 1px 2px',
+                                        boxShadow: '0 3px 8px -4px rgba(0,0,0,.3)',   // 無 inset：薄紙沒有厚度
+                                        padding: '15px 13px 10px',
+                                    }}>
+                                        {/* 和紙膠帶：半透明（膠帶本來就透）、上下緣是**撕的不是切的**。
+                                            ⚠️ 墨度比壓在紙上時**再降一階**（.62→.48）：它現在浮在深色照片上，
+                                               同樣的透明度會比壓在紙上顯眼得多。 */}
+                                        <span aria-hidden style={{
+                                            position: 'absolute', left: '50%', top: -18, transform: 'translateX(-50%)',
+                                            width: 44, height: 30, zIndex: 4,
+                                            background: 'linear-gradient(160deg, rgba(196,146,96,.48), rgba(168,118,74,.44))',
+                                            clipPath: 'polygon(0 6%,12% 0,26% 7%,41% 1%,57% 8%,72% 1%,87% 7%,100% 2%,100% 96%,86% 100%,70% 94%,55% 100%,40% 93%,25% 100%,11% 94%,0 100%)',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,.22)',
+                                        }} />
+                                        <PaperTexture radius="1px 2px 1px 2px" keyline={false} seal={false} />
+                                        {/* 暗半階：疊在紋理之上、內容之下 */}
+                                        <span aria-hidden style={{
+                                            position: 'absolute', inset: 0, borderRadius: '1px 2px 1px 2px',
+                                            backgroundColor: 'rgba(96,80,58,.085)', pointerEvents: 'none',
+                                        }} />
+                                        <SlotRow label="第一天到" value={arrivalSlot} ns="arr" instant={instant}
+                                            onPick={v => { setArrivalSlot(v); playPageSound(v === 'unset' ? 'eraser' : 'penCircle'); hapticTap(); }} />
+                                        <SlotRow label="最後一天走" value={departureSlot} ns="dep" instant={instant}
+                                            onPick={v => { setDepartureSlot(v); playPageSound(v === 'unset' ? 'eraser' : 'penCircle'); hapticTap(); }} />
+                                        {/* ⚠️ 這一行不能省：沒有它，空白是**缺漏**；有了它，空白是**一個合法的答案**。
+                                            🔴 措辭：**「隨時同步」不是「自動幫你排好」**——原則 8 是「衝突帳單**提案**，絕不偷改」；
+                                               匯入後對帳器是把活動往後搬並標記、讓使用者確認。寫「自動排好」＝話術跑在功能前面。
+                                            ⚠️ 留白**不等於沒有假設**：`unset` 時生成端會套用「保守的下午抵達」
+                                               （見 gemini.ts ARRIVAL_FIRST_START 的 assumed 分支）——
+                                               **不確定時往「少」的方向假設，因為匯入後加比刪容易。** */}
+                                        <div className="relative text-center font-serif text-[9.5px] leading-[1.7] mt-2 pt-2"
+                                            style={{ color: 'rgba(42,39,35,.5)', borderTop: '1px dashed rgba(35,35,32,.14)' }}>
+                                            {isDomestic
+                                                ? '隨心出發，就從留白開始。'
+                                                : '暫時留白，機票匯入隨時同步。'}
+                                        </div>
                                     </div>
                                 </div>
                             );

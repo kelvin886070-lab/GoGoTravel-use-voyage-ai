@@ -3,55 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>⑥ 這一趟想怎麼玩 · mockup v2</title>
+<title>⑥ 這一趟想怎麼玩 · mockup v3（去狀態機）</title>
 <style>
 /* ══════════════════════════════════════════════════════════════════
-   ⑥「這一趟想怎麼玩」mockup v2（2026-08-09）
-   本版落實：五個優化全採納 ＋ 加分③（矛盾用旁註）＋ 手風琴聚焦 ＋ 拿起／端詳／放下三拍
-   紙質常數與 src/views/create/ink.tsx 一致；這份檔案只為了「看」與「談」，不是實作稿。
+   ⑥「這一趟想怎麼玩」mockup v3（2026-08-09 第二輪・去狀態機）
+   v2 的病灶：把「三題的短表單」做成了一台有狀態機的互動裝置。
+   全部移除：聚焦／變暗／鎖定／自動推進／收攏／拿起-端詳-放下三拍。
+   情感改由兩件更便宜的事承擔：①儀式放在開場（落紙），②摘要在出口累積。
    ══════════════════════════════════════════════════════════════════ */
 :root{
   --paper:#F6F1E7;--ink:#232320;--print:#2A2723;--gold:#C9B98F;--amber:#E9BE7A;--bg:#0F0E0D;
   --paper-radius:3px 2px 4px 2px;
-  /* 紙的三種陰影：躺在桌上／被拿在手上／退到後面 */
   --sh-rest:inset 0 1px 0 rgba(255,255,255,.72),inset 0 -1px 0 rgba(35,35,32,.07),0 1px 2px rgba(0,0,0,.34),0 10px 20px -6px rgba(0,0,0,.30);
-  --sh-hand:inset 0 1px 0 rgba(255,255,255,.8),inset 0 -1px 0 rgba(35,35,32,.07),0 6px 10px rgba(0,0,0,.34),0 26px 44px -10px rgba(0,0,0,.46);
-  --sh-back:inset 0 1px 0 rgba(255,255,255,.5),0 1px 2px rgba(0,0,0,.26),0 4px 8px -4px rgba(0,0,0,.2);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:#E8E2D6;
   font-family:"PingFang TC","Noto Sans TC",-apple-system,system-ui,sans-serif;
-  display:flex;flex-direction:column;align-items:center;padding:22px 12px 60px;gap:26px}
+  display:flex;flex-direction:column;align-items:center;padding:22px 12px 60px;gap:24px}
 
-/* ── 控制列（mockup 專用）─────────────────────────────────── */
 .rig{width:100%;max-width:940px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
   padding:12px 14px;border:1px dashed #4a463d;border-radius:8px;background:#171614}
 .rig .lbl{font-size:11.5px;color:#8d887c;letter-spacing:.06em;margin-right:2px}
 .rig button{font:inherit;font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;
   background:#26241f;color:#E8E2D6;border:1px solid #3d3931}
 .rig button:hover{background:#302d27}
-.rig button.on{background:var(--gold);color:#1b1a17;border-color:var(--gold)}
 
-/* ── 手機殼 ────────────────────────────────────────────────── */
 .phone{width:390px;height:820px;border-radius:34px;overflow:hidden;position:relative;
   background:#141310;box-shadow:0 24px 60px -12px rgba(0,0,0,.7),0 0 0 1px #2a2823;display:flex;flex-direction:column}
-.screen{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;padding:0 0 4px}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
 .screen::-webkit-scrollbar{width:0}
 
-/* ── 頁首 ──────────────────────────────────────────────────── */
-.head{padding:26px 22px 10px;position:relative}
-.head .bk{position:absolute;left:16px;top:24px;width:30px;height:30px;border:0;background:none;
-  color:#8d887c;font-size:19px;cursor:pointer;line-height:1}
-.head h1{margin:0;font-size:21px;font-weight:600;letter-spacing:.04em;color:#EDE7DA;text-align:center;
-  text-shadow:0 1px 3px rgba(0,0,0,.82)}
-.head .sub{margin:7px 0 0;text-align:center;font-size:11.5px;letter-spacing:.05em;color:#8d887c}
-/* 進度：整個表單的頁碼（不是這一頁的 3 個問題）——收攏的紙已經是這一頁的進度條了 */
-.head .step{position:absolute;right:18px;top:28px;font-size:10px;letter-spacing:.16em;color:#6f6a5f;
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* ── 頁首 ────────────────────────────────────────────────── */
+.head{padding:24px 22px 8px;position:relative}
+.head .bk{position:absolute;left:16px;top:22px;width:30px;height:30px;border:0;background:none;color:#8d887c;font-size:19px;cursor:pointer;line-height:1}
+.head .xx{position:absolute;right:16px;top:22px;width:30px;height:30px;border:0;background:none;color:#8d887c;font-size:16px;cursor:pointer;line-height:1}
+.head .crumb{text-align:center;font-size:11px;color:rgba(255,255,255,.6);margin-bottom:8px}
+.head h1{margin:0;font-size:21px;font-weight:600;letter-spacing:.04em;color:#EDE7DA;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.82)}
+.head .sub{margin:6px 0 0;text-align:center;font-size:11.5px;letter-spacing:.05em;color:#8d887c}
 
-/* ── 紙 ────────────────────────────────────────────────────── */
-.sheet{position:relative;margin:0 18px 18px;background:var(--paper);border-radius:var(--paper-radius);
-  padding:16px 16px 15px;color:var(--print);box-shadow:var(--sh-rest)}
+/* ── 紙（**全部平等、全亮、全展開**）────────────────────────── */
+.sheet{position:relative;margin:0 18px 16px;background:var(--paper);border-radius:var(--paper-radius);
+  padding:15px 16px 14px;color:var(--print);box-shadow:var(--sh-rest)}
 .tex>span{position:absolute;inset:0;border-radius:var(--paper-radius);pointer-events:none;display:block}
 .t-grain{opacity:.07}
 .t-age{opacity:.24;background-size:170px 170px;mix-blend-mode:multiply}
@@ -63,53 +55,77 @@ body{margin:0;background:var(--bg);color:#E8E2D6;
   font-size:6.5px;letter-spacing:.14em;color:rgba(35,35,32,.24);pointer-events:none}
 
 .sheet h2{margin:0 0 2px;font-size:14.5px;font-weight:600;letter-spacing:.05em;position:relative;z-index:2}
-.sheet .note{margin:0 0 12px;font-size:10.5px;letter-spacing:.04em;color:rgba(42,39,35,.52);position:relative;z-index:2}
+.sheet .note{margin:0 0 11px;font-size:10.5px;letter-spacing:.04em;color:rgba(42,39,35,.52);position:relative;z-index:2}
 
-/* 🔧 優化②：步調那張紙放大一階（它是三件事裡唯一硬約束 prompt 的）
-   差異刻意小到說不出來，但排序感受得到。 */
-#s2 .opt{padding:9px 6px 8px}
-#s2 .opt .t{font-size:14px}
-#s2 .opt .d{font-size:10.5px}
-#s2 .opts{gap:13px 14px}
+/* 分區：**只用一條虛線**。不放區標題——行為本身會教他（點了單選會擦掉前一個、
+   點了複選兩個都在）。文字解釋不如讓他試一下。 */
+.rule{position:relative;z-index:2;margin:11px 0 9px;border-top:1px dashed rgba(35,35,32,.16)}
 
-/* ── 分區（🔧 優化①）─────────────────────────────────────────
-   同一張紙上有兩種語意（單選／複選），**必須先在視覺上宣告它們不同**，
-   否則同樣長相的東西行為不同＝使用者無法預測點擊的後果（違反「清楚優先於聰明」）。 */
-.zone{position:relative;z-index:2}
-.zone + .zone{margin-top:13px;padding-top:11px;border-top:1px dashed rgba(35,35,32,.16)}
-.zone .zh{display:flex;align-items:baseline;gap:7px;margin-bottom:8px}
-.zone .zh b{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:rgba(42,39,35,.78)}
-.zone .zh i{font-style:normal;font-size:9.5px;color:rgba(42,39,35,.42);letter-spacing:.04em}
-/* 「自己一個人」時，整個「還有誰一起」區不適用——**整區退場，而不是個別互斥**。
-   這比逐項擦除清楚得多：不適用的是一個「區」，一句話就解釋完了。 */
-.zone.na{opacity:.26;pointer-events:none;filter:saturate(.5)}
-.zone .naword{position:absolute;left:0;right:0;top:34px;text-align:center;font-size:11px;font-style:italic;
-  color:var(--ink);opacity:0;transition:opacity .35s ease;pointer-events:none;z-index:5}
-.zone.na .naword{opacity:.75}
-
-/* ── 選項（兩行制）───────────────────────────────────────────── */
-.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;position:relative}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px;position:relative;z-index:2}
 .opts.one{grid-template-columns:1fr}
-.opt{position:relative;background:none;border:0;padding:7px 6px 6px;text-align:left;cursor:pointer;
-  font:inherit;color:var(--print);border-radius:2px}
-.opt .t{display:block;font-size:13.5px;font-weight:500;letter-spacing:.04em;line-height:1.35}
+.opt{position:relative;background:none;border:0;padding:6px 6px 5px;text-align:left;cursor:pointer;font:inherit;color:var(--print);border-radius:2px}
+/* inline-block＝寬度貼合文字，墨圈才會只框住那個詞（block 會撐滿整欄） */
+.opt .t{display:inline-block;position:relative;font-size:13.5px;font-weight:500;letter-spacing:.04em;line-height:1.35}
 .opt .d{display:block;margin-top:2px;font-size:10px;letter-spacing:.03em;color:rgba(42,39,35,.50);line-height:1.45}
-/* 🔧 優化④：預算的錨（用重層已知的目的地＋幣別推估）
-   沒有數字的預算，LLM 拿到的訊號幾乎是零——三級最後會生出差不多的行程。 */
 .opt .anchor{display:block;margin-top:3px;font-size:10px;font-style:italic;color:var(--ink);opacity:.62;letter-spacing:.02em}
 
-/* 手繪圈（選中＝狀態，不是控制項） */
+/* ── 上區：一句填空（單選的紙上語彙）───────────────────────── */
+.fill{position:relative;z-index:2;margin:8px 0 2px}
+.fill .lead{display:block;font-size:12.5px;color:rgba(42,39,35,.62);margin-bottom:5px}
+/* 兩行三欄：等寬對齊，眼睛一次掃完（原本 flex-wrap 會讓「同學」孤零零掉到第二行） */
+.fill .blank{display:grid;grid-template-columns:repeat(3,1fr);gap:9px 10px}
+.fill .word{position:relative;background:none;border:0;padding:3px 2px 5px;cursor:pointer;font:inherit;
+  font-size:14px;letter-spacing:.03em;color:rgba(42,39,35,.5);text-align:center;
+  /* 空格的底線＝「這裡要填一個字」；填了就變成墨色、底線消失（＝填好了） */
+  border-bottom:1px solid rgba(35,35,32,.18);transition:color .2s ease,border-color .2s ease}
+.fill .word.on{color:var(--print);font-weight:600;border-bottom-color:transparent}
+
+/* 漸進揭露：選了上區才長出下區（max-height 而非 grid-template-rows——
+   後者要 Safari 17.4+，iOS 舊機吃不到） */
+.reveal{max-height:0;opacity:0;overflow:hidden;
+  transition:max-height .48s cubic-bezier(.2,.8,.25,1),opacity .34s ease}
+.reveal.on{max-height:260px;opacity:1}
+
+/* ── 下區：打勾清單（複選的紙上語彙）───────────────────────── */
+.checks{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}
+.chk{position:relative;background:none;border:0;padding:5px 4px 4px 22px;text-align:left;cursor:pointer;font:inherit;color:var(--print)}
+.chk .box{position:absolute;left:2px;top:7px;width:13px;height:13px;border:1.3px solid rgba(35,35,32,.38);border-radius:2px}
+.chk .box::after{content:"";position:absolute;left:1px;top:-3px;width:13px;height:11px;
+  border-left:2px solid var(--ink);border-bottom:2px solid var(--ink);
+  transform:rotate(-46deg) scale(.5);transform-origin:left bottom;opacity:0;transition:opacity .18s}
+.chk.on .box::after{opacity:1;animation:ktTick .26s cubic-bezier(.2,.9,.3,1)}
+@keyframes ktTick{0%{clip-path:inset(0 100% 0 0)}100%{clip-path:inset(0 0 0 0)}}
+.chk .t{display:block;font-size:13.5px;font-weight:500;letter-spacing:.04em;line-height:1.35}
+.chk .d{display:block;margin-top:2px;font-size:10px;color:rgba(42,39,35,.5);line-height:1.45}
+
+/* 主要移動：三個詞本身就清楚，不需要兩行制副標。
+   ⚠️ 無論哪一版，三個選項都要**均分寬度並置中**——原本靠左排會讓右側空一大塊。 */
+.move-wrap{position:relative;z-index:2}
+.move-wrap .lab{font-size:12.5px;font-weight:600;letter-spacing:.06em;color:rgba(42,39,35,.72)}
+.row3{display:grid;grid-template-columns:repeat(3,1fr)}
+.row3 .opt{padding:4px 2px;text-align:center}
+.row3 .opt .t{font-size:12.5px;font-weight:400}
+
+/* A：同行——標籤在左，三個選項均分剩餘空間 */
+.wrap-a{display:flex;align-items:center;gap:12px}
+.wrap-a .lab{flex:none}
+.wrap-a .row3{flex:1;min-width:0}   /* ⚠️ min-width:0（flex 項目撐破容器的老坑） */
+
+/* B：換行——標籤獨佔一行，三個選項均分整個寬度。
+   與紙一「這一趟是 ␣ 六個詞」同一個結構＝**整個表單只有一種提問的排版語彙**。 */
+.wrap-b .lab{display:block;margin-bottom:6px}
+
+/* 手繪圈 */
 .circ{position:absolute;inset:-6px -9px;width:calc(100% + 18px);height:calc(100% + 12px);overflow:visible;pointer-events:none}
+.circ.tight{inset:-4px -7px;width:calc(100% + 14px);height:calc(100% + 8px)}
 .circ path{fill:none;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;
   stroke-dasharray:100;stroke-dashoffset:100;animation:ktDraw .45s ease-out forwards;
   filter:drop-shadow(0 0 .5px rgba(35,35,32,.25))}
-/* 虛線圈＝我幫你決定的，不是你決定的（🔧 優化⑤） */
-.circ.dash path{stroke-dasharray:4.5 4;stroke-dashoffset:0;stroke-width:1.6;stroke:var(--ink);
-  opacity:0;animation:ktInk .4s ease-out forwards}
+.circ.tight path{stroke-width:1.5}
+.circ.dash path{stroke-dasharray:4.5 4;stroke-dashoffset:0;stroke-width:1.6;opacity:0;animation:ktInk .4s ease-out forwards}
 @keyframes ktDraw{to{stroke-dashoffset:0}}
 @keyframes ktInk{to{opacity:.7}}
 
-/* 橡皮擦 */
 .eraser{position:absolute;top:50%;left:-18px;width:20px;height:13px;margin-top:-7px;border-radius:3px;
   background:linear-gradient(#F7EEDD,#DCCAAA 60%,#C9B38D);box-shadow:0 3px 5px rgba(0,0,0,.35);
   animation:ktRub .43s cubic-bezier(.4,.05,.55,.95) forwards;z-index:4;pointer-events:none}
@@ -118,150 +134,101 @@ body{margin:0;background:var(--bg);color:#E8E2D6;
 .fading{animation:ktFadeOut .43s ease-out forwards}
 @keyframes ktFadeOut{0%{opacity:1}60%{opacity:.12}100%{opacity:0}}
 
-/* ── 摺頁（🔧 優化③）───────────────────────────────────────── */
-.foldwrap{position:relative;z-index:2;margin-top:11px;perspective:900px}
+/* 摺頁 */
+.foldwrap{position:relative;z-index:2;margin-top:9px;perspective:900px}
 .foldtab{width:100%;background:none;border:0;padding:7px 0 2px;cursor:pointer;font:inherit;
-  display:flex;align-items:center;gap:8px;color:rgba(42,39,35,.60);font-size:11px;letter-spacing:.06em;
+  display:flex;align-items:center;gap:8px;color:rgba(42,39,35,.6);font-size:11px;letter-spacing:.06em;
   border-top:1px dashed rgba(35,35,32,.16)}
 .foldtab .chev{font-size:9px;transition:transform .5s cubic-bezier(.2,.8,.25,1)}
 .foldtab.open .chev{transform:rotate(180deg)}
-.foldtab .carry{margin-left:auto;font-style:italic;color:var(--ink);font-size:11px;opacity:0;transition:opacity .3s}
-.foldtab .carry.show{opacity:.85}
+.foldtab .carry{margin-left:auto;font-style:italic;color:var(--ink);font-size:11px;opacity:.85}
 .back{transform-origin:top center;transform:rotateX(-178deg);opacity:0;height:0;overflow:hidden;
-  transition:transform .62s cubic-bezier(.2,.8,.25,1),opacity .3s ease .1s,height .62s cubic-bezier(.2,.8,.25,1);
-  backface-visibility:hidden}
-.back.open{transform:rotateX(0deg);opacity:1;height:auto;padding-top:10px}
-/* 首次揭示：摺頁自己翻起 12° 再收回——紙被風吹了一下，不是一個動畫在自我介紹 */
-.back.peek{animation:ktPeek 1.1s cubic-bezier(.3,.7,.3,1) .9s both}
+  transition:transform .62s cubic-bezier(.2,.8,.25,1),opacity .3s ease .1s,height .62s cubic-bezier(.2,.8,.25,1);backface-visibility:hidden}
+.back.open{transform:rotateX(0);opacity:1;height:auto;padding-top:9px}
+.peek{animation:ktPeek 1.1s cubic-bezier(.3,.7,.3,1) 1.1s both}
 @keyframes ktPeek{0%{transform:rotateX(-178deg)}38%{transform:rotateX(-166deg)}100%{transform:rotateX(-178deg)}}
 
-/* ── 即時手寫回饋（紙的右下角）────────────────────────────── */
-.hand{position:absolute;right:14px;bottom:9px;z-index:3;max-width:64%;text-align:right;
-  font-size:11px;font-style:italic;letter-spacing:.03em;color:var(--ink);line-height:1.5;
-  opacity:0;transform:translateY(5px);transition:opacity .42s ease,transform .42s ease}
-.hand.show{opacity:.86;transform:none}
-.hand::before{content:"↳ ";opacity:.5}
+/* 即時手寫回饋 */
+.hand{position:relative;z-index:3;text-align:right;margin-top:7px;min-height:16px}
+.hand span{font-size:11px;font-style:italic;color:var(--ink);opacity:0;transition:opacity .4s ease}
+.hand span.show{opacity:.86}
 
-/* ── ✨加分③：矛盾用旁註，不用對話框 ─────────────────────────
-   貼在**那個矛盾的選項旁邊**，不是紙的角落——旁註要旁得到東西才叫旁註。
-   ⚠️ 絕對定位＋不佔版面高度：它出現時不能把下面的東西推走。 */
-.margin-note{position:absolute;left:4px;right:4px;top:100%;margin-top:1px;z-index:6;
-  font-size:9.5px;font-style:italic;line-height:1.45;color:var(--ink);opacity:0;
-  transform:translateY(-3px);transition:opacity .4s ease,transform .4s ease;pointer-events:none;text-align:left}
-.margin-note.show{opacity:.72;transform:none}
-.margin-note::before{content:"↖ ";opacity:.5}
+/* 矛盾旁註：絕對定位、不佔版面高度 */
+.mn{position:absolute;left:4px;right:4px;top:100%;margin-top:1px;z-index:6;font-size:9.5px;font-style:italic;
+  line-height:1.45;color:var(--ink);opacity:0;transform:translateY(-3px);
+  transition:opacity .4s ease,transform .4s ease;pointer-events:none;text-align:left}
+.mn.show{opacity:.72;transform:none}
 
-/* ── 幣別旁註 ───────────────────────────────────────────────── */
-.cur{position:relative;z-index:2;margin-top:11px;padding-top:8px;border-top:1px dashed rgba(35,35,32,.16);
-  display:flex;align-items:baseline;gap:7px;font-size:11px;color:rgba(42,39,35,.55)}
-.cur button{font:inherit;font-size:12.5px;font-style:italic;color:var(--ink);background:none;border:0;
-  border-bottom:1px solid rgba(35,35,32,.28);padding:0 2px 1px;cursor:pointer}
-.cur .why{margin-left:auto;font-size:9.5px;color:rgba(42,39,35,.38)}
+/* 自訂上限：藏在三級之後（選了才浮出來） */
+/* 自訂上限：**兩行**（一行放不下就會折成鋸齒狀，那正是「雜亂」的來源）
+   第一行＝要填的東西、第二行＝說明。說明用更小的字、更淡的墨＝它不是要填的。 */
+.custom{position:relative;z-index:2;margin-top:10px;padding-top:9px;
+  border-top:1px dashed rgba(35,35,32,.16);display:none}
+.custom.on{display:block;animation:ktFadeUp .4s ease-out}
+.crow{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:rgba(42,39,35,.6);white-space:nowrap}
+.crow input{flex:1;min-width:0;   /* ⚠️ min-width:0 —— flex 項目預設 min-width:auto 會撐破容器（入口頁踩過的坑） */
+  font:inherit;font-size:13.5px;font-style:italic;color:var(--ink);background:none;border:0;
+  border-bottom:1px solid rgba(35,35,32,.3);padding:0 4px 2px;text-align:center}
+.crow input::placeholder{color:rgba(42,39,35,.28);font-style:italic}
+.crow .unit{flex:none;font-size:11px}
+.ctail{margin-top:5px;font-size:9.5px;line-height:1.5;color:rgba(42,39,35,.42)}
 
 /* ── 底部 ─────────────────────────────────────────────────── */
-.foot{position:relative;padding:8px 16px 20px}
+.foot{position:relative;padding:8px 16px 20px;flex:none}
 .foot .grad{position:absolute;left:0;right:0;bottom:100%;height:42px;pointer-events:none;
   background-image:linear-gradient(rgba(15,14,13,0),rgba(15,14,13,.82))}
-/* 🔧 優化⑤：這行字**可點**——點了就在「標準」上畫一個虛線圈。
-   空白讓人不安，動作不會：使用者要看見「我幫你決定了」這個動作發生。 */
-.tellback{margin:0 0 9px;min-height:18px;line-height:1.5;text-align:center;font-size:11px;letter-spacing:.05em;
-  color:#8d887c;transition:opacity .3s ease,color .3s ease;background:none;border:0;width:100%;
-  font-family:inherit;cursor:pointer;padding:0}
+/* 💛 這一頁的情感終點：他的選擇被念回來。**累積**，不是重複播放同一段動畫。 */
+.tellback{margin:0 0 9px;min-height:30px;line-height:1.5;text-align:center;font-size:11.5px;letter-spacing:.05em;
+  color:#8d887c;background:none;border:0;width:100%;font-family:inherit;cursor:pointer;padding:0;
+  transition:color .35s ease}
 .tellback.filled{color:var(--amber);font-style:italic;cursor:default}
-.tellback u{text-decoration:none;border-bottom:1px solid #55514a;padding-bottom:1px}
+.tellback u{text-decoration:none;border-bottom:1px solid rgba(255,255,255,.34);padding-bottom:1px}
+.tellback .grow{display:inline-block;animation:ktFadeUp .34s ease-out}
 .ticket{width:100%;position:relative;background:var(--paper);color:var(--print);border:0;cursor:pointer;
   border-radius:var(--paper-radius);padding:14px 0;font:inherit;font-size:14.5px;font-weight:600;
   letter-spacing:.14em;box-shadow:inset 0 1px 0 rgba(255,255,255,.72),0 1px 2px rgba(0,0,0,.34),0 8px 16px -6px rgba(0,0,0,.3)}
 .ticket .perf{position:absolute;left:0;right:0;top:0;height:1px;
   background-image:repeating-linear-gradient(90deg,rgba(35,35,32,.22) 0 3px,transparent 3px 7px)}
 
-/* ══ 聚焦模式：手風琴（全部在場、可回頭、收攏成筆跡）══════════ */
-.focus .sheet{cursor:default}
-.focus .sheet.dim{opacity:.34;transform:scale(.968);box-shadow:var(--sh-back);cursor:pointer;
-  transition:opacity .4s ease,transform .4s cubic-bezier(.2,.8,.25,1),box-shadow .4s ease}
-.focus .sheet.dim .opt,.focus .sheet.dim .foldtab,.focus .sheet.dim .cur button{pointer-events:none}
-/* 收攏：填完的紙只留下被圈起來的那幾個（點回來就全部展開） */
-.focus .sheet.done .opt{display:none}
-.focus .sheet.done .opt.picked{display:block}
-.focus .sheet.done .opts{grid-template-columns:1fr;gap:5px}
-.focus .sheet.done .note,.focus .sheet.done .foldwrap,.focus .sheet.done .cur,
-.focus .sheet.done .zone .zh i,.focus .sheet.done .hand{display:none}
-.focus .sheet.done{opacity:.8}
-.focus .sheet.done h2{font-size:12.5px;color:rgba(42,39,35,.58)}
-.focus .sheet.done .zone + .zone{margin-top:6px;padding-top:6px}
-
-/* ── 🎬 拿起 → 端詳 → 放下（三拍）────────────────────────────
-   ①拿起 0–180ms：上浮 6px、放大 1.028、微傾 −0.9°（手拿著不會完全平）、陰影同時變深變散
-   ②端詳 180–426ms：**停住不動**——這 246ms 的停頓才是儀式感的來源，少了它只是一個縮小動畫。無聲。
-   ③放下 426–820ms：退到 0.968、透明度降到 .34、陰影收緊變淺（貼回桌面）、旋轉回正
-   ⚠️ 實作時 box-shadow 不要放進 keyframes（不上 GPU）——改用一個 ::after 陰影層只動 opacity。
-   ⚠️ 動畫**不擋操作**：下一張紙在第③拍一開始（426ms）就亮起來，使用者中途點別張紙立刻打斷。 */
-.sheet.pickput{animation:ktPickPut .82s cubic-bezier(.33,0,.2,1) forwards;z-index:8}
-@keyframes ktPickPut{
-  0%  {transform:scale(1) translateY(0) rotate(0deg);opacity:1;box-shadow:var(--sh-rest)}
-  22% {transform:scale(1.028) translateY(-6px) rotate(-.9deg);opacity:1;box-shadow:var(--sh-hand)}
-  52% {transform:scale(1.028) translateY(-6px) rotate(-.9deg);opacity:1;box-shadow:var(--sh-hand)}
-  100%{transform:scale(.968) translateY(0) rotate(0deg);opacity:.34;box-shadow:var(--sh-back)}
-}
-/* 短版：使用者自己點了別張紙＝他的注意力已經走了，這時表演「拿起來端詳」是搶戲 */
-.sheet.putdown{animation:ktPutDown .32s cubic-bezier(.3,.7,.3,1) forwards}
-@keyframes ktPutDown{
-  0%  {transform:scale(1);opacity:1;box-shadow:var(--sh-rest)}
-  100%{transform:scale(.968);opacity:.34;box-shadow:var(--sh-back)}
-}
-/* 從後面被拿回前面 */
-.sheet.pickup{animation:ktPickUp .38s cubic-bezier(.2,.8,.25,1) forwards}
-@keyframes ktPickUp{
-  0%  {transform:scale(.968);opacity:.34;box-shadow:var(--sh-back)}
-  100%{transform:scale(1);opacity:1;box-shadow:var(--sh-rest)}
-}
-
-/* ── 落紙（進場）──────────────────────────────────────────── */
+/* ── 唯一的儀式：進場落紙（一次性，不在每次操作時擋路）─────── */
 .drop{animation:ktPaperDrop .62s cubic-bezier(.18,.86,.32,1) backwards}
 @keyframes ktPaperDrop{0%{opacity:0;transform:translateY(-26px) rotate(-.7deg) scale(1.012)}
   55%{opacity:1}100%{opacity:1;transform:translateY(0) rotate(0) scale(1)}}
 .headin{animation:ktFadeUp .38s ease-out backwards}
-@keyframes ktFadeUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
 .footin{animation:ktFadeUp .38s ease-out .84s backwards}
+@keyframes ktFadeUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.drop,.headin,.footin,.peek{animation:none!important}}
 
-@media(prefers-reduced-motion:reduce){
-  .drop,.pickput,.putdown,.pickup,.headin,.footin,.back.peek{animation:none!important}
-  .circ path{animation:none!important;stroke-dashoffset:0!important;opacity:1!important}
-}
-
-/* ── 說明欄 ─────────────────────────────────────────────────── */
+/* ── 說明 ─────────────────────────────────────────────────── */
 .col{width:100%;max-width:940px;display:flex;flex-direction:column;gap:14px}
-.doc{border:1px solid #2c2a25;border-radius:10px;padding:16px 18px;background:#171614;
-  font-size:13px;line-height:1.85;color:#c9c3b6}
+.doc{border:1px solid #2c2a25;border-radius:10px;padding:16px 18px;background:#171614;font-size:13px;line-height:1.85;color:#c9c3b6}
 .doc h3{margin:0 0 10px;font-size:13.5px;color:#EDE7DA;letter-spacing:.06em}
-.doc h4{margin:16px 0 6px;font-size:12.5px;color:#d8d2c5;letter-spacing:.05em}
+.doc h4{margin:15px 0 6px;font-size:12.5px;color:#d8d2c5;letter-spacing:.05em}
 .doc code{background:#232019;padding:1px 5px;border-radius:3px;font-size:11.5px;color:var(--gold)}
 .doc table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
 .doc th,.doc td{text-align:left;padding:6px 8px;border-bottom:1px solid #2a2823;vertical-align:top}
 .doc th{color:#8d887c;font-weight:500;font-size:11px;letter-spacing:.06em}
-.doc .bad{color:#D98A7A}
-.doc .good{color:#9DBE8E}
+.doc .bad{color:#D98A7A}.doc .good{color:#9DBE8E}
 </style>
 </head>
 <body>
 
 <div class="rig">
-  <span class="lbl">轉場</span>
-  <button onclick="replay()">▶ 重播進場</button>
-  <button onclick="demoPickPut()">▶ 拿起 → 端詳 → 放下</button>
+  <span class="lbl">動畫</span>
+  <button onclick="replay()">▶ 重播進場（三張紙落下）</button>
   <span class="lbl" style="margin-left:10px">狀態</span>
   <button onclick="reset()">清空</button>
-  <button onclick="preset()">示範已選</button>
-  <span class="lbl" style="margin-left:10px">版面</span>
-  <button id="fbtn" class="on" onclick="toggleFocus()">聚焦模式：開</button>
+  <button onclick="preset()">示範已選（含矛盾旁註）</button>
+  <span class="lbl" style="margin-left:10px">主要移動排版</span>
+  <button id="mvbtn" onclick="toggleMove()">B · 換行（推薦）</button>
 </div>
 
 <div class="phone">
-  <div class="screen focus" id="screen">
+  <div class="screen" id="screen">
 
     <div class="head" id="head">
-      <button class="bk" aria-label="返回">‹</button>
-      <span class="step">06 / 08</span>
+      <button class="bk">‹</button><button class="xx">✕</button>
+      <div class="crumb">日本 · 關西</div>
       <h1>這一趟想怎麼玩</h1>
       <p class="sub">三件事就好，之後都還能改</p>
     </div>
@@ -271,91 +238,106 @@ body{margin:0;background:var(--bg);color:#E8E2D6;
       <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span><span class="t-light"></span><span class="t-edge"></span></div>
       <div class="keyline"></div><div class="seal">KELVIN TRIP</div>
       <h2>和誰同行</h2>
-      <p class="note">上面選一個，下面可以圈不只一個</p>
 
-      <!-- 🔧 優化①：上區單選（幾個人）／下區複選（還有誰）——語意不同就要先在視覺上分開 -->
-      <div class="zone">
-        <div class="zh"><b>幾個人</b><i>選一個</i></div>
-        <div class="opts" data-group="party">
-          <button class="opt" data-v="solo"><span class="t">自己一個人</span><span class="d">想去哪就去哪</span></button>
-          <button class="opt" data-v="couple"><span class="t">兩個人</span><span class="d">走走停停的節奏</span></button>
-          <button class="opt" data-v="group" style="grid-column:1/-1"><span class="t">一群人</span><span class="d">三個以上，要好聚好散</span></button>
-        </div>
+      <!-- 上區＝**一句填空**。句子只有一個空格 → 使用者一眼就知道只能填一個，
+           不必先試一次才知道行為。六個詞不需要副標（「兩個人」要解釋什麼？）。 -->
+      <div class="fill" data-group="party">
+        <span class="lead">這一趟是</span>
+        <!-- 兩行三欄對齊：六個詞等寬排列，眼睛一次掃完，不會有「同學」孤零零掉到第二行 -->
+        <span class="blank">
+          <button class="word" data-v="solo">獨旅</button>
+          <button class="word" data-v="couple">兩個人</button>
+          <button class="word" data-v="friends">一群朋友</button>
+          <button class="word" data-v="family">家人</button>
+          <button class="word" data-v="work">同事</button>
+          <button class="word" data-v="class">同學</button>
+        </span>
       </div>
 
-      <div class="zone" id="zwho">
-        <div class="zh"><b>還有誰一起</b><i>可複選</i></div>
-        <span class="naword">一個人的話，這一區就跳過了</span>
-        <div class="opts" data-multi="1" data-group="who">
-          <button class="opt" data-v="kids"><span class="t">帶著孩子</span><span class="d">要有休息與廁所</span></button>
-          <button class="opt" data-v="elder"><span class="t">長輩同行</span><span class="d">走得慢、要坐著吃</span></button>
-        </div>
-
-        <div class="foldwrap">
-          <!-- 🔧 優化③：有數量才有點開的理由 -->
-          <button class="foldtab" id="tab" onclick="toggleFold()">
-            <span class="chev">▼</span><span>還有 4 種</span>
-            <span class="carry" id="carry"></span>
-          </button>
-          <div class="back" id="back">
-            <div class="opts" data-multi="1" data-group="who">
-              <button class="opt" data-v="pet"><span class="t">帶著寵物</span><span class="d">要能一起進去的地方</span></button>
-              <button class="opt" data-v="wheel"><span class="t">推車或輪椅</span><span class="d">要挑有電梯、有平路的</span></button>
-              <button class="opt" data-v="work"><span class="t">同事</span><span class="d">白天可能要工作</span></button>
-              <button class="opt" data-v="class"><span class="t">同學</span><span class="d">預算要抓緊一點</span></button>
-            </div>
+      <!-- 下區＝**打勾清單**（圈 vs 勾＝紙上兩種真實存在的不同動作）。
+           ⚠️ 顯示條件是**進度**不是**條件**：選了上區任一項才浮出。
+              刻意不做「獨旅／兩個人就隱藏」——一個人帶狗是真的、「我陪我媽去」是兩個人＋長輩同行，
+              那正是台灣孝親旅遊最典型的組合。**擋掉合法組合的代價，遠大於允許奇怪組合。** -->
+      <div class="reveal" id="reveal">
+        <div>
+          <div class="rule"></div>
+          <div id="zwho" class="checks" data-group="who">
+            <button class="chk" data-v="kids"><i class="box"></i><span class="t">帶著孩子</span><span class="d">要有休息與廁所</span></button>
+            <button class="chk" data-v="elder"><i class="box"></i><span class="t">長輩同行</span><span class="d">走得慢、要坐著吃</span></button>
+            <button class="chk" data-v="pet"><i class="box"></i><span class="t">帶著寵物</span><span class="d">要能一起進去的地方</span></button>
+            <button class="chk" data-v="wheel"><i class="box"></i><span class="t">推車或輪椅</span><span class="d">要挑有電梯、有平路的</span></button>
           </div>
         </div>
       </div>
-
-      <div class="hand" id="h1"></div>
+      <div class="hand"><span id="h1"></span></div>
     </div>
 
-    <!-- ═══ 紙二：步調（唯一硬約束 prompt 的一張，視覺上放大一階）═══ -->
+    <!-- ═══ 紙二：密度（步調 ＋ 怎麼移動）═══
+         這兩件事是同一個維度的兩面：自駕的「一天 5 個地方」和大眾運輸的「一天 5 個地方」
+         難度差一倍。它們一起決定行程密度，而且**兩者都硬約束 prompt**。 -->
     <div class="sheet" id="s2">
       <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span><span class="t-light"></span><span class="t-edge"></span></div>
       <div class="keyline"></div><div class="seal">KELVIN TRIP</div>
       <h2>一天想走多少</h2>
       <p class="note">副標的數字會直接變成行程的密度</p>
       <div class="opts" data-group="pace">
-        <button class="opt" data-v="easy"><span class="t">悠閒</span><span class="d">一天 2–3 個地方<br>不趕路，中間坐得下來</span></button>
-        <button class="opt" data-v="normal"><span class="t">標準</span><span class="d">一天 4–5 個地方<br>走走看看，該去的都去</span></button>
-        <button class="opt" data-v="packed"><span class="t">緊湊</span><span class="d">一天 6 個以上<br>想去的都排進去</span>
-          <span class="margin-note" id="mn-packed"></span></button>
+        <button class="opt" data-v="relaxed"><span class="t">悠閒</span><span class="d">一天 2–3 個地方<br>不趕路，中間坐得下來</span></button>
+        <button class="opt" data-v="standard"><span class="t">標準</span><span class="d">一天 4–5 個地方<br>走走看看，該去的都去</span></button>
+        <button class="opt" data-v="packed"><span class="t">緊湊</span><span class="d">一天 6 個以上<br>想去的都排進去</span><span class="mn" id="mn-packed"></span></button>
         <button class="opt" data-v="deep"><span class="t">深度</span><span class="d">一天 1–2 個地方<br>每個待上半天，看得透</span></button>
       </div>
-      <div class="hand" id="h2"></div>
+
+      <div class="rule"></div>
+
+      <!-- A＝同行均分／B＝換行三欄（切換 .move-wrap 上的 class） -->
+      <div class="move-wrap wrap-b" id="movewrap">
+        <span class="lab">主要移動</span>
+        <div class="row3" data-group="move">
+          <button class="opt" data-v="public"><span class="t">大眾運輸</span></button>
+          <button class="opt" data-v="car"><span class="t">自己開車</span></button>
+          <button class="opt" data-v="charter"><span class="t">包車接送</span></button>
+        </div>
+      </div>
+      <div class="hand"><span id="h2"></span></div>
     </div>
 
-    <!-- ═══ 紙三：預算（帶錨點）═══ -->
+    <!-- ═══ 紙三：預算 ═══ -->
     <div class="sheet" id="s3">
       <div class="tex"><span class="t-grain"></span><span class="t-age"></span><span class="t-crease"></span><span class="t-light"></span><span class="t-edge"></span></div>
       <div class="keyline"></div><div class="seal">KELVIN TRIP</div>
       <h2>大概想花多少</h2>
-      <!-- ⚠️「一天的旅費」在常識裡是含住宿的——範圍必須講在最前面，而且副標裡不能再出現住宿等級。 -->
-      <p class="note">吃、玩、車資 —— <b>不含機票和住宿</b>，那兩樣你自己訂</p>
+      <p class="note">吃、玩、車資 —— <b style="color:rgba(42,39,35,.72)">不含機票和住宿</b>，那兩樣你自己訂</p>
       <div class="opts one" data-group="budget">
-        <button class="opt" data-v="lean"><span class="t">省著花</span><span class="d">小吃與便利商店 · 大眾運輸 · 挑免費的景點</span>
-          <span class="anchor">約 ¥4,000–8,000 ／人／天 · 粗估</span></button>
-        <button class="opt" data-v="mid"><span class="t">剛剛好</span><span class="d">好好吃一餐 · 累了就搭車 · 該買的門票就買</span>
-          <span class="anchor">約 ¥8,000–16,000 ／人／天 · 粗估</span>
-          <span class="margin-note" id="mn-mid"></span></button>
-        <button class="opt" data-v="rich"><span class="t">不將就</span><span class="d">想訂的餐廳就訂 · 想搭就搭 · 體驗優先</span>
+        <button class="opt" data-v="economy"><span class="t">省著花</span>
+          <span class="d">小吃與便利商店 · 交通挑便宜的 · 挑免費的景點</span>
+          <span class="anchor">約 ¥4,000–8,000 ／人／天 · 粗估</span><span class="mn" id="mn-eco"></span></button>
+        <button class="opt" data-v="standard"><span class="t">剛剛好</span>
+          <span class="d">好好吃一餐 · 該搭車就搭車 · 該買的門票就買</span>
+          <span class="anchor">約 ¥8,000–16,000 ／人／天 · 粗估</span></button>
+        <button class="opt" data-v="luxury"><span class="t">不將就</span>
+          <span class="d">想訂的餐廳就訂 · 怎麼順就怎麼走 · 體驗優先</span>
           <span class="anchor">¥20,000 起 ／人／天 · 粗估</span></button>
       </div>
-      <div class="cur">
-        <span>以</span><button onclick="alert('（mockup）點這裡換幣別')">日圓 JPY</button><span>計</span>
-        <span class="why">依目的地推斷 · 可改</span>
+
+      <!-- 自訂上限：**藏在三級之後**（選了才浮出）；placeholder ＝ 該級的上限，
+           對著空白框想數字很難，對著「16,000」調整很容易——這是錨點最大的價值。 -->
+      <div class="custom" id="custom">
+        <div class="crow">
+          <span>或者，我最多想花</span>
+          <input id="cap" inputmode="numeric" placeholder="16,000">
+          <span class="unit">／人／天</span>
+        </div>
+        <div class="ctail">超過的地方我會標出來，不會直接砍掉</div>
       </div>
-      <div class="hand" id="h3"></div>
+      <div class="hand"><span id="h3"></span></div>
     </div>
 
-    <div class="foot" id="foot">
-      <div class="grad"></div>
-      <button class="tellback" id="tellback" onclick="acceptDefault()"></button>
-      <button class="ticket"><span class="perf"></span>下 一 步</button>
-    </div>
+  </div>
 
+  <div class="foot" id="foot">
+    <div class="grad"></div>
+    <button class="tellback" id="tellback" onclick="acceptDefault()"></button>
+    <button class="ticket"><span class="perf"></span>下 一 步</button>
   </div>
 </div>
 
@@ -363,298 +345,302 @@ body{margin:0;background:var(--bg);color:#E8E2D6;
 <div class="col">
 
 <div class="doc">
-<h3>🎬 拿起 → 端詳 → 放下（按上面那顆按鈕看）</h3>
+<h3>v2 → v3 改了什麼</h3>
 <table>
-<tr><th>拍</th><th>時間</th><th>發生什麼</th><th>音效</th></tr>
-<tr><td>①拿起</td><td>0–180ms</td><td>上浮 6px、放大 1.028、微傾 −0.9°（手拿著不會完全平），<b>陰影同時變深變散</b>（離桌面遠了）</td><td class="good">紙被拿起 · 窸窣</td></tr>
-<tr><td>②端詳</td><td>180–426ms</td><td><b>停住不動。</b>這 246ms 的停頓才是儀式感的來源——少了它就只是一個縮小動畫</td><td>—（停頓要真的安靜）</td></tr>
-<tr><td>③放下</td><td>426–820ms</td><td>退到 0.968、透明度 .34、<b>陰影收緊變淺</b>（貼回桌面）、旋轉回正</td><td class="good">紙落桌面 · −3dB</td></tr>
+<tr><th></th><th>v2（有狀態機）</th><th>v3</th></tr>
+<tr><td>版面</td><td class="bad">聚焦模式：兩張紙變暗、鎖住</td><td class="good">三張紙全亮、全展開、隨時可填</td></tr>
+<tr><td>推進</td><td class="bad">單選填完自動推進（820ms 使用者被動等待）</td><td class="good">沒有推進。他自己往下捲</td></tr>
+<tr><td>動畫</td><td class="bad">拿起 → 端詳 → 放下（每次交棒都演一次）</td><td class="good">只有進場落紙一次</td></tr>
+<tr><td>收攏</td><td class="bad">填完的紙縮成一行（畫面變破碎）</td><td class="good">不收攏。墨跡留在紙上就是進度</td></tr>
+<tr><td>紙一</td><td class="bad">兩區長得一樣、行為不同（要試一次才知道）</td><td class="good"><b>填空句 ＋ 打勾清單</b>（見下）</td></tr>
+<tr><td>程式</td><td>約 500 行</td><td class="good">約 330 行</td></tr>
 </table>
-<p><b>scale 與陰影必須同時變。</b>只做 scale 會像「放大」，只做陰影會像「浮著但沒動」。<code>--sh-rest</code> → <code>--sh-hand</code> → <code>--sh-back</code> 三段是這個動畫的骨架。</p>
 
-<h4>兩個必須守住的節制</h4>
-<p><b>①動畫不擋操作。</b>三張紙連著填就是 2.5 秒的動畫。下一張紙在<b>第③拍一開始（426ms）就亮起來</b>，不等動畫結束；使用者中途點別張紙，動畫立刻被打斷。跟「快取不該有權力拖垮主流程」同一條——<b>動畫是說明手段，不是收費站</b>。</p>
-<p><b>②手動離開只播「放下」（短版 320ms）。</b>單選自動推進是<b>系統主動交棒</b>，需要三拍來說明；但使用者自己點了紙二，注意力已經走了——這時紙一還在眼前表演「拿起來端詳」是搶戲。</p>
-<p><b>複選的紙不自動推進</b>（「和誰同行」可以圈三個，系統無從知道他圈完了），所以紙一永遠走短版；紙二、紙三是單選，走完整三拍。</p>
+<h4>🔴 我論證錯的那一條，記下來</h4>
+<p>「拿起來端詳」我當時說是「寫完拿起來看一眼」。<b>但使用者填完一張紙的心情不是端詳，是「下一個」。</b>
+所以那 246ms 我稱為「儀式感來源」的停頓，對他而言就是卡頓。<br>
+——我為一個想做的動畫找了一個好聽的理由。這是設計上最常見的自我欺騙，判準應該是
+<b>「這個停頓服務的是誰的心理狀態？」</b>而不是「這個隱喻聽起來成不成立」。</p>
 
-<h4>⚠️ 實作注意</h4>
-<p><code>box-shadow</code> 不要放進 keyframes——它不上 GPU，三張紙同時動會掉幀。改成一個 <code>::after</code> 陰影層，動畫只動它的 <code>opacity</code>。<code>prefers-reduced-motion</code> 時三拍全部取消，直接切狀態。</p>
+<h4>情感改由兩件更便宜的事承擔</h4>
+<p><b>①儀式放在開場。</b>三張紙依序落下（220ms 間隔）＋三聲遞減的落紙聲。它是<b>一次性</b>的，不會在每次做決定時擋路。</p>
+<p><b>②情感的終點在票券鈕上方那一行。</b>從「沒圈選，使用標準的節奏安排」開始，隨每次圈選長出來，最後變成「兩個人 · 有長輩 · 悠閒的節奏 · 自己開車 · 剛剛好」。<br>
+它比三次拿起放下強，因為：<b>它累積</b>（每次操作讓它更完整，不是重播同一段）、<b>它在出口</b>（正要離開時讀到自己的選擇被念回來）、<b>零動畫成本</b>。</p>
+<p><b>堆疊感的真正來源是墨跡，不是狀態機。</b>紙上的圈越來越多，那就是進度——使用者做的每一件事都留在畫面上，不會被收走。</p>
 </div>
 
 <div class="doc">
-<h3>五個優化 · 落地情形</h3>
+<h3>✍️ 紙一：兩區改用兩種不同的紙上動作</h3>
+<p class="bad">病灶不是「缺標題」，是<b>兩區長得一模一樣、行為卻不同</b>——上面單選會擦掉前一個、下面複選不會。
+使用者在<b>動手之前</b>無從預測，所以每次勾選都要先想一下。加回標題只是治標。</p>
+
+<h4>上區＝一句填空（單選）</h4>
+<p>「這一趟是 ____ 去」。<b>句子只有一個空格 → 一眼就知道只能填一個</b>，不必試、不必想。這是紙筆世界最自然的單選語彙。<br>
+六個詞<b>不需要副標</b>（「兩個人」要解釋什麼？），排兩行就完。未選時是<b>淡墨＋底線</b>（＝這裡要填字），選了就變成墨色、底線消失（＝填好了）。</p>
+
+<h4>下區＝打勾清單（複選）</h4>
+<p>□ 帶著孩子　□ 長輩同行　□ 帶著寵物　□ 推車或輪椅</p>
+<p><b>圈 vs 勾，是紙上兩種真實存在的不同動作</b>：圈＝從幾個裡挑一個、勾＝清單上打勾。
+這不是破壞「選擇＝手繪圈」的憲章，是<b>把它分化</b>——就像紙分成證件紙／書寫紙／票券卡紙，同一支筆有兩種筆法。
+換到的是：<b>兩區長得不一樣，行為就變得可預測。</b></p>
+
+<h4>順帶修好的四件事</h4>
+<table>
+<tr><td>①</td><td><b>「同事」「同學」回到上區。</b>它們是<b>關係</b>不是附加需求——「兩個人＋同事」其實就是「和一個同事出差」。放錯區，語意就歪，使用者當然要想。</td></tr>
+<tr><td>②</td><td><b>摺頁整個拿掉。</b>下區只剩四項，全部攤開。少一層互動、少一個要維護的 3D 動畫。</td></tr>
+<tr><td>③</td><td><b>兩行三欄對齊。</b>原本 flex-wrap 會讓「同學」孤零零掉到第二行；改 grid 之後六個詞等寬，眼睛一次掃完。</td></tr>
+<tr><td>④</td><td><b>紙一大幅變矮。</b>原本九個兩行制選項 → 現在六個純詞 ＋ 四個勾選項（而且勾選區一開始還藏著）。</td></tr>
+</table>
+
+<h4>🔴 漸進揭露的依據：<b>進度</b>，不是<b>條件</b></h4>
+<p>Kelvin 原本的想法是「選了獨旅／兩個人就不顯示勾選區」。<b>但那會擋掉最常見的組合</b>：</p>
+<table>
+<tr><td>兩個人 ＋ 長輩同行</td><td>「我陪我媽去」——<b>台灣孝親旅遊最典型的組合</b></td></tr>
+<tr><td>兩個人 ＋ 帶著孩子</td><td>一大一小</td></tr>
+<tr><td>兩個人 ＋ 帶著寵物</td><td>兩人一狗</td></tr>
+<tr><td>獨旅 ＋ 帶著寵物</td><td>一人一狗的公路旅行，真的有</td></tr>
+<tr><td>獨旅 ＋ 帶著孩子</td><td>單親帶小孩</td></tr>
+</table>
+<p>改成<b>「選了上區任一項，下區才浮出」</b>：一樣達到「初始畫面輕」的效果，但零判斷邏輯、不會誤擋，而且自然創造了節奏——回答完「誰去」，紙上才長出下一件事。<br>
+<b>擋掉合法組合的代價，遠大於允許奇怪組合。</b>順帶把「獨旅時整區淡掉」那段邏輯也刪了。</p>
+
+<h4>獨旅 ＋ 長輩同行：保留，用旁註不用隱藏</h4>
+<p>四項裡真正矛盾的<b>只有「長輩同行」一項</b>（長輩是完整的旅伴，有長輩就不是獨旅）。其餘三項在獨旅下全都成立：</p>
+<table>
+<tr><td>獨旅 ＋ 推車或輪椅</td><td class="good"><b>使用者自己可能就是輪椅使用者</b>——這是無障礙旅遊最核心的情境。因為選了獨旅就把它藏起來，不只是誤擋，是把一整群人排除在外。</td></tr>
+<tr><td>獨旅 ＋ 帶著寵物</td><td class="good">一人一狗的旅行，真的有</td></tr>
+<tr><td>獨旅 ＋ 帶著孩子</td><td class="good">單親帶小孩</td></tr>
+<tr><td>獨旅 ＋ 長輩同行</td><td class="bad">說不通 → <b>旁註提醒，不擋</b>：「長輩同行的話，那就不只你一個人了」</td></tr>
+</table>
+<p>為<b>一項</b>加隱藏邏輯，代價是把另外三項也一起賭上；而且「剛剛有的東西怎麼不見了」比矛盾本身更讓人困惑。<br>
+⚠️ 旁註放在<b>右下角那行既有的回饋</b>，不貼在選項底下——勾選區是兩欄 grid、gap 只有 9px，貼底下會蓋到下一列。<b>佔不到位置的旁註不如不做。</b></p>
+
+<h4>「兩個人」不改成「情侶」</h4>
+<p>①「情侶」排除夫妻、母女、兄弟、兩個朋友——這些都是兩人行；②<b>「兩個人」是人數，對 prompt 更有用</b>（行程密度看人數、餐廳訂位看人數），關係由下區的勾選補足；③句子一樣通順——<b>填空句的價值在於它是一句話，不在於分類學要純粹</b>。</p>
+</div>
+
+<div class="doc">
+<h3>🚗 當地交通放在紙二（不另開 ⑥.5）</h3>
+<p><b>「怎麼移動」和「步調」是同一個維度的兩面。</b>自駕的「一天 5 個地方」和大眾運輸的「一天 5 個地方」難度差一倍——它們一起決定行程密度，而且<b>兩者都硬約束 prompt</b>。所以它不該自成一區，它就是紙二的下半。</p>
+<p>橫排三個小選項、<b>不用兩行制副標</b>（這三個詞本身就清楚），紙只長一點點。</p>
+<p><b>順序也對了</b>：交通在預算<b>上面</b>，所以選「自己開車」時，底下的錨點可以立刻加一行「油錢與停車另計」（試試看）。拆成兩頁反而做不到這件事。</p>
+<h4>為什麼不拆 ⑥.5</h4>
+<p>你覺得 ⑥ 不順手，病灶是狀態機不是三張紙。移除機制後三張紙全展開、捲一次就看完。拆頁是在治一個不存在的病，代價卻很實在：<b>多一次撕票、多一次轉場、多一次等待</b>，而一頁只有兩張紙撐不起一整頁的儀式，反而空。</p>
+<h4>「第一天與最後一天」的時段 → 併進 ⑤</h4>
+<p>批C 原本把它跟交通綁同頁。我主張拆開：<b>時段是時間軸的一部分</b>，⑤ 已經有月份／天數／確切日期三層，時段就是再下一級精度；而且它預設「還沒訂」＝零操作可過。<br>
+這樣總步驟數不變，每一頁的語意反而更純：<b>⑤＝時間、⑥＝人與風格、⑦＝講究、⑧＝確認</b>。</p>
+</div>
+
+<div class="doc">
+<h3>💰 自訂上限（四個條件都照你定的做）</h3>
 <table>
 <tr><th>#</th><th>做法</th></tr>
-<tr><td>①</td><td><b>紙一分兩區</b>：上區「幾個人」單選（自己一個人／兩個人／一群人）、下區「還有誰一起」複選，中間一條虛線。<br>選了「自己一個人」→ <b>整個下區退場</b>（淡到 .26 ＋ 一行手寫「一個人的話，這一區就跳過了」），而不是逐項擦除。不適用的是一個「區」，一句話就解釋完了。</td></tr>
-<tr><td>②</td><td><b>步調紙放大一階</b>：選項內距 +2px、副標 10→10.5px、間距 10→13px。差異小到說不出來，但排序感受得到。</td></tr>
-<tr><td>③</td><td><b>摺邊寫「還有 4 種」</b>＋第一次進頁時摺頁自己翻起 12° 再收回（<code>ktPeek</code>，延遲 900ms、歷時 1.1s）。內容改成 寵物／推車或輪椅／同事／同學——<b>「推車或輪椅」直接影響無障礙需求</b>，比「三代同堂」有用得多，而且它是行為描述不是身分標籤。</td></tr>
-<tr><td>④</td><td><b>預算三級各帶推估區間</b>（用重層已有的目的地＋幣別）。手寫斜體、墨色較淡——它是後來補上的旁註，不是印刷的正文。</td></tr>
-<tr><td>⑤</td><td><b>票券鈕上那行字可點</b>：「沒圈選，<u>使用標準的節奏安排</u>」→ 點一下就在「標準」上畫一個<b>虛線圈</b>並捲過去。虛線＝我幫你決定的，不是你決定的。使用者<b>看見了一個動作</b>，不安就消失了。</td></tr>
+<tr><td>1</td><td><b>藏在三級之後</b>——選了某一級才浮出來。預設路徑零負擔。</td></tr>
+<tr><td>2</td><td><b>語意是「上限」不是「目標」</b>。文案寫「我<b>最多</b>想花」。進 prompt 是 <code>budgetCap</code>，不是 <code>budgetTarget</code>——寫成目標，LLM 會為了湊到那個數字硬塞景點。</td></tr>
+<tr><td>3</td><td><b>placeholder ＝ 該級的上限</b>（選「剛剛好」就帶 16,000）。這是錨點最大的價值：對著空白框想數字很難，對著一個數字調整很容易。<b>④和⑤其實是同一件事的兩半。</b></td></tr>
+<tr><td>4</td><td><b>允許略超、把超出的標出來</b>。文案先講清楚：「超過的地方我會標出來，不會直接砍掉」——旅行不是預算執行，一家超出 500 的餐廳不該被自動排除，但他該看得見。</td></tr>
 </table>
+<p>⚠️ 這是<b>唯一</b>會進 prompt 的金額（使用者親手輸入＝真實約束）。我們自己估的三級錨點永遠不進 prompt。</p>
 </div>
 
 <div class="doc">
-<h3>✨加分③ · 矛盾用旁註，不用對話框</h3>
-<p>圈了長輩／推車輪椅 ＋ 緊湊 → <b>不彈警告</b>，而是在「緊湊」<b>那個選項底下</b>浮出一行手寫小字。旁註要旁得到東西才叫旁註，貼在紙的角落就只是一句評論。</p>
-<p>兩個實作要點：<b>絕對定位、不佔版面高度</b>（它出現時不能把下面的東西推走——這頁的紙已經夠滿了）；<b>提醒但不擋</b>——使用者堅持要緊湊就讓他緊湊，這是入口頁那套三態的同一個原則。</p>
-<p>目前觸發的組合：長輩／推車輪椅 ＋ 緊湊、長輩 ＋ 省著花、帶孩子 ＋ 緊湊。</p>
-</div>
-
-<div class="doc">
-<h3>💰 預算這張紙的三條規矩（2026-08-09 定案）</h3>
-<table>
-<tr><th>#</th><th>規矩</th><th>為什麼</th></tr>
-<tr><td>1</td><td class="good"><b>不含機票與住宿。</b>只涵蓋吃、玩、車資。</td><td>機票住宿是<b>離散的大額決策</b>，波動極大（飯店淡旺季差三倍、機票差五倍），而且使用者通常已經訂好。拿掉它們，這個數字才從「不可能估準」變成「可以估個大概」。<br>⚠️ 副標裡<b>不能再出現住宿等級</b>（原本的「商務旅館」「青旅」已移除），否則範圍自相矛盾。</td></tr>
-<tr><td>2</td><td class="bad"><b>金額永遠不進 prompt。</b>進 prompt 的是 <code>lean/mid/rich</code> 這個等級。</td><td>不是因為數字不準，是因為<b>它是冗餘的</b>——「好好吃一餐、累了就搭車」這個行為描述已經完整表達了約束。同一個約束給兩次、形式還不同，只會製造衝突；更糟的是 LLM 可能開始<b>湊數</b>（為了湊到 ¥12,000 硬塞一個景點），那是數字驅動的行程，不是體驗驅動的。<br>例外：<b>使用者自己輸入的金額</b>該進 prompt——那是真實約束，不是猜測。（未來）</td></tr>
-<tr><td>3</td><td><b>選項描述行為，不描述等級。</b></td><td>「奢華」每個人的定義不同（希爾頓 vs 一晚 4500）；「想訂的餐廳就訂、想搭就搭」是一個<b>具體的決策規則</b>——LLM 照著做得出來，使用者也知道自己選了什麼。這是這一頁「行為語言 &gt; 身分標籤」在預算上的同一個應用。</td></tr>
-</table>
-<h4>⚠️ 留給 ⑨ 的問題</h4>
-<p>「機加酒使用者自己訂完再匯入」意味著<b>生成當下不知道他住哪</b>，而住宿位置決定每天的動線起點——行程只能給到地區級。<b>匯入住宿必須觸發重排</b>；如果匯入只是把文件存成附件，那「不含機加酒」就從一個聰明的簡化，變成把不準確往後推的決定。</p>
-</div>
-
-<div class="doc">
-<h3>資料面：<code>DestinationDeep</code> 新增 <code>budget</code></h3>
-<pre style="margin:6px 0;padding:10px 12px;background:#232019;border-radius:6px;overflow-x:auto;font-size:11.5px;color:#c9c3b6"><code style="background:none;padding:0;color:inherit">budget?: {
-  lean: string;   // 「約 ¥4,000–8,000」
-  mid:  string;
-  rich: string;   // 「¥20,000 起」
-};              // 一律**不含機票住宿**、幣別跟隨 intel.currency</code></pre>
-<p>加在<b>現有的重層呼叫</b>裡（不是第三顆呼叫）——重層在 step1 驗證通過那一刻就開始背景跑，使用者填 step2–5 時早就回來了。<b>零額外呼叫、零額外快取表</b>，只是輸出多約 60 token。</p>
-<p>prompt 要明講三件事：①<b>排除機票與住宿</b>；②<b>區間開寬</b>（窄區間是假的精確度）；③措辭保留「約」「起」。</p>
-<p>快取：<code>kt_dest_deep_v3</code> → <b>v4</b>；伺服器端 <code>deep:</code> 舊資料由 Kelvin 清空重生（目前僅 3 筆，成本可忽略）。前端仍要對<b>缺 <code>budget</code> 退位</b>（不顯示錨點那一行）——「呼叫端一律要有退位」。</p>
-</div>
-
-<div class="doc">
-<h3>音效清單（累計）</h3>
-<table>
-<tr><th>檔名</th><th>用在哪</th><th>找素材的關鍵</th><th>長度</th></tr>
-<tr><td><code>paperLand</code></td><td>進場落紙 ×3、放下（第③拍）</td><td>紙落在木桌上的<b>悶聲</b>，低頻、無回音。尾巴要乾淨——會連放三次，有殘響會疊成糊的</td><td>120–200ms</td></tr>
-<tr><td><code>paperLift</code></td><td>拿起（第①拍）</td><td>紙從桌面被抓起的<b>窸窣</b>，比 land 亮、比 unfold 短</td><td>150–250ms</td></tr>
-<tr><td><code>inkCircle</code></td><td>圈選（全表單共用）</td><td>筆尖劃一圈的中頻沙沙。不要鉛筆（太刮）、不要簽字筆（太濕）</td><td>300–450ms</td></tr>
-<tr><td><code>eraser</code></td><td>取消（全表單共用）</td><td>橡皮擦來回，<b>節奏要有兩三下</b>（對應 ktRub 的來回）</td><td>400–500ms</td></tr>
-</table>
-<p><code>paperUnfold</code>／<code>paperFold</code>／<code>pageTear</code> 沿用現有。<b><code>inkCircle</code> 與 <code>eraser</code> 不只這一頁</b>——縮圈頁、什麼時候頁都在用同一套圈選／擦除語彙，目前是靜音的；補上這兩個，整個表單的手感會一次到位。</p>
+<h3>還沒定、要你看畫面後決定的兩件事</h3>
+<p><b>①紙的高度。</b>步調那張的兩行制副標讓紙變高，三張紙目前要捲約 1.6 個螢幕。第二行（「不趕路，中間坐得下來」）確實幫助決策，但如果你覺得太長，最先該砍的是它。</p>
+<p><b>②「怎麼移動」要不要副標。</b>目前是純三個詞。若覺得太薄，可以加極短的一行（大眾運輸「班次密、走路多」／自己開車「彈性大、要停車」／包車接送「最省力、最貴」）——但那會讓它從「一行」變成「一區」，紙二會明顯變高。</p>
 </div>
 
 </div>
 
 <script>
-/* ══ mockup 互動（非實作稿）══════════════════════════════════ */
-const seedOf = s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%1000};
-const CIRC = seed=>{const r=((seed*9301+49297)%233280)/233280;
+const seedOf=s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h%1000};
+const CIRC=seed=>{const r=((seed*9301+49297)%233280)/233280;
   return `M${(30+r*4).toFixed(1)} 3 C 51 ${(1+r*2).toFixed(1)}, 61 8, 60 17 C 59 27, 46 31, 31 30 C 14 29, ${(3+r*2).toFixed(1)} 25, 4 16 C 5 7, 17 2, ${(35+r*3).toFixed(1)} 4`};
-const optOf = v=>document.querySelector(`.opt[data-v="${v}"]`);
+const optOf=v=>document.querySelector(`.opt[data-v="${v}"]`);
 
+/** 墨圈**只圈標題那個詞**（不圈整張選項）——圈住兩行副標會讓一大團墨壓在紙上，
+ *  而使用者選的是那個詞，不是那段說明。 */
+const titleOf=el=>el?.querySelector('.t')||el;
 function drawCircle(el,cls){
-  if(!el||el.querySelector('.circ')) return;
-  const s=seedOf(el.dataset.v), r=((s*9301+49297)%233280)/233280;
+  const t=titleOf(el);
+  if(!t||t.querySelector('.circ'))return;
+  const s=seedOf(el.dataset.v),r=((s*9301+49297)%233280)/233280;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.setAttribute('viewBox','0 0 64 34'); svg.setAttribute('class','circ'+(cls?' '+cls:''));
+  svg.setAttribute('viewBox','0 0 64 34');svg.setAttribute('class','circ tight'+(cls?' '+cls:''));
   svg.style.transform=`rotate(${(r*6-3).toFixed(1)}deg)`;
   svg.innerHTML=`<path d="${CIRC(s)}" pathLength="100"/>`;
-  el.appendChild(svg); el.classList.add('picked');
+  t.appendChild(svg);
 }
 function erase(el){
-  if(!el) return; el.classList.remove('picked');
-  const c=el.querySelector('.circ'); if(!c) return;
+  const t=titleOf(el);if(!t)return;
+  const c=t.querySelector('.circ');if(!c)return;
   c.classList.add('fading');
-  const e=document.createElement('span'); e.className='eraser'; el.appendChild(e);
+  const e=document.createElement('span');e.className='eraser';t.appendChild(e);
   setTimeout(()=>{c.remove();e.remove()},440);
 }
 
-const sel={party:null, who:new Set(), pace:null, budget:null, paceAuto:false};
+const sel={party:null,who:new Set(),pace:null,paceAuto:false,move:null,budget:null};
 
-/* ── 點擊 ─────────────────────────────────────────────────── */
-document.querySelectorAll('.opt').forEach(el=>{
+// ── 上區：填空（單選；沒有墨圈——空格填滿本身就是「已選」）──
+let prevParty=null, autoCouple=false;
+document.querySelectorAll('.fill .word').forEach(el=>{
   el.addEventListener('click',()=>{
-    const box=el.closest('.opts'), g=box.dataset.group, multi=!!box.dataset.multi;
-    if(multi){
-      if(sel.who.has(el.dataset.v)){ sel.who.delete(el.dataset.v); erase(el); }
-      else sel.who.add(el.dataset.v);
-      if(!el.querySelector('.circ') && sel.who.has(el.dataset.v)) drawCircle(el);
-    }else{
-      const prev=document.querySelector(`[data-group="${g}"] .opt.picked`);
-      if(prev===el){ sel[g]=null; if(g==='pace') sel.paceAuto=false; erase(el); refresh(); return; }
-      if(prev) erase(prev);
-      sel[g]=el.dataset.v; if(g==='pace') sel.paceAuto=false;
-      drawCircle(el);
+    const v=el.dataset.v;
+    autoCouple=false;
+    if(sel.party===v){ sel.party=null; prevParty=null; el.classList.remove('on'); refresh(); return; }
+    document.querySelectorAll('.fill .word').forEach(w=>w.classList.remove('on'));
+    sel.party=v; el.classList.add('on');
+    refresh();
+    // 下區剛長出來時捲一下，讓他看見紙變長了（只在第一次揭露時）
+    if(!prevParty) setTimeout(()=>document.getElementById('reveal').scrollIntoView({behavior:'smooth',block:'nearest'}),260);
+    prevParty=v;
+  });
+});
+// ── 下區：打勾（複選）──
+document.querySelectorAll('.chk').forEach(el=>{
+  el.addEventListener('click',()=>{
+    const v=el.dataset.v;
+    autoCouple=false;
+    if(sel.who.has(v)){ sel.who.delete(v); el.classList.remove('on'); }
+    else {
+      sel.who.add(v); el.classList.add('on');
+      // 🤝 承諾＝交付：文案說「幫你改成兩個人」，就要**真的改**。
+      //    長輩是完整的旅伴，有長輩就不是獨旅。改完他看得見填空句的字變了，不同意就自己點回去。
+      //    ⚠️ 只在**勾長輩的當下**改一次——之後他愛怎麼選都不再干預（一次性的協助，不是持續的規則）。
+      if(v==='elder'&&sel.party==='solo'){
+        sel.party='couple';autoCouple=true;
+        document.querySelectorAll('.fill .word').forEach(w=>w.classList.toggle('on',w.dataset.v==='couple'));
+      }
     }
     refresh();
-    /* 聚焦：**單選**填完才自動推進——複選沒有「我填完了」的訊號，猜錯的代價比省下的多。
-       紙一雖然有單選的上區，但整張紙還有下區要填，所以也不推進。 */
-    if(FOCUS && !multi && (g==='pace'||g==='budget')) advance();
   });
 });
 
-/* ── 「自己一個人」→ 整個下區不適用（不是逐項互斥）───────── */
-function applyParty(){
-  const solo = sel.party==='solo';
-  document.getElementById('zwho').classList.toggle('na', solo);
-  if(solo && sel.who.size){ [...sel.who].forEach(v=>{ sel.who.delete(v); erase(optOf(v)); }); }
-}
+document.querySelectorAll('.opt').forEach(el=>{
+  el.addEventListener('click',()=>{
+    const box=el.closest('[data-group]'),g=box.dataset.group,multi=!!box.dataset.multi,v=el.dataset.v;
+    if(multi){
+      if(sel.who.has(v)){sel.who.delete(v);erase(el)}
+      else{sel.who.add(v);drawCircle(el)}
+    }else{
+      const prev=box.querySelector('.opt .circ');
+      if(prev){const p=prev.closest('.opt');
+        if(p===el){sel[g]=null;if(g==='pace')sel.paceAuto=false;erase(el);refresh();return}
+        erase(p);}
+      sel[g]=v;if(g==='pace')sel.paceAuto=false;drawCircle(el);
+      // 「自己一個人」＝整個下半區不適用（不是逐項互斥）
+      if(v==='solo'&&sel.who.size){[...sel.who].forEach(k=>{sel.who.delete(k);erase(optOf(k))})}
+    }
+    refresh();
+  });
+});
 
-/* ── 即時回饋 ─────────────────────────────────────────────── */
 function refresh(){
-  applyParty();
   const w=sel.who;
+  // 漸進揭露：回答完「誰去」，紙上才長出「還有誰有特別需要」
+  document.getElementById('reveal').classList.toggle('on', !!sel.party);
 
   let f1='';
-  if(sel.party==='solo') f1='行程會排得鬆一點，方便隨時改';
+  // 剛幫他改過就說出來（陳述我做了什麼，不是指導他該怎樣）
+  if(autoCouple) f1='有長輩同行，幫你改成兩個人了';
   else if(w.has('elder')&&w.has('kids')) f1='步調會放慢，清單上會多幾樣';
   else if(w.has('wheel')) f1='只挑有電梯、走得到的地方';
   else if(w.has('elder')) f1='步調會幫你放慢一些';
   else if(w.has('kids')) f1='會避開走太多路的行程';
   else if(w.has('pet')) f1='只挑能帶牠一起進去的地方';
-  else if(w.has('work')) f1='白天會留一段可以工作的時間';
+  else if(sel.party==='work') f1='白天會留一段可以工作的時間';
+  else if(sel.party==='class') f1='會挑省一點、人多也好玩的地方';
   setHand('h1',f1);
-  setHand('h2', sel.pace==='deep' ? '一天只去 1–2 個地方' : '');
-  setHand('h3', '');
 
-  /* ✨加分③：矛盾貼在**那個選項**旁邊 */
-  const slow = w.has('elder')||w.has('wheel')||w.has('kids');
-  setNote('mn-packed', sel.pace==='packed' && slow
+  // 紙二：步調＋交通的合成回應
+  let f2='';
+  if(sel.move==='car'&&sel.pace==='packed') f2='自駕的話，六個以上還算跑得動';
+  else if(sel.move==='public'&&sel.pace==='packed') f2='搭車移動，六個以上會很趕';
+  else if(sel.move==='charter') f2='包車的話，遠一點的地方也排得進去';
+  else if(sel.pace==='deep') f2='一天只去 1–2 個地方';
+  setHand('h2',f2);
+
+  // 紙三：自駕的花費結構不同——這句只有在「交通在預算上面」時才做得到
+  setHand('h3', sel.move==='car' ? '自駕的話，油錢與停車另計' : '');
+
+  // 矛盾旁註（貼在那個選項底下）
+  const slow=w.has('elder')||w.has('wheel')||w.has('kids');
+  setNote('mn-packed', sel.pace==='packed'&&slow&&sel.move!=='car'&&sel.move!=='charter'
     ? (w.has('wheel')?'有推車或輪椅，這樣可能會太趕':w.has('elder')?'圈了長輩，這樣可能有點趕':'帶著孩子，這樣可能有點趕') : '');
-  setNote('mn-mid', sel.budget==='lean' && (w.has('elder')||w.has('wheel'))
+  setNote('mn-eco', sel.budget==='economy'&&(w.has('elder')||w.has('wheel'))
     ? '走不動的時候，車資這一項我不會省' : '');
 
-  /* 摺頁收起來時，摺邊要留一行「還有：寵物」——收起的東西不能無聲消失 */
-  const N={pet:'寵物',wheel:'推車輪椅',work:'同事',class:'同學'};
-  const hid=[...w].filter(v=>N[v]).map(v=>N[v]);
-  const carry=document.getElementById('carry');
-  const open=document.getElementById('back').classList.contains('open');
-  carry.textContent = hid.length?'還有：'+hid.join('、'):'';
-  carry.classList.toggle('show', !!hid.length && !open);
+  // 自訂上限：選了某一級才浮出；placeholder ＝ 該級的上限
+  const c=document.getElementById('custom');
+  c.classList.toggle('on',!!sel.budget);
+  const PH={economy:'8,000',standard:'16,000',luxury:'30,000'};
+  if(sel.budget) document.getElementById('cap').placeholder=PH[sel.budget];
 
   tellback();
-  paintFocus();
 }
-function setHand(id,t){const el=document.getElementById(id);if(t){el.textContent=t;el.classList.add('show')}else el.classList.remove('show')}
-function setNote(id,t){const el=document.getElementById(id);if(t){el.textContent=t;el.classList.add('show')}else el.classList.remove('show')}
+function setHand(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.toggle('show',!!t)}
+function setNote(id,t){const e=document.getElementById(id);e.textContent=t;e.classList.toggle('show',!!t)}
 
-/* ── 票券鈕上方那一行 ─────────────────────────────────────── */
-const LABEL={solo:'一個人',couple:'兩個人',group:'一群人',kids:'帶孩子',elder:'有長輩',
-  pet:'帶寵物',wheel:'有推車輪椅',work:'和同事',class:'和同學',
-  easy:'悠閒的節奏',normal:'標準的節奏',packed:'緊湊的節奏',deep:'深度的節奏',
-  lean:'省著花',mid:'剛剛好',rich:'不將就'};
+const LABEL={solo:'獨旅',couple:'兩個人',friends:'一群朋友',family:'家人',work:'和同事',class:'和同學',
+  kids:'帶孩子',elder:'有長輩',pet:'帶寵物',wheel:'有推車輪椅',
+  relaxed:'悠閒的節奏',standard:'標準的節奏',packed:'緊湊的節奏',deep:'深度的節奏',
+  public:'搭大眾運輸',car:'自己開車',charter:'包車'};
+const BLABEL={economy:'省著花',standard:'剛剛好',luxury:'不將就'};
 function tellback(){
   const el=document.getElementById('tellback');
-  const p=[]; if(sel.party) p.push(LABEL[sel.party]);
-  [...sel.who].forEach(v=>p.push(LABEL[v]));
-  if(sel.pace) p.push(LABEL[sel.pace]+(sel.paceAuto?'（我幫你選的）':''));
-  if(sel.budget) p.push(LABEL[sel.budget]);
-  if(!p.length){
-    el.innerHTML='沒圈選，<u>使用標準的節奏安排</u>'; el.classList.remove('filled'); return;
+  const p=[];
+  if(sel.party)p.push(LABEL[sel.party]);
+  [...sel.who].forEach(k=>p.push(LABEL[k]));
+  if(sel.pace)p.push(LABEL[sel.pace]+(sel.paceAuto?'（我幫你選的）':''));
+  if(sel.move)p.push(LABEL[sel.move]);
+  if(sel.budget)p.push(BLABEL[sel.budget]);
+  if(!sel.pace){
+    const head=p.length?p.join(' · ')+'，':'沒圈選，';
+    el.innerHTML=head+'<u>使用標準的節奏安排</u>';
+    el.classList.remove('filled');return;
   }
-  if(!sel.pace){ el.innerHTML=p.join(' · ')+'，<u>節奏用標準的</u>'; el.classList.remove('filled'); return; }
-  el.textContent=p.join(' · '); el.classList.add('filled');
+  el.innerHTML='<span class="grow">'+p.join(' · ')+'</span>';
+  el.classList.add('filled');
 }
-/* 🔧 優化⑤：接受預設＝一個**看得見的動作**（虛線圈），不是一片空白 */
 function acceptDefault(){
-  if(sel.pace) return;
-  sel.pace='normal'; sel.paceAuto=true;
-  drawCircle(optOf('normal'),'dash');
+  if(sel.pace)return;
+  sel.pace='standard';sel.paceAuto=true;
+  drawCircle(optOf('standard'),'dash');
   refresh();
   document.getElementById('s2').scrollIntoView({behavior:'smooth',block:'center'});
 }
-
-/* ── 摺頁 ─────────────────────────────────────────────────── */
-function toggleFold(){
-  const b=document.getElementById('back'), t=document.getElementById('tab');
-  b.classList.remove('peek');
-  b.classList.toggle('open'); t.classList.toggle('open', b.classList.contains('open'));
-  refresh();
+function toggleMove(){
+  const w=document.getElementById('movewrap'), b=w.classList.contains('wrap-b');
+  w.classList.toggle('wrap-b',!b); w.classList.toggle('wrap-a',b);
+  document.getElementById('mvbtn').textContent = b ? 'A · 同行均分' : 'B · 換行（推薦）';
 }
-
-/* ══ 聚焦模式：手風琴 ═══════════════════════════════════════ */
-let FOCUS=true, FIDX=0;
-const SHEETS=['s1','s2','s3'];
-const filled=i=> i===0 ? (!!sel.party||sel.who.size>0) : i===1 ? !!sel.pace : !!sel.budget;
-
-function toggleFocus(){
-  FOCUS=!FOCUS;
-  const b=document.getElementById('fbtn');
-  b.textContent='聚焦模式：'+(FOCUS?'開':'關'); b.classList.toggle('on',FOCUS);
-  document.getElementById('screen').classList.toggle('focus',FOCUS);
-  if(FOCUS){FIDX=SHEETS.findIndex((_,i)=>!filled(i)); if(FIDX<0)FIDX=2;}
-  else document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('dim','done','pickput','putdown','pickup'));
-  paintFocus();
-}
-function paintFocus(){
-  if(!FOCUS) return;
-  SHEETS.forEach((id,i)=>{
-    const el=document.getElementById(id);
-    if(el.classList.contains('pickput')) return;   // 動畫進行中不覆寫（它自己會落到 dim）
-    el.classList.toggle('dim', i!==FIDX);
-    el.classList.toggle('done', i!==FIDX && filled(i));
-  });
-}
-/* 單選填完的自動推進：完整三拍。下一張在**第③拍一開始（426ms）**就亮起來，不等動畫結束。 */
-let advTimer=null;
-function advance(){
-  const cur=document.getElementById(SHEETS[FIDX]);
-  const next=Math.min(2,FIDX+1); if(next===FIDX) return;
-  clearTimeout(advTimer);
-  advTimer=setTimeout(()=>{
-    cur.classList.remove('putdown','pickup'); void cur.offsetWidth;
-    cur.classList.add('pickput');
-    setTimeout(()=>{                                   // 426ms：第③拍開始
-      if(!cur.classList.contains('pickput')) return;   // 已被打斷
-      FIDX=next; paintFocus();
-      document.getElementById(SHEETS[FIDX]).scrollIntoView({behavior:'smooth',block:'center'});
-    },426);
-    setTimeout(()=>{ cur.classList.remove('pickput'); paintFocus(); },840);
-  },300);
-}
-/* 手動點別張紙：離開的那張只播**短版放下**（他的注意力已經走了，端詳是搶戲）。 */
-function focusTo(i){
-  if(!FOCUS||i===FIDX) return;
-  clearTimeout(advTimer);
-  const cur=document.getElementById(SHEETS[FIDX]), nx=document.getElementById(SHEETS[i]);
-  cur.classList.remove('pickput'); void cur.offsetWidth;
-  cur.classList.add('putdown'); nx.classList.remove('putdown'); nx.classList.add('pickup');
-  setTimeout(()=>{cur.classList.remove('putdown');nx.classList.remove('pickup');paintFocus()},400);
-  FIDX=i; paintFocus();
-  nx.scrollIntoView({behavior:'smooth',block:'center'});
-}
-SHEETS.forEach((id,i)=>document.getElementById(id).addEventListener('click',e=>{
-  if(FOCUS&&i!==FIDX){e.stopPropagation();focusTo(i)}
-},true));
-
-/* ── 進場 ─────────────────────────────────────────────────── */
 function replay(){
-  const head=document.getElementById('head'), foot=document.getElementById('foot');
   document.getElementById('screen').scrollTop=0;
-  head.classList.remove('headin'); foot.classList.remove('footin'); void head.offsetWidth;
-  head.classList.add('headin'); foot.classList.add('footin');
-  [['s1',180],['s2',400],['s3',620]].forEach(([id,d])=>{
-    const el=document.getElementById(id);
-    el.classList.remove('drop'); el.style.animationDelay=''; void el.offsetWidth;
-    el.style.animationDelay=d+'ms'; el.classList.add('drop');
+  const h=document.getElementById('head'),f=document.getElementById('foot');
+  [h,f].forEach(e=>{e.classList.remove('headin','footin');void e.offsetWidth});
+  h.classList.add('headin');f.classList.add('footin');
+  ['s1','s2','s3'].forEach((id,i)=>{
+    const e=document.getElementById(id);
+    e.classList.remove('drop');e.style.animationDelay='';void e.offsetWidth;
+    e.style.animationDelay=(180+i*220)+'ms';e.classList.add('drop');
   });
-  const b=document.getElementById('back'); b.classList.remove('peek'); void b.offsetWidth;
-  if(!b.classList.contains('open')) b.classList.add('peek');   // 🔧 優化③ 首次揭示
-}
-function demoPickPut(){
-  const el=document.getElementById(SHEETS[FIDX]);
-  el.classList.remove('pickput'); void el.offsetWidth; el.classList.add('pickput');
-  setTimeout(()=>{el.classList.remove('pickput');paintFocus()},840);
 }
 function reset(){
-  document.querySelectorAll('.circ,.eraser').forEach(c=>c.remove());
-  document.querySelectorAll('.opt').forEach(o=>o.classList.remove('picked'));
-  sel.party=null; sel.who.clear(); sel.pace=null; sel.budget=null; sel.paceAuto=false;
-  FIDX=0; refresh();
+  document.querySelectorAll('.circ,.eraser').forEach(e=>e.remove());
+  document.querySelectorAll('.fill .word.on,.chk.on').forEach(e=>e.classList.remove('on'));
+  sel.party=null;prevParty=null;autoCouple=false;sel.who.clear();sel.pace=null;sel.paceAuto=false;sel.move=null;sel.budget=null;
+  document.getElementById('cap').value='';
+  refresh();
 }
 function preset(){
   reset();
-  sel.party='couple'; drawCircle(optOf('couple'));
-  ['kids','elder'].forEach(v=>{sel.who.add(v);drawCircle(optOf(v))});
-  sel.pace='packed'; drawCircle(optOf('packed'));   // 刻意選矛盾組合，看旁註
-  sel.budget='mid'; drawCircle(optOf('mid'));
-  FIDX=2; refresh();
+  sel.party='family';prevParty='family';document.querySelector('.word[data-v="family"]').classList.add('on');
+  ['kids','elder'].forEach(v=>{sel.who.add(v);document.querySelector(`.chk[data-v="${v}"]`).classList.add('on')});
+  sel.pace='packed';drawCircle(optOf('packed'));      // 刻意矛盾，看旁註
+  sel.move='public';drawCircle(optOf('public'));
+  sel.budget='standard';drawCircle(optOf('standard'));
+  refresh();
 }
 
-/* 紙質貼圖（與 ink.tsx 同一組 SVG 濾鏡） */
 const G=`<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/></filter><rect width='140' height='140' filter='url(#g)'/></svg>`;
 const A=`<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='a'><feTurbulence type='fractalNoise' baseFrequency='0.021' numOctaves='4' seed='7'/><feColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.6 0'/></filter><rect width='320' height='320' filter='url(#a)'/></svg>`;
 const C=`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='c'><feTurbulence type='fractalNoise' baseFrequency='0.009 0.042' numOctaves='3' seed='11' result='t'/><feDiffuseLighting in='t' surface-scale='2.4' diffuseConstant='1' lighting-color='#ffffff'><feDistantLight azimuth='225' elevation='55'/></feDiffuseLighting></filter><rect width='400' height='400' filter='url(#c)'/></svg>`;
@@ -663,7 +649,7 @@ document.querySelectorAll('.t-grain').forEach(e=>e.style.backgroundImage=u(G));
 document.querySelectorAll('.t-age').forEach(e=>e.style.backgroundImage=u(A));
 document.querySelectorAll('.t-crease').forEach(e=>e.style.backgroundImage=u(C));
 
-refresh(); replay();
+refresh();replay();
 </script>
 </body>
 </html>

@@ -247,9 +247,55 @@ const MOBILITY_LABEL: Record<string, string> = {
     taxi: '計程車/包車 (點對點接駁，不需顧慮等車時間)',
 };
 
+/**
+ * 🔴 **承諾＝交付**：⑥「想怎麼玩」的預算選項，圈選後會在畫面上寫出一句「我實際上會怎麼排」。
+ * 這裡就是兌現那句話的地方——**文案改了，這裡也要跟著改**（對照 `views/create/HowPage.tsx` 的 `BUDGET.hint`）。
+ *
+ * 寫成**具體到可以驗證**的指令，而不是「請注意預算」這種模糊要求：模糊的要求 LLM 幾乎必然忽略，
+ * 而使用者拿著我們寫在畫面上的句子去對照生成結果時，看到的就是有沒有做到。
+ */
+const BUDGET_DIRECTIVE: Record<string, string> = {
+    // 對應畫面：「門票偏高的地方，會在行程上標示出來」
+    //   ⚠️ 只承諾**標示**，不承諾「讓你決定是否保留」——那需要一個我們沒做的專門介面。
+    cheap: '餐飲以在地小館、市場與便利商店為主；景點優先選擇免費或低價者。'
+        + '若仍安排了門票明顯偏高的地方（因其為當地代表性景點），**必須在該活動的 description 開頭寫「門票偏高：」**再接原本的說明。',
+    economy: '餐飲以在地小館、市場與便利商店為主；景點優先選擇免費或低價者。'
+        + '若仍安排了門票明顯偏高的地方，**必須在該活動的 description 開頭寫「門票偏高：」**再接原本的說明。',
+    // 對應畫面：「一天安排一餐正式的，其餘從簡」
+    standard: '每一天安排**恰好一餐**坐下來好好吃的正式餐廳（午餐或晚餐擇一），其餘餐次從簡（小吃、市場、便利商店皆可）。',
+    // 對應畫面：「需要預約的餐廳與體驗會優先排入行程」
+    luxury: '**優先**安排需要事先預約的餐廳、體驗與導覽（例如需訂位的餐廳、限定場次的展演、包場或私人行程）；'
+        + '這類活動請在 description 註明「建議提前預約」。',
+};
+
 // hard 錨的顯示值：confirmed 直接用真時間；hint 用時段標籤。
 const anchorLabel = (a?: { confidence: 'confirmed' | 'hint'; value: string }): string | null =>
     !a ? null : a.confidence === 'confirmed' ? a.value : (TIME_SLOT_LABEL[a.value] ?? a.value);
+
+/**
+ * 🔴 **抵達／離開時段 → 第一站與最後一站的可用時間**（2026-08-09）。
+ *
+ * 為什麼需要這張表：使用者說的是**抵達時間**，不是**行程開始時間**。
+ * 舊版只寫「arrives around 早上 (08:00–12:00)，不要排在這之前」——模型會理解成
+ * 「08:00 之後就可以排」，於是生出「08:30 抵達淺草寺」這種**不可能發生**的第一站。
+ * 早上八點落地，要出關、領行李、搭車進市區，**第一站最早也是十一點半**。
+ *
+ * 國際線與國內線的緩衝差一倍以上，所以要分兩套；離開那天更嚴格——
+ * **國際線早上的飛機，那一天等於沒有行程**（要提早三小時到機場）。
+ *
+ * 這些數字是**保守的下限**：寧可讓第一天少排一站，也不要生出一個他趕不上的行程。
+ */
+const ARRIVAL_FIRST_START: Record<string, { intl: string | null; dom: string | null }> = {
+    morning: { intl: '11:30', dom: '09:30' },
+    afternoon: { intl: '16:30', dom: '14:30' },
+    evening: { intl: null, dom: null },   // null＝當天不排完整行程
+};
+/** 最後一天：行程必須在這個時間之前結束（已扣掉往機場／車站的移動與報到） */
+const DEPARTURE_LAST_END: Record<string, { intl: string | null; dom: string | null }> = {
+    morning: { intl: null, dom: null },   // null＝當天不排行程
+    afternoon: { intl: '10:30', dom: '11:30' },
+    evening: { intl: '14:30', dom: '16:30' },
+};
 
 // TripConstraints → [旅遊條件] prose（純函式；生成/未來預覽共用）。
 const buildUserPreferences = (c: TripConstraints): string => {
@@ -273,8 +319,19 @@ const buildUserPreferences = (c: TripConstraints): string => {
             : s.companion ? (COMPANION_LABEL[s.companion] ?? s.companion) : '未指定'}
         - 步調：${s.pace ? (PACE_LABEL[s.pace] ?? s.pace) : '標準觀光'}
         - 風格：${s.vibe ? (VIBE_LABEL[s.vibe] ?? s.vibe) : '在地與熱門均衡'}
-        - 預算：${s.budgetLevel ? (BUDGET_LABEL[s.budgetLevel] ?? s.budgetLevel) : '標準預算'} ${s.customBudget ? `(${s.customBudget})` : ''}
-        - 興趣細項：${interests || '無特別指定'}
+        - 預算：${s.budgetLevel ? (BUDGET_LABEL[s.budgetLevel] ?? s.budgetLevel) : '標準預算'} ${s.customBudget ? `(${s.customBudget})` : ''}${s.budgetCap
+            // ⚠️ 措辭必須是**上限**不是目標：寫成目標，模型會為了湊到那個數字硬塞景點。
+            //    也明講「略超要標出來」——旅行不是預算執行，一家超出一點的餐廳不該被自動排除。
+            ? `\n        - 每人每天花費上限：約 ${s.budgetCap}（僅含餐飲、當地交通、門票；**不含機票與住宿**）。這是上限不是目標，不要為了用滿而增加行程；若某一項明顯超出，仍可安排但要在該項的 description 標註「超出預算」`
+            : ''}${s.budgetLevel && BUDGET_DIRECTIVE[s.budgetLevel]
+            // 兌現畫面上那句「我實際上會怎麼排」——見 BUDGET_DIRECTIVE 的說明
+            ? `\n        - 預算的具體作法：${BUDGET_DIRECTIVE[s.budgetLevel]}`
+            : ''}
+        - 興趣細項：${interests || '無特別指定'}${s.tagsAvoided?.length
+            // 🔴 負面約束是 prompt 裡**執行力最高的材料**——「不要什麼」比「想要什麼」明確得多。
+            //    所以它獨立成一行、用最強的措辭，不與其他偏好混在一起。
+            ? `\n        - 🚫 **絕對避開（使用者親手劃掉的，違反就是明確的錯誤）**：${s.tagsAvoided.join('、')}`
+            : ''}
         - 特別需求：${s.specificRequests || '無'}
 
         [系統隱藏指令 - 行程美學與出片率校準]
@@ -296,13 +353,61 @@ export const generateItinerary = async (
   return fetchWithCache(cacheKey, async () => {
       let context = "";
 
-      const arrival = anchorLabel(constraints.hard.arrival);
-      if (arrival) {
-          context += `\n- **ARRIVAL TIMING (soft)**: On Day 1 the traveller arrives around ${arrival}. Do NOT schedule anything before this. Do NOT fabricate airport arrival / immigration / baggage / airport-to-city transport cards — the flight booking owns arrival. Day 1 starts from the first real destination after arriving.`;
+      // 抵達／離開：**時段不等於行程可用時間**——中間隔著通關、行李、往返機場。
+      //   hint（只知道時段）→ 套用 ARRIVAL_FIRST_START／DEPARTURE_LAST_END 的保守下限；
+      //   confirmed（有真實航班時間）→ 用真時間，並要求模型自己扣掉緩衝。
+      const intl = constraints.tripType !== 'domestic';
+      const pickTime = (t: { intl: string | null; dom: string | null }) => (intl ? t.intl : t.dom);
+      const bufferNote = intl
+          ? 'immigration, baggage claim and the transfer into the city (allow ~2.5h)'
+          : 'getting out of the station/airport and into the city (allow ~1h)';
+
+      const arr = constraints.hard.arrival;
+      if (arr) {
+          const label = anchorLabel(arr);
+          const gate = arr.confidence === 'hint' ? ARRIVAL_FIRST_START[arr.value] : undefined;
+          const first = gate ? pickTime(gate) : undefined;
+          context += `\n- **ARRIVAL TIMING (hard)**: On Day 1 the traveller ARRIVES around ${label}. `
+              + `This is the arrival time, NOT the time sightseeing can begin — account for ${bufferNote}. `
+              + (gate
+                  ? (first
+                      ? `**The first activity of Day 1 must start no earlier than ${first}.** `
+                      : `**The traveller lands at night: Day 1 must contain AT MOST one light item (a dinner or a night view near the accommodation), or nothing at all. Do NOT plan a full day.** `)
+                  : `**Derive the first activity time by adding that buffer to the actual arrival time.** `)
+              + `Do NOT fabricate airport arrival / immigration / baggage / airport-to-city transport cards — the flight booking owns arrival. Day 1 starts from the first real destination.`;
+      } else {
+          // 🔴 **留白不等於沒有假設**（2026-08-09 修）：舊版沒有 arrival 就完全不給指令，
+          //   模型於是把 Day 1 當成完整的一天、從早上排滿——使用者其實可能晚上才落地。
+          //   `unset` 的定案語意是「生成器自行以**下午抵達**為假設」（tripBrief.ts）。
+          //   ⚠️ 假設的**方向**要選對：不確定時往「少」的方向——
+          //      **匯入真實航班後，加比刪容易**（多出的時間可以往裡塞；排太滿卻要刪掉他已經看過的東西，
+          //      那是破壞性的，也會讓對帳器有一堆衝突要搬）。
+          const first = intl ? ARRIVAL_FIRST_START.afternoon.intl : ARRIVAL_FIRST_START.afternoon.dom;
+          context += `\n- **ARRIVAL TIMING (assumed)**: The traveller has NOT told us when they land. `
+              + `Assume a conservative afternoon arrival: **the first activity of Day 1 must start no earlier than ${first}**, `
+              + `and keep Day 1 deliberately light — it will be adjusted once the real flight is imported. `
+              + `Do NOT fabricate airport / immigration / transport cards.`;
       }
-      const departure = anchorLabel(constraints.hard.departure);
-      if (departure) {
-          context += `\n- **DEPARTURE TIMING (soft)**: On Day ${days} the traveller leaves around ${departure}. Do NOT schedule anything after this, and do NOT fabricate a departure / airport transport card — the booking owns it.`;
+      const dep = constraints.hard.departure;
+      if (dep) {
+          const label = anchorLabel(dep);
+          const gate = dep.confidence === 'hint' ? DEPARTURE_LAST_END[dep.value] : undefined;
+          const last = gate ? pickTime(gate) : undefined;
+          context += `\n- **DEPARTURE TIMING (hard)**: On Day ${days} the traveller DEPARTS around ${label}. `
+              + `Leave enough time to reach the airport/station and check in. `
+              + (gate
+                  ? (last
+                      ? `**Everything on Day ${days} must finish before ${last}.** `
+                      : `**The traveller leaves in the morning: Day ${days} must have NO sightseeing at all** (only breakfast or hotel check-out, if anything). `)
+                  : `**Work backwards from the actual departure time and stop early enough.** `)
+              + `Do NOT fabricate a departure / airport transport card — the booking owns it.`;
+      } else {
+          // 同上：沒說就假設下午離開，最後一天寧可留白（加比刪容易）
+          const last = intl ? DEPARTURE_LAST_END.afternoon.intl : DEPARTURE_LAST_END.afternoon.dom;
+          context += `\n- **DEPARTURE TIMING (assumed)**: The traveller has NOT told us when they leave. `
+              + `Assume a conservative early-afternoon departure: **everything on Day ${days} must finish before ${last}**, `
+              + `and keep that day light — it will be adjusted once the real flight is imported. `
+              + `Do NOT fabricate a departure / airport transport card.`;
       }
 
       const localTransportMode = constraints.soft.localTransportMode;
