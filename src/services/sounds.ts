@@ -10,11 +10,11 @@
 
 export type PageSoundKind =
     | 'flip' | 'riffle' | 'close' | 'tear'
-    | 'penCircle' | 'eraser' | 'penWrite' | 'paperDrop' | 'paperSlide' | 'stamp' | 'penUncap' | 'penCap'
+    | 'penCircle' | 'eraser' | 'paperDrop' | 'stamp' | 'penUncap' | 'penCap'
     // ── 2026-08-05 補齊（Kelvin 提供素材，ffmpeg 裁切：tick 0.10s／release 0.29s／tear 0.34s／unfold 0.65s）
     | 'rulerTick' | 'rulerRelease' | 'paperUnfold' | 'paperFold' | 'pageTear'
     // ── 2026-08-09 ⑥想怎麼玩頁；素材由 Kelvin 提供、ffmpeg 裁切
-    | 'paperLand' | 'paperLift' | 'paperSettle' | 'tick'
+    | 'paperLift' | 'paperSettle' | 'tick'
     // ── 2026-08-10 ⑦你的講究頁
     | 'penSwitch';
 
@@ -29,9 +29,9 @@ const SRC: Record<PageSoundKind, string> = {
     // 🖋️ 生成表單的紙筆世界（Kelvin 自選素材，2026-08-04 裁齊）
     penCircle: '/sounds/pen-circle.mp3',   // 畫圈＝選中
     eraser: '/sounds/eraser.mp3',          // 橡皮擦＝取消
-    penWrite: '/sounds/pen-write.mp3',     // 逐字書寫（連續播放，音量最輕）
-    paperDrop: '/sounds/paper-drop.mp3',   // 紙張落桌
-    paperSlide: '/sounds/paper-slide.mp3', // 紙張滑動／票被遞過來
+    // 紙張落桌。⚠️ 用途比名字廣：⑧「看看排出了什麼」＝下一張紙落到桌上、
+    //   ④縮圈「更多地帶」＝更多張紙落下——**畫面上的紙在落，就用它**。
+    paperDrop: '/sounds/paper-drop.mp3',
     stamp: '/sounds/stamp.mp3',            // 蓋章（情感最高點）
     penUncap: '/sounds/pen-uncap.mp3',     // 開筆蓋＝要開始寫了
     penCap: '/sounds/pen-cap.mp3',         // 關筆蓋＝寫完擱筆
@@ -40,11 +40,10 @@ const SRC: Record<PageSoundKind, string> = {
     paperUnfold: '/sounds/paper-unfold.mp3',   // 攤開一張紙（展開日曆／攤開整年）
     paperFold: '/sounds/paper-fold.mp3',       // 收起一張紙（攤開的相反方向，不共用滑動聲）
     pageTear: '/sounds/page-tear.mp3',         // 撕下日曆的一頁（比票券撕更薄更脆）
-    paperLand: '/sounds/paper-land.mp3',       // **單張**紙落到桌面（短音）
-    // 一疊紙被鋪定（1.23s 的連續紙聲）。⚠️ **不要改回「短音連放三次」**：
+    // 一疊紙被鋪定（1.0s 的連續紙聲）。⚠️ **不要改回「短音連放三次」**：
     //   三個短音是三次獨立事件，會把從容的情緒切碎；一段連續的紙聲才是一個過程（Kelvin 實測定案）。
     paperSettle: '/sounds/paper-settle.mp3',
-    paperLift: '/sounds/paper-lift.mp3',       // 紙從桌面被拿起（⚠️ 目前無呼叫端，保留給 ⑧生成幕的「抽新紙」）
+    paperLift: '/sounds/paper-lift.mp3',       // 紙從桌面被拿起（⑧ 開始生成＝抽一張新紙）
     tick: '/sounds/tick.mp3',                  // 打勾（複選清單專用；與圈選的 penCircle 是兩種不同的筆法）
     penSwitch: '/sounds/pen-switch.mp3',       // 換筆（放下一支、拿起另一支——素材裡兩聲都留著）
 };
