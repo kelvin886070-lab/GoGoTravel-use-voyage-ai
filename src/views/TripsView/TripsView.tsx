@@ -20,8 +20,9 @@ import { CreateTripModal } from './modals/CreateTripModal';
 import { EntryPage, type EntryResult } from '../create/EntryPage';
 import { ZonePage, type ZoneResult } from '../create/ZonePage';
 import { WhenPage, type WhenResult } from '../create/WhenPage';
-import { HowPage, legacyCompanionId, type HowResult } from '../create/HowPage';
+import { HowPage, type HowResult } from '../create/HowPage';
 import { NotesPage, type NotesResult } from '../create/NotesPage';
+import { ConfirmPage, type EditStep } from '../create/ConfirmPage';
 import { needsZoneStep } from '../../services/destinationIntel';
 import { playPageSound, hapticTap } from '../../services/sounds';
 import { fetchProfileMeta, localeCountry } from '../../services/profile';
@@ -87,8 +88,28 @@ export const TripsView: React.FC<TripsViewProps> = ({
   // ✍️ ⑦你的講究：標籤雲（圈＝想要／紅筆劃除＝不要）＋手寫欄
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesResult, setNotesResult] = useState<NotesResult | null>(null);
+  // 📜 ⑧確認與生成（六拍；生成邏輯在 ConfirmPage 內，不再經過 CreateTripModal）
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  /** 從確認書點「改」回去修的那一頁：該頁的票券鈕變「改好了」、onNext 直接回 ⑧（不重走後面的頁） */
+  const [editFrom, setEditFrom] = useState<EditStep | null>(null);
   /** 入口頁交棒：需要縮圈就先進縮圈，否則直接進建立流程 */
   const afterEntry = (r: EntryResult) => {
+    // 🔁 從確認書回來改目的地：
+    //   **目的地沒變 → 直接回 ⑧**（他只是回去看看，不重走）；
+    //   **變了 → 縮圈必須重來**（zoneResult 掛在舊目的地上，已失效），
+    //   但 when/how/notes 保留——那些仍然是他的答案，換目的地不會讓「有長輩同行」失效。
+    if (editFrom === 'entry') {
+      const prev = entryResult?.destinations ?? [];
+      const same = r.destinations.length === prev.length && r.destinations.every((d, i) => d === prev[i]);
+      setEntryResult(r);
+      endTear();
+      if (same) { setEditFrom(null); setConfirmOpen(true); return; }
+      setZoneResult(null);
+      if (needsZoneStep(r.intel)) { setZoneOpen(true); return; }   // editFrom 保持 'entry'：縮圈完直接回 ⑧
+      setEditFrom(null);
+      setConfirmOpen(true);
+      return;
+    }
     setEntryResult(r);
     setZoneResult(null);
     endTear();
@@ -266,6 +287,7 @@ export const TripsView: React.FC<TripsViewProps> = ({
           recentPlaces={recentPlaces}
           initialDestinations={entryResult?.destinations}
           initialCoverUrl={entryResult?.coverUrl}
+          nextLabel={editFrom === 'entry' ? '改好了' : undefined}
           onClose={endTear}
           onNext={afterEntry}
           onManualCreate={() => { endTear(); setEntryResult(null); setIsCreating(true); }}
@@ -278,9 +300,15 @@ export const TripsView: React.FC<TripsViewProps> = ({
           query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
           coverUrl={entryResult.coverUrl}
           isDomestic={entryResult.isDomestic}
-          onBack={() => { setZoneOpen(false); setEntryOpen(true); }}
+          initial={zoneResult ?? undefined}
+          onBack={(z) => { setZoneResult(z); setZoneOpen(false); setEntryOpen(true); }}
           onClose={() => { setZoneOpen(false); setEntryResult(null); setZoneResult(null); setTearing(false); }}
-          onNext={(z) => { setZoneResult(z); setZoneOpen(false); setWhenOpen(true); }}
+          onNext={(z) => {
+            setZoneResult(z); setZoneOpen(false);
+            // 🔁 改目的地引發的重新縮圈：縮圈完直接回 ⑧（when/how/notes 都還是他的答案）
+            if (editFrom === 'entry') { setEditFrom(null); setConfirmOpen(true); return; }
+            setWhenOpen(true);
+          }}
         />
       )}
       {whenOpen && entryResult && (
@@ -291,12 +319,21 @@ export const TripsView: React.FC<TripsViewProps> = ({
           isDomestic={entryResult.isDomestic}
           suggestedDaysHint={zoneResult?.suggestedDays ?? 0}
           placeCount={Math.max(1, flowDestinations().length)}
-          onBack={() => {
+          initial={whenResult ?? undefined}
+          nextLabel={editFrom === 'when' ? '改好了' : undefined}
+          onBack={(w) => {
+            if (w) setWhenResult(w);   // 還沒圈月份就沒有可存的答案（w 為 null）
             setWhenOpen(false);
+            // 改到一半按上一步＝放棄修改、帶著已存的狀態回 ⑧（不把他丟進正常流程）
+            if (editFrom === 'when') { setEditFrom(null); setConfirmOpen(true); return; }
             if (needsZoneStep(entryResult.intel)) setZoneOpen(true); else setEntryOpen(true);
           }}
-          onClose={() => { setWhenOpen(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setTearing(false); }}
-          onNext={(w) => { setWhenResult(w); setWhenOpen(false); setHowOpen(true); }}
+          onClose={() => { setWhenOpen(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setEditFrom(null); setTearing(false); }}
+          onNext={(w) => {
+            setWhenResult(w); setWhenOpen(false);
+            if (editFrom === 'when') { setEditFrom(null); setConfirmOpen(true); return; }
+            setHowOpen(true);
+          }}
         />
       )}
       {howOpen && entryResult && (
@@ -305,12 +342,22 @@ export const TripsView: React.FC<TripsViewProps> = ({
           query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
           coverUrl={entryResult.coverUrl}
           isDomestic={entryResult.isDomestic}
-          onBack={() => { setHowOpen(false); setWhenOpen(true); }}
+          initial={howResult ?? undefined}
+          nextLabel={editFrom === 'how' ? '改好了' : undefined}
+          onBack={(h) => {
+            setHowResult(h); setHowOpen(false);
+            if (editFrom === 'how') { setEditFrom(null); setConfirmOpen(true); return; }
+            setWhenOpen(true);
+          }}
           onClose={() => {
             setHowOpen(false); setEntryResult(null); setZoneResult(null);
-            setWhenResult(null); setHowResult(null); setTearing(false);
+            setWhenResult(null); setHowResult(null); setEditFrom(null); setTearing(false);
           }}
-          onNext={(h) => { setHowResult(h); setHowOpen(false); setNotesOpen(true); }}
+          onNext={(h) => {
+            setHowResult(h); setHowOpen(false);
+            if (editFrom === 'how') { setEditFrom(null); setConfirmOpen(true); return; }
+            setNotesOpen(true);
+          }}
         />
       )}
       {notesOpen && entryResult && (
@@ -319,40 +366,62 @@ export const TripsView: React.FC<TripsViewProps> = ({
           query={entryResult.destinations[entryResult.destinations.length - 1] || ''}
           coverUrl={entryResult.coverUrl}
           isDomestic={entryResult.isDomestic}
-          onBack={() => { setNotesOpen(false); setHowOpen(true); }}
+          initial={notesResult ?? undefined}
+          nextLabel={editFrom === 'notes' ? '改好了' : undefined}
+          onBack={(n) => {
+            setNotesResult(n); setNotesOpen(false);
+            if (editFrom === 'notes') { setEditFrom(null); setConfirmOpen(true); return; }
+            setHowOpen(true);
+          }}
           onClose={() => {
             setNotesOpen(false); setEntryResult(null); setZoneResult(null);
-            setWhenResult(null); setHowResult(null); setNotesResult(null); setTearing(false);
+            setWhenResult(null); setHowResult(null); setNotesResult(null); setEditFrom(null); setTearing(false);
           }}
-          onNext={(n) => { setNotesResult(n); setNotesOpen(false); setIsCreating(true); }}
+          onNext={(n) => {
+            setNotesResult(n); setNotesOpen(false);
+            if (editFrom === 'notes') setEditFrom(null);
+            setConfirmOpen(true);   // ⑦ 之後＝⑧確認與生成（CreateTripModal 已退出生成流程）
+          }}
         />
       )}
+      {confirmOpen && entryResult && whenResult && (
+        <ConfirmPage
+          destinations={flowDestinations()}
+          destinationName={entryResult.intel?.name || entryResult.destinations[0] || '這一趟'}
+          coverUrl={entryResult.coverUrl}
+          isDomestic={entryResult.isDomestic}
+          country={entryResult.intel?.country}
+          when={whenResult}
+          how={howResult}
+          notes={notesResult}
+          onEditStep={(step) => {
+            setConfirmOpen(false);
+            setEditFrom(step);
+            if (step === 'entry') setEntryOpen(true);
+            else if (step === 'when') setWhenOpen(true);
+            else if (step === 'how') setHowOpen(true);
+            else setNotesOpen(true);
+          }}
+          onClose={() => {
+            setConfirmOpen(false); setEntryResult(null); setZoneResult(null);
+            setWhenResult(null); setHowResult(null); setNotesResult(null); setEditFrom(null); setTearing(false);
+          }}
+          onDone={({ trip }) => {
+            onAddTrip(trip);
+            setConfirmOpen(false); setEntryResult(null); setZoneResult(null);
+            setWhenResult(null); setHowResult(null); setNotesResult(null); setEditFrom(null); setTearing(false);
+          }}
+        />
+      )}
+      {/* 🎫 生成流程已全面走 ①–⑧ 新頁（ConfirmPage 內含生成）；
+          CreateTripModal 從此**只服務「手動建立空白行程」**（入口頁的安靜出口）。
+          ⚠️ 它內部的 initial* props 與步驟③④⑤的條件隱藏已成死碼——留給「舊 UI 清理批」一次拆。 */}
       {isCreating && (
         <CreateTripModal
           onClose={() => { setIsCreating(false); setEntryResult(null); setZoneResult(null); setWhenResult(null); setHowResult(null); setNotesResult(null); }}
           onAddTrip={onAddTrip}
           onImport={() => { setIsCreating(false); setIsImporting(true); }}
-          initialDestinations={entryResult ? flowDestinations() : undefined}
-          initialIsDomestic={entryResult?.isDomestic}
-          initialStartDate={whenResult?.startDate}
-          initialEndDate={whenResult?.endDate}
-          initialArrivalSlot={whenResult?.arrivalSlot}
-          initialDepartureSlot={whenResult?.departureSlot}
-          initialTagsWanted={notesResult?.tagsWanted}
-          initialTagsAvoided={notesResult?.tagsAvoided}
-          initialNotes={notesResult?.notes}
-          initialCompanions={howResult?.companions}
-          initialCompanion={howResult ? legacyCompanionId(howResult) : undefined}
-          initialPace={howResult?.pace}
-          initialBudgetLevel={howResult?.budget}
-          initialBudgetCap={howResult?.budgetCap}
-          initialLocalTransport={howResult?.move}
-          initialStep={entryResult ? 3 : 1}
-          onBackToEntry={() => {
-            setIsCreating(false);
-            if (entryResult) setNotesOpen(true);       // 退回上一頁＝「你的講究」，不是退回最前面
-            else setEntryOpen(true);
-          }}
+          onBackToEntry={() => { setIsCreating(false); setEntryOpen(true); }}
         />
       )}
       {isImporting && <ImportTripModal onClose={() => setIsImporting(false)} onImportTrip={onImportTrip} />}

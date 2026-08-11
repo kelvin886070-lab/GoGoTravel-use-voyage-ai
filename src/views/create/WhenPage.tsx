@@ -179,19 +179,28 @@ export const WhenPage: React.FC<{
     suggestedDaysHint: number;
     /** 地點數（密度提醒用：平均每地不到兩天才會說話） */
     placeCount: number;
-    onBack: () => void;
+    /**
+     * 🔴 **回頭時的復原**：這一頁關閉時整個元件被卸載，state 隨之消失。
+     * 沒有它的話，使用者往前走再回來，選的月份／天數／日期／時段全部歸零。
+     */
+    initial?: WhenResult;
+    /** 從 ⑧ 確認書點「改」回來時＝「改好了」（沒有這個字，使用者會以為要重走一遍） */
+    nextLabel?: string;
+    /** ⚠️ 帶著當前選擇離開——**「上一步」也要保存** */
+    onBack: (r: WhenResult | null) => void;
     onClose: () => void;
     onNext: (r: WhenResult) => void;
-}> = ({ breadcrumb, query, coverUrl, isDomestic, suggestedDaysHint, placeCount, onBack, onClose, onNext }) => {
+}> = ({ breadcrumb, query, coverUrl, isDomestic, suggestedDaysHint, placeCount, initial, nextLabel, onBack, onClose, onNext }) => {
     const instant = useMemo(() => reduceMotion(), []);
     const now = useMemo(() => new Date(), []);
     const thisYear = now.getFullYear();
     const thisMonth = now.getMonth() + 1;
 
     const [deep, setDeep] = useState<DestinationDeep | null>(null);
-    const [year, setYear] = useState(thisYear);              // 年曆目前顯示的年份
-    const [month, setMonth] = useState<number | null>(null); // 已圈起的月份
-    const [days, setDays] = useState(() => Math.min(MAX_DAYS, Math.max(MIN_DAYS, suggestedDaysHint || 4)));
+    const [year, setYear] = useState(initial?.year ?? thisYear);   // 年曆目前顯示的年份
+    const [month, setMonth] = useState<number | null>(initial?.month ?? null); // 已圈起的月份
+    const [days, setDays] = useState(() =>
+        Math.min(MAX_DAYS, Math.max(MIN_DAYS, initial?.days || suggestedDaysHint || 4)));
     const [editingDays, setEditingDays] = useState(false);
     const [daysDraft, setDaysDraft] = useState('');
     const [expertOpen, setExpertOpen] = useState(false);
@@ -199,12 +208,12 @@ export const WhenPage: React.FC<{
     const [expandedOverride, setExpandedOverride] = useState<Set<number> | null>(null);
     const [exactOpen, setExactOpen] = useState(false);
     // 第一天／最後一天的時段（'unset'＝還沒訂票，預設值，零操作可過）
-    const [arrivalSlot, setArrivalSlot] = useState<TimeSlot>('unset');
-    const [departureSlot, setDepartureSlot] = useState<TimeSlot>('unset');
+    const [arrivalSlot, setArrivalSlot] = useState<TimeSlot>(initial?.arrivalSlot ?? 'unset');
+    const [departureSlot, setDepartureSlot] = useState<TimeSlot>(initial?.departureSlot ?? 'unset');
     const [calYear, setCalYear] = useState(thisYear);
     const [calMonth, setCalMonth] = useState(thisMonth);
-    const [startDate, setStartDate] = useState<string | null>(null);
-    const [endDate, setEndDate] = useState<string | null>(null);
+    const [startDate, setStartDate] = useState<string | null>(initial?.startDate ?? null);
+    const [endDate, setEndDate] = useState<string | null>(initial?.endDate ?? null);
     const [lunar, setLunar] = useState<string | null>(null);   // 出發日的農曆旁註（單日撕日曆的靈魂）
     const [collapsing, setCollapsing] = useState(false);  // 收束動畫進行中（撕下那一頁的 520ms）
     const [scrolled, setScrolled] = useState(false);      // 捲過年曆之後，標題換成常駐摘要
@@ -476,6 +485,22 @@ export const WhenPage: React.FC<{
         return true;
     };
 
+    /** 當前選擇的快照——**下一步與上一步共用**（兩個出口都要保存）。
+     *  ⚠️ 還沒圈月份時回 null：`WhenResult.month` 是必填，硬塞一個假的月份會污染資料。 */
+    const snapshot = (): WhenResult | null => {
+        if (!month) return null;
+        return {
+            month,
+            year: exact ? Number(startDate!.split('-')[0]) : yearOfMonth(),
+            days,
+            startDate: exact ? startDate! : undefined,
+            endDate: exact ? endDate! : undefined,
+            exact,
+            arrivalSlot: exact ? arrivalSlot : 'unset',
+            departureSlot: exact ? departureSlot : 'unset',
+        };
+    };
+
     const submit = () => {
         const m = month as number;
         onNext({
@@ -514,7 +539,7 @@ export const WhenPage: React.FC<{
             }} />
 
             <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-                <button onClick={onBack} aria-label="上一步" className="absolute left-3 p-2 z-30"
+                <button onClick={() => onBack(snapshot())} aria-label="上一步" className="absolute left-3 p-2 z-30"
                     style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
                     <ChevronLeft className="w-5 h-5 text-white/80" />
                 </button>
@@ -1169,7 +1194,7 @@ export const WhenPage: React.FC<{
                         pointerEvents: exactOpen ? 'none' : undefined,
                         transition: 'opacity .28s ease',
                     }}>
-                        <TicketNextButton onPress={guardNext} onNext={submit} />
+                        <TicketNextButton label={nextLabel} onPress={guardNext} onNext={submit} />
                     </div>
                 </div>
             </div>

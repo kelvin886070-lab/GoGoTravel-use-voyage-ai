@@ -174,24 +174,37 @@ export const NotesPage: React.FC<{
     isDomestic: boolean;
     /** 上一趟圈過的標籤（回頭客的個人化排序）；沒有＝維持重層給的主題群順序 */
     lastWanted?: string[];
-    onBack: () => void;
+    /**
+     * 🔴 **回頭時的復原**：這一頁關閉時整個元件被卸載，state 隨之消失。
+     * 沒有這個 prop 的話，使用者按「下一步」再按「上一步」，圈的標籤與寫的字會全部不見——
+     * **那是最傷的一種資料遺失：他親手做過的事，系統卻假裝沒發生。**
+     * ⚠️ 只在掛載時當初值用（每次回頭都是重新掛載，所以一定會生效）。
+     */
+    initial?: NotesResult;
+    /** 從 ⑧ 確認書點「改」回來時＝「改好了」（沒有這個字，使用者會以為要重走一遍） */
+    nextLabel?: string;
+    /** ⚠️ 帶著當前內容離開——**「上一步」也要保存**，否則往回走一頁再回來一樣會清空 */
+    onBack: (r: NotesResult) => void;
     onClose: () => void;
     onNext: (r: NotesResult) => void;
-}> = ({ breadcrumb, query, coverUrl, isDomestic, lastWanted, onBack, onClose, onNext }) => {
+}> = ({ breadcrumb, query, coverUrl, isDomestic, lastWanted, initial, nextLabel, onBack, onClose, onNext }) => {
     const instant = useMemo(() => reduceMotion(), []);
 
     const [tags, setTags] = useState<string[]>([]);
-    const [marks, setMarks] = useState<Record<string, Mark>>({});
+    const [marks, setMarks] = useState<Record<string, Mark>>(() => {
+        const m: Record<string, Mark> = {};
+        initial?.tagsWanted.forEach(t => { m[t] = 'want'; });
+        initial?.tagsAvoided.forEach(t => { m[t] = 'avoid'; });
+        return m;
+    });
     const [pen, setPen] = useState<Pen>('ink');
     const [penTouched, setPenTouched] = useState(false);   // 動過筆就不再播揭示動畫
     const [erasing, setErasing] = useState<string[]>([]);
 
-    const [notes, setNotes] = useState('');
+    const [notes, setNotes] = useState(initial?.notes ?? '');
     const [tidy, setTidy] = useState<string | null>(null);
     const [tidying, setTidying] = useState(false);
     const [tidyCount, setTidyCount] = useState(0);
-    /** 打字中＝標籤紙收起、只留一行摘要（鍵盤升起時標籤紙會被推出畫面） */
-    const [writing, setWriting] = useState(false);
     const [listening, setListening] = useState(false);
 
     const aliveRef = useRef(true);
@@ -329,15 +342,15 @@ export const NotesPage: React.FC<{
         } catch { setListening(false); }
     }, [listening]);
 
-    const submit = useCallback(() => {
+    /** 當前狀態的快照——**下一步與上一步共用**（兩個出口都要保存，不然往回走就清空） */
+    const snapshot = useCallback((): NotesResult => ({
+        tagsWanted: wanted,
+        tagsAvoided: avoided,
         // ⚠️ `notesRefined` 只有在使用者按過「用這個」時才有值——這裡以 notes 為準（原文永不遺失）
-        onNext({
-            tagsWanted: wanted,
-            tagsAvoided: avoided,
-            notes: notes.trim(),
-            skipped: !wanted.length && !avoided.length && !notes.trim(),
-        });
-    }, [wanted, avoided, notes, onNext]);
+        notes: notes.trim(),
+        skipped: !wanted.length && !avoided.length && !notes.trim(),
+    }), [wanted, avoided, notes]);
+    const submit = useCallback(() => onNext(snapshot()), [snapshot, onNext]);
 
     // ── 版面 ───────────────────────────────────────────────────
     const sheetStyle = (i: number): React.CSSProperties => ({
@@ -348,10 +361,12 @@ export const NotesPage: React.FC<{
         animation: instant ? undefined : `ktPaperDrop .62s cubic-bezier(.18,.86,.32,1) ${180 + i * 220}ms backwards`,
     });
     const crowded = wanted.length >= CROWDED_AT;
+    // ⚠️「還有」只有在**前面真的有東西**時才成立：只寫了字卻說「還有你寫下的講究」
+    //    ——那個「還有」沒有前文（實機抓到）。
     const summary = [
         wanted.length ? `想要 ${wanted.length} 項` : '',
         avoided.length ? `避開 ${avoided.length} 項` : '',
-        notes.trim() ? '還有你寫下的講究' : '',
+        notes.trim() ? (wanted.length || avoided.length ? '還有你寫下的講究' : '你寫下的講究') : '',
     ].filter(Boolean);
 
     return (
@@ -368,7 +383,7 @@ export const NotesPage: React.FC<{
             <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.5), rgba(15,14,13,.8))' }} />
 
             <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-                <button onClick={onBack} aria-label="上一步" className="absolute left-3 p-2 z-30"
+                <button onClick={() => onBack(snapshot())} aria-label="上一步" className="absolute left-3 p-2 z-30"
                     style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
                     <ChevronLeft className="w-5 h-5 text-white/80" />
                 </button>
@@ -405,44 +420,37 @@ export const NotesPage: React.FC<{
                             圈起想要的，換紅筆劃掉不想要的 · 再點一次就擦掉
                         </p>
 
-                        {/* 打字時收起（鍵盤升起會把標籤紙推出畫面），只留一行摘要 */}
-                        {writing ? (
-                            <div className="relative z-[2] mt-3 font-serif text-[11px]" style={{ color: 'rgba(42,39,35,.6)' }}>
-                                {wanted.length || avoided.length
-                                    ? <>已圈 {wanted.length} 項{avoided.length ? `、劃除 ${avoided.length} 項` : ''}</>
-                                    : '還沒圈任何標籤'}
-                            </div>
-                        ) : (
-                            <>
-                                <div className="relative z-[2] flex flex-wrap gap-x-[18px] gap-y-3.5 mt-3.5">
-                                    {tags.map(t => (
-                                        <TagChip key={t} t={t} mark={marks[t]} wiping={erasing.includes(t)}
-                                            instant={instant} onPick={() => hitTag(t)} />
-                                    ))}
-                                    {!tags.length && (
-                                        <span className="font-serif text-[11px]" style={{ color: 'rgba(42,39,35,.4)' }}>
-                                            正在想這裡有什麼好玩的…
-                                        </span>
-                                    )}
-                                </div>
+                        {/* ⚠️ **打字時不收起**（2026-08-10 Kelvin 實機定案）：
+                            我原本讓它在鍵盤升起時收成一行摘要，理由是「標籤紙會被推出畫面」。
+                            但實測兩張紙加起來放得下，收起來只剩一行反而**浪費了它作為主視覺的價值**，
+                            而且收合／展開的切換本身會讓畫面跳一下。**它是固定的。** */}
+                        <div className="relative z-[2] flex flex-wrap gap-x-[18px] gap-y-3.5 mt-3.5">
+                            {tags.map(t => (
+                                <TagChip key={t} t={t} mark={marks[t]} wiping={erasing.includes(t)}
+                                    instant={instant} onPick={() => hitTag(t)} />
+                            ))}
+                            {!tags.length && (
+                                <span className="font-serif text-[11px]" style={{ color: 'rgba(42,39,35,.4)' }}>
+                                    正在想這裡有什麼好玩的…
+                                </span>
+                            )}
+                        </div>
 
-                                {/* 回顯：不可編輯的事實。**不把標籤文字塞進書寫區**——使用者的紙不代筆，
-                                    也避免雙來源同步問題。 */}
-                                <div className="relative z-[2] mt-3 pt-2.5 font-serif text-[10px] leading-[1.7]"
-                                    style={{ borderTop: '1px dashed rgba(35,35,32,.16)', color: 'rgba(42,39,35,.5)', minHeight: 32 }}>
-                                    {!wanted.length && !avoided.length && <span style={{ opacity: .55 }}>圈起來的、劃掉的，都會記在這裡</span>}
-                                    {!!wanted.length && <>已圈：<span style={{ color: INK_PRINT }}>{wanted.join('、')}</span></>}
-                                    {!!wanted.length && !!avoided.length && <br />}
-                                    {!!avoided.length && <>已劃除：<span style={{ color: STAMP_RED, opacity: .8 }}>{avoided.join('、')}</span></>}
-                                </div>
+                        {/* 回顯：不可編輯的事實。**不把標籤文字塞進書寫區**——使用者的紙不代筆，
+                            也避免雙來源同步問題。 */}
+                        <div className="relative z-[2] mt-3 pt-2.5 font-serif text-[10px] leading-[1.7]"
+                            style={{ borderTop: '1px dashed rgba(35,35,32,.16)', color: 'rgba(42,39,35,.5)', minHeight: 32 }}>
+                            {!wanted.length && !avoided.length && <span style={{ opacity: .55 }}>圈起來的、劃掉的，都會記在這裡</span>}
+                            {!!wanted.length && <>已圈：<span style={{ color: INK_PRINT }}>{wanted.join('、')}</span></>}
+                            {!!wanted.length && !!avoided.length && <br />}
+                            {!!avoided.length && <>已劃除：<span style={{ color: STAMP_RED, opacity: .8 }}>{avoided.join('、')}</span></>}
+                        </div>
 
-                                {/* 圈太多的軟提醒：只陳述事實、永不擋路（與 ⑤ 密度提醒同一套語氣） */}
-                                <div className="relative z-[2] text-right font-serif italic text-[10px]"
-                                    style={{ color: '#8A6A2E', opacity: crowded ? .9 : 0, transition: 'opacity .4s ease', minHeight: 16 }}>
-                                    {crowded ? `圈了 ${wanted.length} 個，每天都要塞這麼多主題會有點趕` : ' '}
-                                </div>
-                            </>
-                        )}
+                        {/* 圈太多的軟提醒：只陳述事實、永不擋路（與 ⑤ 密度提醒同一套語氣） */}
+                        <div className="relative z-[2] text-right font-serif italic text-[10px]"
+                            style={{ color: '#8A6A2E', opacity: crowded ? .9 : 0, transition: 'opacity .4s ease', minHeight: 16 }}>
+                            {crowded ? `圈了 ${wanted.length} 個，每天都要塞這麼多主題會有點趕` : ' '}
+                        </div>
                     </div>
 
                     {/* ═══ 書寫紙 ═══ */}
@@ -474,8 +482,6 @@ export const NotesPage: React.FC<{
                                 value={notes}
                                 maxLength={NOTES_MAX}
                                 onChange={e => setNotes(e.target.value)}
-                                onFocus={() => setWriting(true)}
-                                onBlur={() => setWriting(false)}
                                 placeholder="想吃拉麵、不去咖啡廳、早上不要太早出門…"
                                 className="relative w-full bg-transparent border-0 outline-none resize-none p-0"
                                 style={{
@@ -547,7 +553,7 @@ export const NotesPage: React.FC<{
                             {summary.length ? `${summary.join(' · ')}，都記下了` : '順應直覺，讓美好按慣例發生。'}
                         </span>
                     </div>
-                    <TicketNextButton onNext={submit} />
+                    <TicketNextButton label={nextLabel} onNext={submit} />
                 </div>
             </div>
 

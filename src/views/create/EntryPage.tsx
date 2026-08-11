@@ -95,11 +95,13 @@ export const EntryPage: React.FC<{
     recentPlaces?: string[];              // 「再去一次」：過去去過的地方
     initialDestinations?: string[];       // 從下一步返回時復原（不必重打）
     initialCoverUrl?: string | null;      // 返回時把上一輪的背景照直接交回來（不重抓＝零延遲零成本）
+    /** 從 ⑧ 確認書點「改」回來時＝「改好了」。**沒有這個字，使用者不敢按**——他會以為要重走一遍。 */
+    nextLabel?: string;
     onClose: () => void;
     onNext: (r: EntryResult) => void;
     onManualCreate: () => void;
     onImport: () => void;
-}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, initialCoverUrl, onClose, onNext, onManualCreate, onImport }) => {
+}> = ({ residenceCountry, showcaseItems = [], recentPlaces = [], initialDestinations, initialCoverUrl, nextLabel, onClose, onNext, onManualCreate, onImport }) => {
     const instant = useMemo(() => reduceMotion(), []);
     const [entered, setEntered] = useState(instant);   // 背景淡入（撕票在首頁演完才掛載本頁）
     // 返回情境：先復原成 pending，再靜默重驗一次（快取命中＝零延遲零成本；不重驗就等於相信上一輪的畫面）
@@ -118,6 +120,15 @@ export const EntryPage: React.FC<{
     const [hasPhoto, setHasPhoto] = useState(!!initialCoverUrl);
     const inputRef = useRef<HTMLInputElement>(null);
     const activeRef = useRef<'A' | 'B'>('A');
+    /**
+     * 🔴 **目的地封面要與背景分開記**（2026-08-10 Kelvin 實測抓到的 bug）：
+     * 背景層（layerA/B）有兩種來源——目的地的 Pexels 封面照、**櫥窗輪播（心願盒收藏／回憶照）**。
+     * 舊版交棒時把「當下顯示中的背景」當封面交出去：目的地照片抓失敗（或還沒換上）時，
+     * 交出去的就是櫥窗正在放的**使用者自己的回憶照**，然後被存成行程封面。
+     * ➜ 目的地封面自己一個 ref，櫥窗輪播**永遠不碰它**；
+     *   寧可交 null（行程卡退回主題色底），也不能把回憶照冒充成目的地封面。
+     */
+    const destCoverRef = useRef<string | null>(initialCoverUrl ?? null);
     const aliveRef = useRef(true);                       // 卸載後不再 setState（非同步回來時的守門）
     const timersRef = useRef<Set<number>>(new Set());    // 逾時計時器：卸載一律清乾淨
 
@@ -227,7 +238,10 @@ export const EntryPage: React.FC<{
         if (silent) return;
         const url = await fetchCoverPhoto(`${got?.cityEn || value} travel`);
         const hero = heroCoverUrl(url || undefined);
-        if (aliveRef.current && hero) swapBackground(hero);
+        if (aliveRef.current && hero) {
+            destCoverRef.current = hero;   // 只有**目的地的照片**才有資格當封面
+            swapBackground(hero);
+        }
     }, [input, picked, settle, swapBackground]);
 
     // 返回時復原的目的地：靜默重驗一次（快取命中＝零延遲、零成本；也順便把 intel 補回來）
@@ -292,9 +306,9 @@ export const EntryPage: React.FC<{
             destinations: picked.map(p => p.name),
             unverified: picked.filter(p => p.state === 'unverified').map(p => p.name),
             intel, isDomestic,
-            coverUrl: activeRef.current === 'A' ? layerA : layerB,
+            coverUrl: destCoverRef.current,   // ⚠️ 不是「當下顯示中的背景」——那可能是櫥窗的回憶照
         });
-    }, [picked, intel, isDomestic, layerA, layerB, onNext]);
+    }, [picked, intel, isDomestic, onNext]);
 
     /** ③出口攔截：回 false ＝ 不撕不前進（永不 disabled——沒填給提示、還在查請他等、
      *  有未確認的先讓他親眼看見）。回 true 才由票券鈕演出快撕並交棒。 */
@@ -472,7 +486,7 @@ export const EntryPage: React.FC<{
                     </div>
 
                     <div className="px-4 mt-auto relative z-10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}>
-                        <TicketNextButton onPress={guardNext} onNext={goNext} />
+                        <TicketNextButton label={nextLabel} onPress={guardNext} onNext={goNext} />
                         <div className="flex justify-center gap-7 mt-3">
                             <button onClick={onManualCreate} className="font-serif text-[12px] text-white/70 underline underline-offset-4 decoration-white/40">自己手動建立</button>
                             <button onClick={onImport} className="font-serif text-[12px] text-white/70 underline underline-offset-4 decoration-white/40">從分享連結匯入</button>

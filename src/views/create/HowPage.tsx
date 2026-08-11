@@ -290,19 +290,28 @@ export const HowPage: React.FC<{
     /** 背景照片（沿用前面幾頁那張＝物件連續） */
     coverUrl: string | null;
     isDomestic: boolean;
-    onBack: () => void;
+    /**
+     * 🔴 **回頭時的復原**：這一頁關閉時整個元件被卸載，state 隨之消失。
+     * ⚠️ `*Auto` 為 true 代表「**他沒選、是我們填的預設**」——復原時必須還原成**未選**，
+     *    否則他回來會看到自己從沒圈過的選項被圈起來，那是在竄改他的答案。
+     */
+    initial?: HowResult;
+    /** 從 ⑧ 確認書點「改」回來時＝「改好了」（沒有這個字，使用者會以為要重走一遍） */
+    nextLabel?: string;
+    /** ⚠️ 帶著當前選擇離開——**「上一步」也要保存** */
+    onBack: (r: HowResult) => void;
     onClose: () => void;
     onNext: (r: HowResult) => void;
-}> = ({ breadcrumb, query, coverUrl, isDomestic, onBack, onClose, onNext }) => {
+}> = ({ breadcrumb, query, coverUrl, isDomestic, initial, nextLabel, onBack, onClose, onNext }) => {
     const instant = useMemo(() => reduceMotion(), []);
 
-    const [party, setParty] = useState<PartyKey | null>(null);
-    const [withKeys, setWithKeys] = useState<WithKey[]>([]);
-    const [pace, setPace] = useState<PaceLevel | null>(null);
+    const [party, setParty] = useState<PartyKey | null>(initial?.party ?? null);
+    const [withKeys, setWithKeys] = useState<WithKey[]>(initial?.withKeys ?? []);
+    const [pace, setPace] = useState<PaceLevel | null>(initial && !initial.paceAuto ? initial.pace : null);
     const [paceAuto, setPaceAuto] = useState(false);
-    const [move, setMove] = useState<LocalTransport | null>(null);
-    const [budget, setBudget] = useState<BudgetLevel | null>(null);
-    const [capRaw, setCapRaw] = useState('');
+    const [move, setMove] = useState<LocalTransport | null>(initial && !initial.moveAuto ? initial.move : null);
+    const [budget, setBudget] = useState<BudgetLevel | null>(initial && !initial.budgetAuto ? initial.budget : null);
+    const [capRaw, setCapRaw] = useState(initial?.budgetCap ? String(initial.budgetCap) : '');
     /** 這一輪是否剛幫他把「獨旅」改成「家人」（只用來決定要不要說那句話） */
     const [autoFamily, setAutoFamily] = useState(false);
     const [anchors, setAnchors] = useState<DestinationBudget | null>(null);
@@ -473,9 +482,10 @@ export const HowPage: React.FC<{
         return p;
     }, [party, withKeys, pace, paceAuto, move, budget]);
 
-    const submit = useCallback(() => {
+    /** 當前選擇的快照——**下一步與上一步共用**（兩個出口都要保存，不然往回走就清空） */
+    const snapshot = useCallback((): HowResult => {
         const keys: string[] = [...(party ? [party] : []), ...withKeys];
-        onNext({
+        return {
             party,
             withKeys,
             companions: keys.map(k => COMPANION_LABEL[k]).filter(Boolean),
@@ -487,8 +497,9 @@ export const HowPage: React.FC<{
             budgetAuto: !budget,
             budgetCap: capNum,
             skipped: !party && withKeys.length === 0 && !pace && !move && !budget,
-        });
-    }, [party, withKeys, pace, paceAuto, move, budget, capNum, onNext]);
+        };
+    }, [party, withKeys, pace, paceAuto, move, budget, capNum]);
+    const submit = useCallback(() => onNext(snapshot()), [snapshot, onNext]);
 
     // ── 版面 ───────────────────────────────────────────────────
     const sheetStyle = (i: number): React.CSSProperties => ({
@@ -514,7 +525,7 @@ export const HowPage: React.FC<{
             <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.5), rgba(15,14,13,.8))' }} />
 
             <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-                <button onClick={onBack} aria-label="上一步" className="absolute left-3 p-2 z-30"
+                <button onClick={() => onBack(snapshot())} aria-label="上一步" className="absolute left-3 p-2 z-30"
                     style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
                     <ChevronLeft className="w-5 h-5 text-white/80" />
                 </button>
@@ -701,7 +712,7 @@ export const HowPage: React.FC<{
                             </span>
                         )}
                     </div>
-                    <TicketNextButton onNext={submit} />
+                    <TicketNextButton label={nextLabel} onNext={submit} />
                 </div>
             </div>
 

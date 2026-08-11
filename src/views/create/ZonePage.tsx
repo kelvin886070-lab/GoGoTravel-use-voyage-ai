@@ -50,15 +50,18 @@ export const ZonePage: React.FC<{
     /** 背景照片（沿用入口頁那張＝物件連續） */
     coverUrl: string | null;
     isDomestic: boolean;
-    onBack: () => void;
+    /** 🔴 **回頭時的復原**：這一頁關閉時整個元件被卸載，圈過的地帶會消失 */
+    initial?: ZoneResult;
+    /** ⚠️ 帶著當前選擇離開——**「上一步」也要保存** */
+    onBack: (r: ZoneResult) => void;
     onClose: () => void;
     onNext: (r: ZoneResult) => void;
-}> = ({ destinationName, query, coverUrl, isDomestic, onBack, onClose, onNext }) => {
+}> = ({ destinationName, query, coverUrl, isDomestic, initial, onBack, onClose, onNext }) => {
     const instant = useMemo(() => reduceMotion(), []);
     const [zones, setZones] = useState<IntelZone[] | null>(null);
     const [loading, setLoading] = useState(true);
     const [expanded, setExpanded] = useState(false);
-    const [picked, setPicked] = useState<string[]>([]);      // 以地帶名為 key
+    const [picked, setPicked] = useState<string[]>(initial?.zones.map(z => z.name) ?? []);   // 以地帶名為 key
     const [erasing, setErasing] = useState<string | null>(null);
     const [pressed, setPressed] = useState<string | null>(null);   // 指尖按住的那張紙（會沉下去）
     const aliveRef = useRef(true);
@@ -123,16 +126,18 @@ export const ZonePage: React.FC<{
     const days = suggestedDays(Math.max(1, picked.length));
     const crowded = picked.length >= CROWDED_AT;
 
-    const finish = (viaSkipLink: boolean) => {
+    /** 當前選擇的快照——**下一步與上一步共用**（兩個出口都要保存） */
+    const snapshot = (viaSkipLink: boolean): ZoneResult => {
         // 一顆都沒圈就按下一步＝實質上就是略過（資料要誠實，不能記成「他選了空的」）
         const skipped = viaSkipLink || pickedZones.length === 0;
-        onNext({
+        return {
             zones: skipped ? [] : pickedZones,
             labels: skipped ? [] : pickedZones.map(z => shortLabel(z.name)),
             suggestedDays: skipped ? 0 : days,
             skipped,
-        });
+        };
     };
+    const finish = (viaSkipLink: boolean) => onNext(snapshot(viaSkipLink));
 
     const noZones = !loading && (zones?.length ?? 0) === 0;
 
@@ -151,7 +156,7 @@ export const ZonePage: React.FC<{
             <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(15,14,13,.5), rgba(15,14,13,.78))' }} />
 
             <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
-                <button onClick={onBack} aria-label="上一步" className="absolute left-3 p-2 z-30"
+                <button onClick={() => onBack(snapshot(false))} aria-label="上一步" className="absolute left-3 p-2 z-30"
                     style={{ top: 'calc(env(safe-area-inset-top) + 10px)' }}>
                     <ChevronLeft className="w-5 h-5 text-white/80" />
                 </button>
@@ -226,8 +231,10 @@ export const ZonePage: React.FC<{
                         );
                     })}
 
+                    {/* 🔊 原本用 paperSlide（Kelvin：不好聽）。這裡的動作是**更多張紙落到桌上**
+                        （那些卡片本來就是 ktPaperDrop 落下的），用 paperDrop 才對得上畫面。 */}
                     {!expanded && (zones?.length ?? 0) > FIRST_BATCH && (
-                        <button onClick={() => { setExpanded(true); playPageSound('paperSlide'); hapticTap(); }}
+                        <button onClick={() => { setExpanded(true); playPageSound('paperDrop', 0.7); hapticTap(); }}
                             className="w-full text-center font-serif text-[11px] text-white/65 underline underline-offset-4 decoration-white/35 mt-2 mb-1 py-2">
                             更多地帶
                         </button>
