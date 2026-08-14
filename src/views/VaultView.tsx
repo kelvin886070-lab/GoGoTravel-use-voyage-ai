@@ -148,9 +148,11 @@ export const VaultView: React.FC<VaultViewProps> = ({
             const user = (await supabase.auth.getUser()).data.user;
             if (!user) throw new Error("請先登入");
 
-            const fileExt = file.name.split('.').pop();
-            const safeFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-            const filePath = `${user.id}/${safeFileName}`;
+            // 🔐 檔名熵：crypto.randomUUID()（122-bit，與 bookingFile.ts 同一套）。
+            //   舊版 Date.now()+Math.random().substring(7) 只有 ~31-bit 且非密碼學安全——
+            //   private bucket 下不構成漏洞，但「RLS 若失效，路徑本身還剩多少保護」是縱深的一環。
+            const fileExt = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+            const filePath = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
             
             const { error: uploadError } = await supabase.storage.from('vault').upload(filePath, file);
             if (uploadError) throw uploadError;

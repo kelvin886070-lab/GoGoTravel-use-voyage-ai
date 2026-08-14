@@ -51,7 +51,7 @@ export async function resolveMapsLink(url: string): Promise<MapsLinkPlace | null
     // 1) 完整網址：前端直接抽座標（免費、最高信心）
     const local = parseMapsUrl(u);
     if (local) return { name: localName || '地圖位置', lat: local.lat, lng: local.lng };
-    // 2) 短網址：後端還原（回 coords + finalUrl）
+    // 2) 短網址：後端還原（只走轉寄地址、不讀網頁內容——SSRF 方案 A，2026-08-14）
     if (isShortMapsUrl(u)) {
         try {
             const { data, error } = await supabase.functions.invoke('ai-proxy', {
@@ -59,9 +59,17 @@ export async function resolveMapsLink(url: string): Promise<MapsLinkPlace | null
             });
             if (error || data?.error) return null;
             const coords = data?.coords as LatLng | null;
-            if (!coords) return null;
-            const name = extractPlaceNameFromMapsUrl(String(data?.finalUrl || '')) || localName || '地圖位置';
-            return { name, lat: coords.lat, lng: coords.lng };
+            const name = extractPlaceNameFromMapsUrl(String(data?.finalUrl || '')) || localName;
+            if (coords) return { name: name || '地圖位置', lat: coords.lat, lng: coords.lng };
+            // 🔁 退位：極少數短網址的座標不在網址上（舊版讀網頁內容也讀不到——目標頁沒有 JS 是空的）。
+            //   最終網址路徑上通常有地名（/maps/place/<名稱>/）→ 用既有 place-search 管線查一次
+            //   （有快取、有限額），把「解析失敗」變成「多走一次搜尋」。
+            if (name) {
+                const { results } = await searchPlaces(name);
+                const hit = results[0];
+                if (hit) return { name: hit.name || name, lat: hit.lat, lng: hit.lng, placeId: hit.placeId };
+            }
+            return null;
         } catch {
             return null;
         }
@@ -156,22 +164,8 @@ export async function coordsFromMapsUrl(url: string): Promise<LatLng | null> {
     return null;
 }
 
-// 🔬 對抗式稽核：同批查詢並排比較 Geocoding vs Places（不寫快取）
-export interface GeoAuditHit {
-    lat: number; lng: number; placeId?: string;
-    locationType?: string; partialMatch?: boolean; formattedAddress?: string;
-}
-export async function geoBenchmark(
-    items: { key: string; location: string; context?: string }[],
-): Promise<Record<string, { geocoding: GeoAuditHit | null; places: PlaceHit | null }>> {
-    if (items.length === 0) return {};
-    const { data, error } = await supabase.functions.invoke('ai-proxy', {
-        body: { action: 'geo-benchmark', payload: { items } },
-    });
-    if (error) throw new Error(error.message || 'geo-benchmark 失敗');
-    if (data?.error) throw new Error(data.error);
-    return data?.results || {};
-}
+// 🗑️ 2026-08-14 資安批：geoBenchmark 已移除（伺服端 action 一併下線）——
+//   一次請求可放大 240 次 Google 付費呼叫且不計額度；T1 cascade 已定案，量測使命完成。
 
 // 單點找點（存檔時用；失敗回 null 不擋存檔）
 export async function findPlace(query: string, context?: string): Promise<PlaceHit | null> {

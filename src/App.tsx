@@ -274,8 +274,7 @@ const App: React.FC = () => {
       if (!import.meta.env.DEV) return;
       (window as unknown as { __geoAudit?: () => Promise<unknown> }).__geoAudit =
           async () => (await import('./dev/geoAudit')).runGeoAudit(wishItems);
-      (window as unknown as { __geoBench?: () => Promise<unknown> }).__geoBench =
-          async () => (await import('./dev/geoBenchmark')).runGeoBenchmark(wishItems);
+      // 🗑️ __geoBench 已移除（2026-08-14 資安批：伺服端 geo-benchmark action 下線）
       // 🧹 Storage 孤兒檔清理（dry-run 預設；true 才刪；詳見 dev/storageOrphans.ts）
       (window as unknown as { __storageOrphans?: (remove?: boolean) => Promise<unknown> }).__storageOrphans =
           async (remove?: boolean) => (await import('./dev/storageOrphans')).runStorageOrphans(!!remove);

@@ -10,7 +10,40 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const GEMINI_KEY = Deno.env.get("GEMINI_KEY") ?? "";
 const WEATHER_KEY = Deno.env.get("WEATHER_KEY") ?? "";
 const GOOGLE_GEOCODING_KEY = Deno.env.get("GOOGLE_GEOCODING_KEY") ?? "";
-const GEOCODE_DAILY_LIMIT = 200; // 每使用者每日「新」geocode 上限（快取命中不計費、不計數）
+
+// ============================================================
+// 💰 成本註冊表（2026-08-14 資安補強批）
+// 設計原則：**「記得」是人的責任，所以不能靠記得。**
+//   ① 每一個 action 都必須登記在這張表——dispatch 層先查表，
+//     沒登記的 action 一律拒絕（**預設拒絕**，新增 action 忘了登記＝立刻被自己發現）。
+//   ② 權重＝相對單價（LLM 呼叫遠貴於一次 Geocoding，等權會讓 200 次上限
+//     實質變成「200 次最貴呼叫」的上限）。
+//   ③ 扣點一律走 bump_usage RPC（原子累加）——舊版「讀→判斷→寫」三步不原子，
+//     並發 20 個請求同讀 used=5 全部寫 6，限額在最需要它的時候（被刻意攻擊）失效。
+//   ④ 有快取的 action 在**快取未命中**時才扣（快取命中免費是既有設計，不能倒退）；
+//     無快取的 action 在 dispatch 層直接扣。
+// ============================================================
+const DAILY_BUDGET = 200; // 每使用者每日「加權點數」預算（快取命中不扣點）
+const ACTION_COST: Record<string, number> = {
+  // LLM（依輸出上限概略加權）
+  "gemini-text": 5,        // 行程生成：最長輸出
+  "gemini-vision": 8,      // 影像辨識：單價最高
+  "destination-intel": 2,  // 輕層（512 tokens）
+  "destination-deep": 5,   // 重層（6144 tokens）
+  "refine-notes": 2,       // 零快取的純個人呼叫
+  // Google Maps／Places 系（單價同一數量級 → 1）
+  "geocode": 1, "findplace": 1, "resolve-place": 1,
+  "place-search": 1, "place-details": 1, "place-lookup": 1,
+  "directions": 1,
+  // 其他外部 API
+  "weather": 1, "timezone": 1, "cover-photo": 1,
+  // 純轉址展開（不花外部 API 錢，但佔運算與出站流量）
+  "resolve-maps-url": 1,
+};
+// 這些 action 沒有快取層 → 扣點直接在 dispatch 做；其餘在各自函式的「快取未命中」處扣
+const SPEND_AT_DISPATCH = new Set([
+  "gemini-text", "gemini-vision", "weather", "timezone", "resolve-maps-url",
+]);
 
 // service role client：專門讀寫快取表與用量表（繞過 RLS，前端永遠碰不到這些表）
 const admin = createClient(
@@ -18,9 +51,11 @@ const admin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-// CORS：目前先放寬，上線後請收斂成你的網域 (見部署說明)
+// CORS：預設 *（真正的門是 JWT 驗證）；上架時到 Supabase Secrets 設 ALLOWED_ORIGIN
+// （例：capacitor://localhost 或正式網域），一行 env 收斂、零程式改動。
+const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -54,11 +89,36 @@ Deno.serve(async (req) => {
 
     // 2️⃣ 路由
     const { action, payload } = await req.json();
+
+    // 🚧 預設拒絕：沒登記在成本表的 action 不存在（新增 action 忘了登記＝這裡立刻擋下）
+    if (typeof action !== "string" || !(action in ACTION_COST)) {
+      return json({ error: `未知的 action: ${action}` }, 400);
+    }
+    // 🚧 無快取層的 action：進門先扣點（有快取的在各自函式的未命中處扣，命中維持免費）
+    if (SPEND_AT_DISPATCH.has(action)) {
+      if ((await spend(user.id, action)).limited) {
+        return json({ error: "今日使用額度已用完，明天會自動恢復", limited: true });
+      }
+    }
+
     switch (action) {
-      case "gemini-text":
-        return json(await geminiText(payload));
-      case "gemini-vision":
-        return json(await geminiVision(payload));
+      // 🔐 會影響計費的參數（model / maxOutputTokens / timeoutMs）一律**伺服端決定**：
+      //    payload 只放行 prompt / jsonMode / base64Image——curl 直打也拿不到更貴的模型或更長的輸出。
+      case "gemini-text": {
+        const p = (payload ?? {}) as { prompt?: unknown; jsonMode?: unknown };
+        return json(await geminiText({
+          prompt: typeof p.prompt === "string" ? p.prompt : "",
+          jsonMode: !!p.jsonMode,
+          maxOutputTokens: 8192,            // 行程生成的上限（原本無上限＝上限交給對方 API，不可）
+        }));
+      }
+      case "gemini-vision": {
+        const p = (payload ?? {}) as { prompt?: unknown; base64Image?: unknown };
+        return json(await geminiVision({
+          prompt: typeof p.prompt === "string" ? p.prompt : "",
+          base64Image: typeof p.base64Image === "string" ? p.base64Image : "",
+        }));
+      }
       case "weather":
         return json(await weather(payload));
       case "timezone":
@@ -67,8 +127,6 @@ Deno.serve(async (req) => {
         return json(await geocode(payload, user.id));
       case "findplace":
         return json(await findplace(payload, user.id));
-      case "geo-benchmark":
-        return json(await geoBenchmark(payload));
       case "resolve-place":
         return json(await resolvePlace(payload, user.id));
       case "resolve-maps-url":
@@ -195,7 +253,7 @@ async function destinationIntel(
   if (cached) return { intel: cached, cached: true };
 
   // 未命中：計入每日限額後才呼叫 LLM
-  if ((await bumpDailyOrLimit(userId)).limited) return { intel: null, limited: true };
+  if ((await spend(userId, "destination-intel")).limited) return { intel: null, limited: true };
 
   const prompt = `你是旅遊資料庫。判斷使用者輸入的目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
 
@@ -245,7 +303,7 @@ async function destinationDeep(
   const cached = await readIntelCache(key);
   if (cached) return { deep: cached, cached: true };
 
-  if ((await bumpDailyOrLimit(userId)).limited) return { deep: null, limited: true };
+  if ((await spend(userId, "destination-deep")).limited) return { deep: null, limited: true };
 
   const prompt = `你是旅遊資料庫。針對目的地「${raw}」，只回傳 JSON（不要說明文字、不要 markdown）。
 
@@ -313,7 +371,7 @@ async function refineNotes(payload: { text?: string; destination?: string }, use
   if (raw.length < 4) return { text: null };
   if (raw.length > 400) return { text: null, reason: "too-long" };   // 前端上限 200，這裡再擋一次
 
-  if ((await bumpDailyOrLimit(userId)).limited) return { text: null, limited: true };
+  if ((await spend(userId, "refine-notes")).limited) return { text: null, limited: true };
 
   const where = (payload.destination || "").trim();
   const prompt = `把旅客寫的這段話整理成清楚的條列，讓行程生成器讀得懂。
@@ -414,37 +472,72 @@ async function geminiText(
 }
 
 // ---------- Gemini Vision ----------
+// 2026-08-14 資安批：護欄補齊到與 geminiText 同一水位——vision 是單價最高、
+// 且唯一有「影像內文字＝prompt injection」攻擊面的 action，護欄不能反而最少。
+const VISION_MODEL = "gemini-3.5-flash-lite";   // 伺服端固定（client 不可指定）
+const VISION_TIMEOUT_MS = 30000;
+const VISION_MAX_TOKENS = 2048;                  // 抽取任務用不到更長的輸出
+const VISION_MAX_B64_CHARS = 8_000_000;          // ≈ 6MB 影像；前端已縮圖，超過＝異常請求，進門就擋
+
 async function geminiVision(
-  { prompt, base64Image, model = "gemini-3.5-flash-lite" }: {
-    prompt: string;
-    base64Image: string;
-    model?: string;
-  },
+  { prompt, base64Image }: { prompt: string; base64Image: string },
 ) {
   if (!GEMINI_KEY) return { error: "伺服器未設定 GEMINI_KEY" };
   const clean = base64Image.replace(
     /^data:image\/(png|jpeg|jpg|webp|heic);base64,/,
     "",
   );
+  if (!clean) return { error: "缺少影像" };
+  if (clean.length > VISION_MAX_B64_CHARS) {
+    // 先擋再說：送出去才發現太大，錢已經花了
+    return { error: "影像過大，請壓縮後再試" };
+  }
   const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: "image/jpeg", data: clean } },
-        ],
-      }],
-    }),
-  });
+    `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${GEMINI_KEY}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS);
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: "image/jpeg", data: clean } },
+          ],
+        }],
+        generationConfig: {
+          maxOutputTokens: VISION_MAX_TOKENS,
+          thinkingConfig: { thinkingLevel: "minimal" },   // 抽取任務不需要 thinking（同 geminiText 的教訓）
+        },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const aborted = (e as Error)?.name === "AbortError";
+    return { error: aborted ? `Vision 逾時（${VISION_TIMEOUT_MS}ms）` : ((e as Error)?.message ?? "Vision 連線失敗") };
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json();
+  const ms = Date.now() - t0;
   if (!res.ok) {
+    // 對齊 geminiText：details 才是指出真正欄位錯誤的地方，一定要一起印
+    console.error("[vision] http error", {
+      status: res.status,
+      message: data?.error?.message ?? null,
+      details: JSON.stringify(data?.error?.details ?? null).slice(0, 500),
+      ms,
+    });
     return { error: data?.error?.message ?? `Vision 錯誤 ${res.status}` };
   }
-  return { text: data.candidates?.[0]?.content?.parts?.[0]?.text ?? "" };
+  const cand = data.candidates?.[0];
+  // 多段 parts 全部串接（只取 [0] 會漏字——geminiText 修過的坑，這裡補齊）
+  const text = (cand?.content?.parts || []).map((x: { text?: string }) => x?.text || "").join("") || "";
+  return { text, ms };
 }
 
 // ---------- 天氣 ----------
@@ -526,18 +619,10 @@ async function geocode(
     else missKeyed.push(k);
   }
 
-  // 2) 去重 miss；查今日用量、算剩餘額度
+  // 2) 去重 miss；估剩餘額度決定切片（帳本走原子 RPC，這裡只是估）
   const uniqueMiss = [...new Map(missKeyed.map((m) => [m.key, m])).values()];
   if (uniqueMiss.length > 0) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: usage } = await admin
-      .from("geocode_usage")
-      .select("count")
-      .eq("user_id", userId)
-      .eq("day", today)
-      .maybeSingle();
-    const used = usage?.count ?? 0;
-    const remaining = Math.max(0, GEOCODE_DAILY_LIMIT - used);
+    const remaining = await remainingBudget(userId);
     const toDo = uniqueMiss.slice(0, remaining);
     const skipped = uniqueMiss.slice(remaining);
 
@@ -563,13 +648,7 @@ async function geocode(
     });
 
     if (upserts.length) await admin.from("cached_locations").upsert(upserts);
-    if (newCount) {
-      await admin.from("geocode_usage").upsert({
-        user_id: userId,
-        day: today,
-        count: used + newCount,
-      });
-    }
+    if (newCount) await spend(userId, "geocode", newCount);   // 原子入帳（實際打了幾筆記幾筆）
   }
 
   return { results };
@@ -667,15 +746,7 @@ async function findplace(
 
   const uniqueMiss = [...new Map(missKeyed.map((m) => [m.key, m])).values()];
   if (uniqueMiss.length > 0) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: usage } = await admin
-      .from("geocode_usage")
-      .select("count")
-      .eq("user_id", userId)
-      .eq("day", today)
-      .maybeSingle();
-    const used = usage?.count ?? 0;
-    const remaining = Math.max(0, GEOCODE_DAILY_LIMIT - used);
+    const remaining = await remainingBudget(userId);
     const toDo = uniqueMiss.slice(0, remaining);
     const skipped = uniqueMiss.slice(remaining);
 
@@ -695,9 +766,7 @@ async function findplace(
     });
 
     if (upserts.length) await admin.from("cached_locations").upsert(upserts);
-    if (newCount) {
-      await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + newCount });
-    }
+    if (newCount) await spend(userId, "findplace", newCount);   // 原子入帳
   }
 
   return { results };
@@ -754,7 +823,7 @@ async function coverPhoto(payload: { query?: string }, userId: string) {
   const query = (payload?.query || "").trim();
   if (!PEXELS_KEY) return { url: null, error: "PEXELS_KEY 未設定" };
   if (query.length < 2 || query.length > 80) return { url: null };
-  if ((await bumpDailyOrLimit(userId)).limited) return { url: null, limited: true };
+  if ((await spend(userId, "cover-photo")).limited) return { url: null, limited: true };
   try {
     const res = await fetch(
       `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=landscape&per_page=5`,
@@ -772,15 +841,44 @@ async function coverPhoto(payload: { query?: string }, userId: string) {
   }
 }
 
-// 每日限額檢查＋計數（與 geocode 共享 spend budget）
-async function bumpDailyOrLimit(userId: string): Promise<{ limited: boolean }> {
+// ---------- 💰 每日限額：原子扣點 ----------
+// 走 Postgres RPC `bump_usage`（supabase/usage_rpc.sql）：insert … on conflict do update 一步完成，
+// 回傳累加後的新值。舊版「讀→判斷→寫」在並發下會 lost update——正常使用時準、被刻意打時不準，
+// 而限額存在的意義正是防刻意攻擊。
+// 邊界語意：先扣後比（超線的那一次也已入帳）——限額是保護不是記帳，寧可多算不可少算。
+// 失敗語意：**fail-closed**——RPC 打不到（例如忘了跑 usage_rpc.sql）一律視為額度已滿，
+// 錯誤會立刻浮現而不是靜默放行。
+async function spend(
+  userId: string,
+  action: string,
+  units = 1,
+): Promise<{ limited: boolean }> {
+  const cost = (ACTION_COST[action] ?? 1) * Math.max(1, units);
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await admin.rpc("bump_usage", {
+    p_user_id: userId,
+    p_day: today,
+    p_cost: cost,
+  });
+  if (error) {
+    console.error("[spend] rpc failed（fail-closed）", { action, message: error.message });
+    return { limited: true };
+  }
+  const newCount = typeof data === "number" ? data : Number(data);
+  if (!Number.isFinite(newCount)) {
+    console.error("[spend] rpc 回傳非數字（fail-closed）", { action, data });
+    return { limited: true };
+  }
+  return { limited: newCount > DAILY_BUDGET };
+}
+
+/** 批次 action 專用：先估「今天還剩多少點」決定要打幾筆 Google，實際打完再用 spend() 原子入帳。
+ *  這個讀取只是**切片的估計值**（讀到舊值頂多多打或少打幾筆），帳本本身永遠走原子 RPC。 */
+async function remainingBudget(userId: string): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
   const { data: usage } = await admin
     .from("geocode_usage").select("count").eq("user_id", userId).eq("day", today).maybeSingle();
-  const used = usage?.count ?? 0;
-  if (used >= GEOCODE_DAILY_LIMIT) return { limited: true };
-  await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + 1 });
-  return { limited: false };
+  return Math.max(0, DAILY_BUDGET - (usage?.count ?? 0));
 }
 
 // payload: { query, bias? } → { results: PlaceSearchResult[] }
@@ -795,7 +893,7 @@ async function placeSearch(
 
   // 「更多結果」分頁：token 會過期→不走快取；仍計入限額
   if (pageToken) {
-    if ((await bumpDailyOrLimit(userId)).limited) return { results: [], limited: true };
+    if ((await spend(userId, "place-search")).limited) return { results: [], limited: true };
     return await placeSearchGoogle(query, bias, pageToken);
   }
 
@@ -813,7 +911,7 @@ async function placeSearch(
     }
   }
 
-  if ((await bumpDailyOrLimit(userId)).limited) return { results: [], limited: true };
+  if ((await spend(userId, "place-search")).limited) return { results: [], limited: true };
   const { results, nextPageToken } = await placeSearchGoogle(query, bias);
   await admin.from("cached_searches").upsert({ query: cacheKey, results: { items: results, nextPageToken }, created_at: new Date().toISOString() });
   return { results, nextPageToken };
@@ -822,7 +920,7 @@ async function placeSearch(
 // ---------- Place Details（D2② 評分，方案A）----------
 // 只在「存進心願盒/開地點細節」時查一次。FieldMask 僅取 id/rating/userRatingCount/displayName，
 // 避開最貴的 openingHours（Atmosphere SKU）。快取 cached_place_details（TTL 30 天，評分變動慢）；
-// 命中免費不計數，未命中才 bumpDailyOrLimit（共用 200/日硬限額）。placeId 快取＝同地點不重打。
+// 命中免費不計數，未命中才 spend()（共用每日點數預算）。placeId 快取＝同地點不重打。
 const DETAILS_CACHE_TTL_DAYS = 30;
 interface PlaceDetailsResult { placeId: string; rating?: number; ratingCount?: number; name?: string; }
 
@@ -861,7 +959,7 @@ async function placeDetails(payload: { placeId?: string }, userId: string) {
   }
 
   // 2) 未命中 → 計入每日限額
-  if ((await bumpDailyOrLimit(userId)).limited) return { details: null, limited: true };
+  if ((await spend(userId, "place-details")).limited) return { details: null, limited: true };
   const details = await placeDetailsGoogle(placeId);
   if (details) {
     await admin.from("cached_place_details").upsert({
@@ -907,7 +1005,7 @@ async function placeLookupGoogle(query: string, bias?: { lat: number; lng: numbe
 async function placeLookup(payload: { query?: string; bias?: { lat: number; lng: number } }, userId: string) {
   const query = (payload.query || "").trim();
   if (query.length < 2) return { match: null };
-  if ((await bumpDailyOrLimit(userId)).limited) return { match: null, limited: true };
+  if ((await spend(userId, "place-lookup")).limited) return { match: null, limited: true };
   const m = await placeLookupGoogle(query, payload.bias);
   if (m?.placeId) {
     await admin.from("cached_place_details").upsert({
@@ -919,9 +1017,9 @@ async function placeLookup(payload: { query?: string; bias?: { lat: number; lng:
   return { match: m };
 }
 
-// ---------- Geo Benchmark（對抗式稽核專用；不寫快取、不佔額度）----------
-// 對同一批「弄髒」的查詢，同時跑 Geocoding（含信心欄位）與 Places，方便並排比較。
-// ⚠️ 診斷用途，會直接花 Google 費用；僅限已登入者、每次最多 120 筆。
+// ---------- Geocoding 稽核（resolve-place cascade 的權威來源）----------
+// 🗑️ 2026-08-14 資安批：geo-benchmark action 已移除——一次請求可放大成 240 次 Google 付費呼叫
+//   且不計額度（量測工具的使命已完成，T1 cascade 已定案）。geocodeAuditOne 保留給 resolvePlaceOne。
 interface GeoAuditHit {
   lat: number; lng: number; placeId?: string;
   locationType?: string; partialMatch?: boolean; formattedAddress?: string;
@@ -954,21 +1052,6 @@ async function geocodeAuditOne(query: string, context?: string, bias?: Bias): Pr
     };
   }
   return null;
-}
-
-async function geoBenchmark(
-  payload: { items?: { key?: string; location: string; context?: string }[] },
-) {
-  const items = (payload.items || []).slice(0, 120).filter((it) => it?.location);
-  const out: Record<string, { geocoding: GeoAuditHit | null; places: PlaceHit | null }> = {};
-  await Promise.all(items.map(async (it) => {
-    const [g, p] = await Promise.all([
-      geocodeAuditOne(it.location, it.context),
-      findPlaceOne(it.location, it.context),
-    ]);
-    out[it.key ?? it.location] = { geocoding: g, places: p };
-  }));
-  return { results: out };
 }
 
 // ---------- Resolve Place（T1 正式 cascade：Geocoding 主 → 弱信心才升級 Places）----------
@@ -1033,12 +1116,7 @@ async function resolvePlace(
 
   const uniqueMiss = [...new Map(missKeyed.map((m) => [m.key, m])).values()];
   if (uniqueMiss.length > 0) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: usage } = await admin
-      .from("geocode_usage").select("count")
-      .eq("user_id", userId).eq("day", today).maybeSingle();
-    const used = usage?.count ?? 0;
-    const remaining = Math.max(0, GEOCODE_DAILY_LIMIT - used);
+    const remaining = await remainingBudget(userId);
     const toDo = uniqueMiss.slice(0, remaining);
     const skipped = uniqueMiss.slice(remaining);
 
@@ -1059,9 +1137,7 @@ async function resolvePlace(
     });
 
     if (upserts.length) await admin.from("cached_locations").upsert(upserts);
-    if (newCount) {
-      await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + newCount });
-    }
+    if (newCount) await spend(userId, "resolve-place", newCount);   // 原子入帳
   }
 
   return { results };
@@ -1085,29 +1161,64 @@ const decodeContinue = (u: string): string | null => {
   try { return m ? decodeURIComponent(m[1]) : null; } catch { return null; }
 };
 
+// 🔐 2026-08-14 資安批：SSRF 修法「方案 A——不拆信」。
+//   舊版唯一的驗證是「開頭為 http」＋ redirect:"follow" ＋ 讀 body——任何登入者可讓伺服器
+//   fetch 任意位址並以 finalUrl 觀測結果（內網探測 oracle）。
+//   新版三道結構性防線：
+//   ① host 白名單：只接受 Google 短網址／Google 網域，**每一跳都檢查**（redirect:"manual" 自行走鏈）；
+//   ② **永不讀 body**：只看轉寄地址（Location header）。實測 goo.gl 的目標頁沒有 JS 是空的，
+//     舊的「讀網頁內容」備援本來就讀不到東西——砍掉的是一個沒在工作的步驟；
+//   ③ 座標只從網址字串抽；finalUrl 只可能是白名單網域（前端拿它抽地名做退位搜尋）。
+const isAllowedMapsHost = (h: string): boolean => {
+  const host = h.toLowerCase();
+  if (host === "goo.gl" || host === "maps.app.goo.gl" || host === "g.co") return true;
+  // google.<tld> 與其子網域（www / maps / consent / google.com.tw / google.co.jp …）
+  return /^([a-z0-9-]+\.)*google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
+};
+
 async function resolveMapsUrl(payload: { url?: string }) {
-  const url = (payload.url || "").trim();
-  if (!url || !/^https?:\/\//i.test(url)) return { coords: null };
+  let current: URL;
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      headers: {
-        // 用桌機瀏覽器 UA + zh-TW，降低被導到同意頁/精簡頁的機率
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-        "Accept-Language": "zh-TW,zh;q=0.9",
-      },
-    });
-    // 1) 還原後最終網址 2) 同意頁的 continue= 真網址 3) 網頁內容
-    let coords = coordsFromString(res.url);
-    if (!coords) { const cont = decodeContinue(res.url); if (cont) coords = coordsFromString(cont); }
-    if (!coords) {
-      const body = await res.text();
-      coords = coordsFromString(body);
+    current = new URL((payload.url || "").trim());
+  } catch {
+    return { coords: null };
+  }
+  if (current.protocol !== "https:" || !isAllowedMapsHost(current.hostname)) return { coords: null };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);   // 整條轉址鏈共用 8 秒硬逾時
+  try {
+    for (let hop = 0; hop < 5; hop++) {
+      // 每一跳先試著從網址本身抽座標（轉寄目標常常就是含座標的完整網址）
+      let coords = coordsFromString(current.href);
+      if (!coords) { const cont = decodeContinue(current.href); if (cont) coords = coordsFromString(cont); }
+      if (coords) return { coords, finalUrl: current.href };
+
+      const res = await fetch(current.href, {
+        redirect: "manual",   // 不自動跟隨——每一跳都要重新過白名單
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+          "Accept-Language": "zh-TW,zh;q=0.9",
+        },
+        signal: controller.signal,
+      });
+      await res.body?.cancel();   // 🚫 永不讀 body
+      const loc = res.headers.get("location");
+      if (res.status < 300 || res.status >= 400 || !loc) break;   // 不是轉址＝走到底了
+      const next = new URL(loc, current);
+      if (next.protocol !== "https:" || !isAllowedMapsHost(next.hostname)) return { coords: null };
+      current = next;
     }
-    return { coords, finalUrl: res.url };
+    // 鏈走完仍無座標：座標可能藏在最終網址（上面每跳已檢查過）→ 最後再試一次；
+    // 抽不到就交 finalUrl（必為白名單網域）讓前端用地名走 place-search 退位。
+    let coords = coordsFromString(current.href);
+    if (!coords) { const cont = decodeContinue(current.href); if (cont) coords = coordsFromString(cont); }
+    return { coords, finalUrl: current.href };
   } catch (_e) {
     return { coords: null };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1125,24 +1236,21 @@ async function directions(
 
   const key = coords.map((c) => `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`).join(";");
 
-  // 1) 查路線快取
+  // 1) 查路線快取（TTL 30 天：路線會因施工/改道變動，**變動率決定快取壽命，不是價格**；
+  //    對照 cached_locations 永久快取——地址與座標的映射穩定，可以永久）
+  const ROUTE_TTL_DAYS = 30;
   const { data: cached } = await admin
     .from("cached_routes")
-    .select("polyline")
+    .select("polyline, created_at")
     .eq("route_key", key)
     .maybeSingle();
-  if (cached?.polyline) return { polyline: cached.polyline };
+  if (cached?.polyline) {
+    const ageDays = (Date.now() - new Date(cached.created_at).getTime()) / 86400000;
+    if (ageDays < ROUTE_TTL_DAYS) return { polyline: cached.polyline };
+  }
 
-  // 2) 每日限額（與 geocode 共用計數）
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: usage } = await admin
-    .from("geocode_usage")
-    .select("count")
-    .eq("user_id", userId)
-    .eq("day", today)
-    .maybeSingle();
-  const used = usage?.count ?? 0;
-  if (used >= GEOCODE_DAILY_LIMIT) return { polyline: null };
+  // 2) 每日限額（原子扣點；未命中或過期才走到這裡）
+  if ((await spend(userId, "directions")).limited) return { polyline: null };
 
   if (!GOOGLE_GEOCODING_KEY) return { polyline: null };
 
@@ -1157,8 +1265,8 @@ async function directions(
   const data = await res.json();
   if (data.status === "OK" && data.routes?.[0]?.overview_polyline?.points) {
     const polyline = data.routes[0].overview_polyline.points;
-    await admin.from("cached_routes").upsert({ route_key: key, polyline });
-    await admin.from("geocode_usage").upsert({ user_id: userId, day: today, count: used + 1 });
+    // created_at 一併刷新——過期重查後 TTL 重新起算
+    await admin.from("cached_routes").upsert({ route_key: key, polyline, created_at: new Date().toISOString() });
     return { polyline };
   }
   return { polyline: null };

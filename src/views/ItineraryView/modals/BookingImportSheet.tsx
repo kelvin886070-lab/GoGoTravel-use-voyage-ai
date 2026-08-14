@@ -10,6 +10,7 @@ import { buildFlightBooking, buildHotelBookings } from '../../../services/bookin
 import { paxFromTitle, normalizeName } from '../../../services/booking/mapMembers';
 import { extractPdfText, hasUsableText } from '../../../services/booking/pdfText';
 import { uploadBookingFile } from '../../../services/booking/bookingFile';
+import { fileToAiBase64 } from '../../../utils/imageDownscale';
 
 const INK = '#232320', PAPER = '#F6F1E7', GREEN = '#3F6B52', MUTE = '#8A8266', BORDER = '#E0D8C6', STAMP = '#A23B2E';
 
@@ -117,11 +118,10 @@ export const BookingImportSheet: React.FC<Props> = ({ open, trip, userId, viewBo
             if (!hasUsableText(pdfText)) { setErr('這份 PDF 像是掃描檔、抓不到文字。先改用截圖，或直接貼上信件內文。'); setStep('input'); return; }
             await runExtract(() => parseBookingFromText(pdfText));
         } else if (file.type.startsWith('image/')) {
-            const b64 = await new Promise<string>((res) => {
-                const r = new FileReader();
-                r.onload = () => res(String(r.result).split(',')[1] || '');
-                r.readAsDataURL(file);
-            });
+            // 🖼️ 送 AI 前先縮圖（長邊 1600、15MB 硬上限）——成本、延遲、隱私三者同時縮
+            let b64: string;
+            try { b64 = await fileToAiBase64(file); }
+            catch (err) { setErr(err instanceof Error ? err.message : '讀取圖片失敗'); return; }
             await runExtract(() => parseBookingFromImage(b64));
         } else {
             setErr('請上傳 PDF 或圖片檔');

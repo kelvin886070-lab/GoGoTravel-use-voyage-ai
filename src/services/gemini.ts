@@ -63,17 +63,15 @@ const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
     try {
         let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const firstChar = clean.indexOf('[');
-        const lastChar = clean.lastIndexOf(']');
-        
-        if (firstChar !== -1 && lastChar !== -1) {
-             clean = clean.substring(firstChar, lastChar + 1);
-        } else {
-            const firstBrace = clean.indexOf('{');
-            const lastBrace = clean.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1) {
-                clean = clean.substring(firstBrace, lastBrace + 1);
-            }
+        // 🔧 2026-08-14 修正：舊版「無條件先找 [」——物件內字串若含 [...]（如備註「行程[暫定]」）
+        //   會把物件切成壞字串。正解：看**最先出現**的是 [ 還是 {，那個才是 JSON 的真正開頭。
+        const iArr = clean.indexOf('[');
+        const iObj = clean.indexOf('{');
+        const isArr = iArr !== -1 && (iObj === -1 || iArr < iObj);
+        const start = isArr ? iArr : iObj;
+        const end = clean.lastIndexOf(isArr ? ']' : '}');
+        if (start !== -1 && end > start) {
+            clean = clean.substring(start, end + 1);
         }
         return JSON.parse(clean) as T;
     } catch (err) {
@@ -615,39 +613,11 @@ export const suggestNextSpot = async (
 };
 
 // ==========================================================
-// 4. AI 辨識收據 (Vision API - 簡化版：只抓總額與店家)
+// 4.（已移除）AI 辨識收據
+//   🗑️ 2026-08-14 資安批刪除：零呼叫端的死碼。曾讓外部稽核誤判「收據會被送去 Google」——
+//   死碼的第一個受害者是每一個讀程式碼的人。日後做分帳收據辨識時從 git 歷史撿回，
+//   並在**那時**一併補：隱私政策揭露＋影像大小上限＋輸出範圍檢查（金額為正、幣別白名單）。
 // ==========================================================
-interface ReceiptResult {
-    merchant: string;
-    total: number;
-}
-
-export const analyzeReceiptImage = async (base64Image: string): Promise<ReceiptResult | null> => {
-    const prompt = `
-        Role: Professional Accountant & Receipt OCR Expert.
-        Task: Analyze this receipt/invoice/menu image.
-        
-        Extract ONLY the following information:
-        1. **Merchant Name**: The name of the store or restaurant. (Use concise Traditional Chinese if possible)
-        2. **Total Amount**: The final total cost.
-        
-        **Output Format**: Return valid JSON ONLY (No Markdown, No Explanation).
-        {
-            "merchant": "星巴克",
-            "total": 350
-        }
-        
-        If the image is blurry or not a receipt, return null.
-    `;
-
-    try {
-        const text = await callGeminiVision(prompt, base64Image);
-        return parseJSON<ReceiptResult>(text);
-    } catch (err) {
-        console.error("AI Receipt Analysis Failed:", err);
-        return null;
-    }
-};
 
 // ==========================================================
 // 5. 匯率查詢 & 其他工具
