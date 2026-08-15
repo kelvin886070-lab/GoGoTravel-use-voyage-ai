@@ -61,23 +61,27 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>, ttlMinu
 
 const parseJSON = <T>(text: string | undefined): T | null => {
     if (!text) return null;
+    const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    // 🔧 2026-08-15 覆核 N-2：**先直接解析，猜括號只是退路**。
+    //   jsonMode 回來的通常已是乾淨 JSON，根本不需要猜邊界——直接 parse 最穩。
+    //   舊版「用字串位置猜邊界」對含前綴文字的回應（"Here is the [itinerary]: {...}"）會切錯。
     try {
-        let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        // 🔧 2026-08-14 修正：舊版「無條件先找 [」——物件內字串若含 [...]（如備註「行程[暫定]」）
-        //   會把物件切成壞字串。正解：看**最先出現**的是 [ 還是 {，那個才是 JSON 的真正開頭。
+        return JSON.parse(clean) as T;
+    } catch { /* 落到括號掃描退路 */ }
+    // 退路：回應含前後贅字時，取最外層 JSON。看**最先出現**的是 [ 還是 {（物件內字串含 [...] 不誤判）。
+    try {
         const iArr = clean.indexOf('[');
         const iObj = clean.indexOf('{');
         const isArr = iArr !== -1 && (iObj === -1 || iArr < iObj);
         const start = isArr ? iArr : iObj;
         const end = clean.lastIndexOf(isArr ? ']' : '}');
         if (start !== -1 && end > start) {
-            clean = clean.substring(start, end + 1);
+            return JSON.parse(clean.substring(start, end + 1)) as T;
         }
-        return JSON.parse(clean) as T;
     } catch (err) {
         console.error("JSON Parse Error:", err);
-        return null;
     }
+    return null;
 };
 
 // ==========================================================

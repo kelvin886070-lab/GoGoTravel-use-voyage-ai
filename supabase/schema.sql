@@ -223,11 +223,17 @@ create table if not exists public.cached_routes (
 );
 alter table public.cached_routes enable row level security;
 
--- ---------- geocode_usage（每人每日 Google 呼叫計數；200/日硬限額）----------
+-- ---------- geocode_usage（每人每日「加權點數」帳本）----------
+-- ⚠️ 命名歷史遺留（2026-08-15 覆核 R-4）：表名叫 geocode_usage，但 2026-08-14 資安批後
+--   它承載的是**所有計費 action 的加權點數**——LLM（gemini-text 5／vision 8／intel 2…）、
+--   Maps 系（各 1）、轉址展開（1），不只 geocoding。`count` 是點數不是次數，DAILY_BUDGET=200 點/日。
+--   權重表在 ai-proxy 的 ACTION_COST，原子累加在 bump_usage RPC（supabase/usage_rpc.sql）。
+--   未 rename 因牽動 RPC／Edge Function／本檔三處；日後若重構一併正名為 daily_usage。
+-- primary key (user_id, day) 即 bump_usage 的 on conflict 目標（unique 約束）。
 create table if not exists public.geocode_usage (
     user_id     uuid not null,
     day         date not null default current_date,
-    count       integer not null default 0,
+    count       integer not null default 0,   -- 加權點數（非呼叫次數）
     primary key (user_id, day)
 );
 alter table public.geocode_usage enable row level security;

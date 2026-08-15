@@ -73,11 +73,16 @@ create policy "avatars Updates" on storage.objects for update to authenticated
 drop policy if exists "avatars Delete" on storage.objects;
 create policy "avatars Delete" on storage.objects for delete to authenticated
     using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
-drop policy if exists "avatars Reads" on storage.objects;     -- API 列舉用（public URL 讀取不經 RLS）
-create policy "avatars Reads" on storage.objects for select to authenticated
-    using (bucket_id = 'avatars');
+-- 🔴 2026-08-15 覆核 N-1：刪除「avatars Reads」整桶 SELECT 政策。
+--   原本為了「API 列舉」放寬成 using(bucket_id='avatars')＝無資料夾範圍——任何登入者可
+--   storage.from('avatars').list('') 列舉全站 uid／頭像檔名／上傳時間（＝使用者總數、成長曲線、每個人的臉）。
+--   查證：前端從未呼叫 avatars.list()（唯一 list 是 storageOrphans 對 trip-media）。
+--   而 avatars 是 **public bucket**，圖片顯示走 getPublicUrl，**本來就不經 RLS SELECT**——
+--   所以這條政策對「顯示頭像」零貢獻，只貢獻了一個列舉破口。直接刪除，零功能損失。
+drop policy if exists "avatars Reads" on storage.objects;
 
 -- ---------- 驗證（跑完應為：vault/trip-media public=false、avatars public=true；----------
--- ----------  政策只剩 Strict* / trip-media* / avatars* 三組，且無任何 roles 含 public）----------
+-- ----------  政策只剩 Strict* / trip-media* / avatars(Uploads/Updates/Delete) 三組寫入政策，----------
+-- ----------  無任何 SELECT-to-authenticated 的 avatars 政策，且無任何 roles 含 public）----------
 -- select id, public, file_size_limit from storage.buckets;
 -- select policyname, roles, cmd, qual from pg_policies where schemaname='storage' and tablename='objects';

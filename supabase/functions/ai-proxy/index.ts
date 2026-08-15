@@ -51,9 +51,13 @@ const admin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-// CORS：預設 *（真正的門是 JWT 驗證）；上架時到 Supabase Secrets 設 ALLOWED_ORIGIN
-// （例：capacitor://localhost 或正式網域），一行 env 收斂、零程式改動。
+// CORS：真正的門是 JWT 驗證，CORS 非主要防線；但為「不靠記得」的原則一致性，
+//   未設 ALLOWED_ORIGIN 時開發預設 *、並在啟動時 warn（覆核 N-4：避免上線忘了設 Secret＝靜默全開）。
+//   上架到 Supabase Secrets 設 ALLOWED_ORIGIN（例：capacitor://localhost 或正式網域），一行 env 收斂。
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
+if (ALLOWED_ORIGIN === "*") {
+  console.warn("[cors] ALLOWED_ORIGIN 未設定＝允許任何來源。正式環境請於 Secrets 設定收斂。");
+}
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Headers":

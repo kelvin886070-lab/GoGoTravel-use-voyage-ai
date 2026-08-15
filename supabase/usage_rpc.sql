@@ -17,6 +17,14 @@
 -- 可重複執行（create or replace）。於 Supabase SQL Editor 執行全文。
 -- =====================================================================
 
+-- 🛡️ 2026-08-15 覆核 R-1：自我完備的前置依賴。
+--   `on conflict (user_id, day)` 需要 geocode_usage 上有 (user_id, day) 的 unique 約束。
+--   schema.sql 已用 `primary key (user_id, day)` 滿足它（PK 即 unique）——所以正常環境本就有。
+--   這行是**防禦性冗餘**：讓本檔單獨重跑也自我完備，不隱性依賴另一個檔的執行順序。
+--   （if not exists：PK 已存在時這行無害跳過；若哪天有人只跑這個檔重建，計費不會靜默全鎖。）
+create unique index if not exists geocode_usage_user_day_key
+  on public.geocode_usage (user_id, day);
+
 create or replace function public.bump_usage(p_user_id uuid, p_day date, p_cost int)
 returns integer
 language plpgsql
@@ -26,9 +34,19 @@ as $$
 declare
   new_count integer;
 begin
-  -- 防呆：成本必須是正數（負數可以「還點」，不允許）
+  -- 🛡️ 2026-08-15 覆核 R-2：fail-loud，不靜默改值。
+  --   p_cost 傳入 null/0/負數只可能來自呼叫端 bug（ACTION_COST 查表失敗、units 算錯）——
+  --   本檔開頭的原則是「錯誤要立刻浮現，不能靜默放行」。舊版靜默改成 1 正好違反它：
+  --   會扣到點、但永遠不知道成本表壞了。改成拋錯——spend() 已 fail-closed，會回 limited:true
+  --   並在日誌留 [spend] rpc failed，bug 浮現而非偽裝成正常的 1。
+  --   防呆是給不可控輸入（使用者、外部 API）用的，不是給自己的程式碼用的。
   if p_cost is null or p_cost < 1 then
-    p_cost := 1;
+    raise exception 'bump_usage: 無效的 p_cost (%)——只可能來自呼叫端 bug', p_cost;
+  end if;
+  -- 🛡️ 覆核 R-3：上限保護。單次扣點超過此值必是 units 算錯（批次 action 呼叫端已用
+  --   slice(0, remaining) 上限，正常永遠 ≤ 每日預算）。寧可擋下並吵，不讓一次請求燒光額度。
+  if p_cost > 100 then
+    raise exception 'bump_usage: p_cost (%) 超過單次上限 100——疑似 units 溢出', p_cost;
   end if;
   insert into public.geocode_usage (user_id, day, count)
   values (p_user_id, p_day, p_cost)
